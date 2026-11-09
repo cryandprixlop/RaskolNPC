@@ -23,6 +23,7 @@ public final class NpcRecoveryService {
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
     private final NpcDeletionRepository deletions;
+    private volatile boolean started;
 
     public NpcRecoveryService(Plugin plugin, NpcRegistry registry,
                               NpcEntityManager entities,
@@ -38,6 +39,7 @@ public final class NpcRecoveryService {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("NPC recovery must start on the server thread."));
         }
+        started = true;
         return deletions.findPending().thenCompose(ids -> runOnMainThread(() -> {
             Set<NpcId> pending = Set.copyOf(ids);
             CompletableFuture<?>[] removals = processLoadedEntities(
@@ -45,13 +47,16 @@ public final class NpcRecoveryService {
                             .flatMap(world -> java.util.Arrays.stream(world.getEntities()))
                             .toList(), pending);
             entities.trackExistingLoadedWorlds();
-            recoverLoadedSpawnChunks();
-            return CompletableFuture.allOf(removals);
+            CompletableFuture<?>[] spawns = recoverLoadedSpawnChunks();
+            CompletableFuture<?>[] all = java.util.Arrays.copyOf(
+                    removals, removals.length + spawns.length);
+            System.arraycopy(spawns, 0, all, removals.length, spawns.length);
+            return CompletableFuture.allOf(all);
         }));
     }
 
     public void onEntitiesLoad(Chunk chunk, List<Entity> loadedEntities) {
-        if (!Bukkit.isPrimaryThread() || !isReady()) return;
+        if (!Bukkit.isPrimaryThread() || !started || !plugin.isEnabled()) return;
         deletions.findPending().whenComplete((ids, error) -> {
             if (error != null) {
                 plugin.getLogger().log(Level.SEVERE,
@@ -62,9 +67,11 @@ public final class NpcRecoveryService {
                 Set<NpcId> pending = Set.copyOf(ids);
                 CompletableFuture<?>[] removals =
                         processLoadedEntities(loadedEntities, pending);
-                entities.trackExistingLoadedWorlds();
-                recoverChunk(chunk);
-                return CompletableFuture.allOf(removals);
+                CompletableFuture<?>[] spawns = recoverChunk(chunk);
+                CompletableFuture<?>[] all = java.util.Arrays.copyOf(
+                        removals, removals.length + spawns.length);
+                System.arraycopy(spawns, 0, all, removals.length, spawns.length);
+                return CompletableFuture.allOf(all);
             });
         });
     }
@@ -72,10 +79,6 @@ public final class NpcRecoveryService {
     public void onEntitiesUnload(List<Entity> unloadingEntities) {
         if (!Bukkit.isPrimaryThread()) return;
         unloadingEntities.forEach(entities::untrack);
-    }
-
-    private boolean isReady() {
-        return plugin.isEnabled() && registry != null;
     }
 
     private CompletableFuture<?>[] processLoadedEntities(
@@ -96,29 +99,37 @@ public final class NpcRecoveryService {
                 .toArray(CompletableFuture[]::new);
     }
 
-    private void recoverLoadedSpawnChunks() {
-        for (NpcRecord record : registry.all()) {
-            recoverRecordIfChunkLoaded(record, null);
-        }
+    private CompletableFuture<?>[] recoverLoadedSpawnChunks() {
+        return registry.all().stream()
+                .map(record -> recoverRecordIfChunkLoaded(record, null))
+                .toArray(CompletableFuture[]::new);
     }
 
-    private void recoverChunk(Chunk chunk) {
-        for (NpcRecord record : registry.all()) {
-            recoverRecordIfChunkLoaded(record, chunk);
-        }
+    private CompletableFuture<?>[] recoverChunk(Chunk chunk) {
+        return registry.all().stream()
+                .map(record -> recoverRecordIfChunkLoaded(record, chunk))
+                .toArray(CompletableFuture[]::new);
     }
 
-    private void recoverRecordIfChunkLoaded(NpcRecord record, Chunk onlyChunk) {
-        if (record.spawnLocation() == null || entities.find(record.id()).isPresent()) return;
+    private CompletableFuture<?> recoverRecordIfChunkLoaded(NpcRecord record, Chunk onlyChunk) {
+        if (record.spawnLocation() == null || entities.find(record.id()).isPresent()) {
+            return CompletableFuture.completedFuture(null);
+        }
         Location location = record.spawnLocation().resolve();
-        if (location == null || location.getWorld() == null) return;
+        if (location == null || location.getWorld() == null) {
+            return CompletableFuture.completedFuture(null);
+        }
         int chunkX = location.getBlockX() >> 4;
         int chunkZ = location.getBlockZ() >> 4;
         if (onlyChunk != null && (!onlyChunk.getWorld().getUID().equals(location.getWorld().getUID())
-                || onlyChunk.getX() != chunkX || onlyChunk.getZ() != chunkZ)) return;
-        if (!location.getWorld().isChunkLoaded(chunkX, chunkZ)) return;
+                || onlyChunk.getX() != chunkX || onlyChunk.getZ() != chunkZ)) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!location.getWorld().isChunkLoaded(chunkX, chunkZ)) {
+            return CompletableFuture.completedFuture(null);
+        }
 
-        entities.spawnAsync(record, location).whenComplete((restored, error) -> {
+        return entities.spawnAsync(record, location).whenComplete((restored, error) -> {
             if (error != null && plugin.isEnabled()) {
                 plugin.getLogger().log(Level.SEVERE,
                         "Could not restore NPC " + record.id() + ".", error);
