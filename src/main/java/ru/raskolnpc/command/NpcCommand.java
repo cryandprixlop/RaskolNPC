@@ -32,7 +32,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command,
                              String label, String[] args) {
         if (!sender.hasPermission(PERMISSION)) {
-            messages.send(sender, "no-permission", "&cУ вас нет прав на эту команду.");
+            messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
         if (args.length == 0) {
@@ -52,7 +52,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private void create(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            messages.send(sender, "player-only", "&cЭту команду может выполнить только игрок.");
+            messages.send(sender, "general.player-only", "&cЭту команду может выполнить только игрок.");
             return;
         }
         if (args.length < 3 || !args[1].equalsIgnoreCase("resident")) {
@@ -69,7 +69,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!plugin.isEnabled()) return;
                     if (error != null) {
-                        messages.send(sender, "operation-failed",
+                        messages.send(sender, "general.operation-failed",
                                 "&cНе удалось создать NPC: " + rootMessage(error));
                         return;
                     }
