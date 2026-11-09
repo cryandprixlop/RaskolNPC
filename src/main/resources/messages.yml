@@ -1,0 +1,6 @@
+prefix: "&8[&6RaskolNPC&8]"
+
+general:
+  no-permission: "&cYou do not have permission to do that."
+  player-only: "&cThis command can only be used by a player."
+  operation-failed: "&cThe operation could not be completed. Please contact an administrator."
