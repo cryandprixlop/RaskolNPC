@@ -44,8 +44,11 @@ public final class NpcEntityManager {
                 entity.getUniqueId(), NpcSpawnLocation.from(location));
         liveEntities.put(record.id(), entity.getUniqueId());
 
-        repository.update(boundRecord).whenComplete((updated, error) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
+        repository.update(boundRecord).whenComplete((updated, error) -> {
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            Bukkit.getScheduler().runTask(plugin, () -> {
                     if (error != null || !Boolean.TRUE.equals(updated)) {
                         entity.remove();
                         liveEntities.remove(record.id(), entity.getUniqueId());
@@ -54,7 +57,8 @@ public final class NpcEntityManager {
                         return;
                     }
                     registry.put(boundRecord);
-                }));
+                });
+        });
         return entity;
     }
 
@@ -86,7 +90,12 @@ public final class NpcEntityManager {
     public void trackLoaded(Entity entity) {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> {
-            if (registry.get(id).isPresent()) liveEntities.put(id, entity.getUniqueId());
+            registry.get(id).ifPresent(record -> {
+                UUID expected = record.entityUuid();
+                if (expected == null || expected.equals(entity.getUniqueId())) {
+                    liveEntities.putIfAbsent(id, entity.getUniqueId());
+                }
+            });
         });
     }
 
