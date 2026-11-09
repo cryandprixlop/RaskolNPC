@@ -8,7 +8,6 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.model.NpcRecord;
-import ru.raskolnpc.npc.model.NpcType;
 
 import java.util.List;
 import java.util.Locale;
@@ -31,7 +30,14 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command,
                              String label, String[] args) {
-        if (!sender.hasPermission(PERMISSION)) {
+        boolean admin = sender.hasPermission(PERMISSION);
+        boolean townResidentCreation = args.length >= 2
+                && args[0].equalsIgnoreCase("create")
+                && args[1].equalsIgnoreCase("resident")
+                && sender instanceof Player
+                && service.isTownyIntegrationEnabled();
+
+        if (!admin && !townResidentCreation) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -42,9 +48,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "create" -> create(sender, args);
-            case "list" -> list(sender);
-            case "info" -> info(sender, args);
-            case "delete" -> delete(sender, args);
+            case "list" -> {
+                if (admin) list(sender);
+                else deny(sender);
+            }
+            case "info" -> {
+                if (admin) info(sender, args);
+                else deny(sender);
+            }
+            case "delete" -> {
+                if (admin) delete(sender, args);
+                else deny(sender);
+            }
             default -> help(sender, label);
         }
         return true;
@@ -135,19 +150,31 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 }));
     }
 
+    private void deny(CommandSender sender) {
+        messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
+    }
+
     private void help(CommandSender sender, String label) {
         messages.sendRaw(sender, "&6Команды RaskolNPC:");
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
-        messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
-        messages.sendRaw(sender, "&e/" + label + " info <UUID> &7— информация");
-        messages.sendRaw(sender, "&e/" + label + " delete <UUID> &7— удалить NPC");
+        if (sender.hasPermission(PERMISSION)) {
+            messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
+            messages.sendRaw(sender, "&e/" + label + " info <UUID> &7— информация");
+            messages.sendRaw(sender, "&e/" + label + " delete <UUID> &7— удалить NPC");
+        }
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command,
                                       String alias, String[] args) {
-        if (!sender.hasPermission(PERMISSION)) return List.of();
-        if (args.length == 1) return startsWith(List.of("create", "list", "info", "delete"), args[0]);
+        boolean canCreateTownResident = sender instanceof Player
+                && service.isTownyIntegrationEnabled();
+        if (!sender.hasPermission(PERMISSION) && !canCreateTownResident) return List.of();
+        if (args.length == 1) {
+            List<String> values = sender.hasPermission(PERMISSION)
+                    ? List.of("create", "list", "info", "delete") : List.of("create");
+            return startsWith(values, args[0]);
+        }
         if (args.length == 2 && args[0].equalsIgnoreCase("create")) {
             return startsWith(List.of("resident"), args[1]);
         }
@@ -161,8 +188,11 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private String rootMessage(Throwable error) {
         Throwable current = error;
-        while ((current instanceof CompletionException || current.getCause() != null)
-                && current.getCause() != null) current = current.getCause();
-        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+        while (current.getCause() != null
+                && (current instanceof CompletionException || current.getCause() != null)) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null
+                ? current.getClass().getSimpleName() : current.getMessage();
     }
 }
