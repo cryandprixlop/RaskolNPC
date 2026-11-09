@@ -6,6 +6,9 @@ import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
+import ru.raskolnpc.integration.towny.TownyIntegration;
+import ru.raskolnpc.integration.towny.TownyNpcLimitService;
+import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityListener;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.entity.NpcEntityTagger;
@@ -46,8 +49,15 @@ public final class RaskolNPC extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager), this);
 
+        TownyIntegration townyIntegration = new TownyIntegration(this);
+        TownyResidentService townyResidents = townyIntegration.isAvailable()
+                && getConfig().getBoolean("integrations.towny.enabled", true)
+                ? townyIntegration.residents() : null;
+        int residentsPerTown = Math.max(1,
+                getConfig().getInt("limits.residents-per-town", 15));
         NpcCommandService commandService = new NpcCommandService(
-                this, npcLifecycleService, npcRegistry, npcEntityManager);
+                this, npcLifecycleService, npcRegistry, npcEntityManager,
+                townyResidents, new TownyNpcLimitService(), residentsPerTown);
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         Objects.requireNonNull(getCommand("raskolnpc"),
