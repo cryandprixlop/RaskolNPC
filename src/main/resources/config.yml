@@ -7,6 +7,12 @@ limits:
   companions-per-player: 3
   total-npcs: 150
 
+integrations:
+  towny:
+    enabled: true
+    # Towny is optional. When it is installed, residents must be created
+    # inside a town by its mayor, a town assistant, or an administrator.
+
 performance:
   # NPC decisions are event-driven and periodically scheduled.
   decision-interval-ticks: 20
