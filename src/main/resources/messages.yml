@@ -1,6 +1,13 @@
 prefix: "&8[&6RaskolNPC&8]"
 
 general:
-  no-permission: "&cYou do not have permission to do that."
-  player-only: "&cThis command can only be used by a player."
-  operation-failed: "&cThe operation could not be completed. Please contact an administrator."
+  no-permission: "&cУ вас нет прав на эту команду."
+  player-only: "&cЭту команду может выполнить только игрок."
+  operation-failed: "&cОперация не выполнена. Проверьте консоль сервера."
+
+commands:
+  help: "&6Команды RaskolNPC:"
+  created: "&aЖитель создан. UUID: &f{id}"
+  not-found: "&cNPC не найден."
+  invalid-uuid: "&cНекорректный UUID."
+  deleted: "&aNPC удалён."
