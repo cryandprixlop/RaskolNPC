@@ -100,6 +100,9 @@ public final class NpcCommandService {
     }
 
     public List<NpcRecord> list() {
+        if (!lifecycle.isReady()) {
+            throw new IllegalStateException("NPC storage is still initializing.");
+        }
         return registry.all().stream()
                 .sorted(java.util.Comparator.comparing(NpcRecord::createdAt))
                 .toList();
@@ -112,8 +115,12 @@ public final class NpcCommandService {
     public CompletableFuture<Boolean> delete(NpcId id) {
         return lifecycle.delete(id).thenCompose(deleted -> {
             if (!deleted) return CompletableFuture.completedFuture(false);
-            return onMainThread(() -> CompletableFuture.completedFuture(entities.remove(id)))
-                    .thenApply(ignored -> true);
+            return onMainThread(() -> {
+                boolean removed = entities.remove(id);
+                return removed ? lifecycle.completeDeletion(id)
+                        .thenApply(ignored -> true)
+                        : CompletableFuture.completedFuture(true);
+            }).thenCompose(future -> future);
         });
     }
 }
