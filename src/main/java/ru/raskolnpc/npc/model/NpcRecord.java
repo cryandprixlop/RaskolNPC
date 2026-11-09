@@ -1,5 +1,7 @@
 package ru.raskolnpc.npc.model;
 
+import ru.raskolnpc.npc.entity.NpcSpawnLocation;
+
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -14,7 +16,9 @@ public record NpcRecord(
         NpcState state,
         String dataJson,
         String createdAt,
-        String updatedAt
+        String updatedAt,
+        UUID entityUuid,
+        NpcSpawnLocation spawnLocation
 ) {
     public NpcRecord {
         Objects.requireNonNull(id, "id");
@@ -31,24 +35,23 @@ public record NpcRecord(
     }
 
     public static NpcRecord create(
-            NpcType type,
-            String name,
-            UUID ownerUuid,
-            String townId,
-            String nationId,
-            String dataJson
+            NpcType type, String name, UUID ownerUuid,
+            String townId, String nationId, String dataJson
     ) {
         String now = Instant.now().toString();
-        return new NpcRecord(
-                NpcId.create(), type, name, ownerUuid, townId, nationId,
-                NpcState.UNLOADED, dataJson, now, now
-        );
+        return new NpcRecord(NpcId.create(), type, name, ownerUuid, townId,
+                nationId, NpcState.UNLOADED, dataJson, now, now, null, null);
     }
 
     public NpcRecord withState(NpcState newState) {
-        return new NpcRecord(
-                id, type, name, ownerUuid, townId, nationId,
-                newState, dataJson, createdAt, Instant.now().toString()
-        );
+        return new NpcRecord(id, type, name, ownerUuid, townId, nationId,
+                newState, dataJson, createdAt, Instant.now().toString(),
+                entityUuid, spawnLocation);
+    }
+
+    public NpcRecord withEntityBinding(UUID newEntityUuid, NpcSpawnLocation location) {
+        return new NpcRecord(id, type, name, ownerUuid, townId, nationId,
+                NpcState.ACTIVE, dataJson, createdAt, Instant.now().toString(),
+                newEntityUuid, location);
     }
 }
