@@ -10,3 +10,8 @@ limits:
 performance:
   # NPC decisions are event-driven and periodically scheduled.
   decision-interval-ticks: 20
+
+entities:
+  # Physical entities are persistent and tagged with their RaskolNPC UUID.
+  # AI is disabled until the relevant NPC behavior module is enabled.
+  track-loaded-chunks: true
