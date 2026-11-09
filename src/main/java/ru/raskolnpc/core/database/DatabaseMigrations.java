@@ -19,12 +19,9 @@ public final class DatabaseMigrations {
                     """);
         }
 
-        if (!isApplied(connection, 1)) {
-            applyInitialSchema(connection);
-        }
-        if (!isApplied(connection, 2)) {
-            applyEntityBindingSchema(connection);
-        }
+        if (!isApplied(connection, 1)) applyInitialSchema(connection);
+        if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
+        if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -81,6 +78,28 @@ public final class DatabaseMigrations {
             statement.execute("ALTER TABLE npcs ADD COLUMN spawn_pitch REAL");
             statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_npcs_entity_uuid ON npcs(entity_uuid)");
             statement.execute("INSERT INTO schema_migrations(version) VALUES (2)");
+            connection.commit();
+        } catch (SQLException exception) {
+            connection.rollback();
+            throw exception;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private static void applyDeletionQueueSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS pending_npc_deletions (
+                        npc_id TEXT PRIMARY KEY,
+                        queued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_npc_deletions_queued "
+                    + "ON pending_npc_deletions(queued_at)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (3)");
             connection.commit();
         } catch (SQLException exception) {
             connection.rollback();
