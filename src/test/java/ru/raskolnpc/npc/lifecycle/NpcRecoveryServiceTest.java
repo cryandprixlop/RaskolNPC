@@ -100,6 +100,38 @@ class NpcRecoveryServiceTest {
         verify(deletions).complete(id);
     }
 
+    @Test
+    void restoresNpcWhenItsSpawnChunkLoadsAfterRecoveryStarts() {
+        Location savedLocation = new Location(world, 160.5, 70, 160.5);
+        NpcRecord record = recordAt(savedLocation);
+        registry.put(record);
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performOneTick();
+        assertDoesNotThrow(startup::join);
+        verifyNoInteractions(provider);
+
+        Entity restoredEntity = mock(Entity.class);
+        UUID restoredEntityId = UUID.randomUUID();
+        when(restoredEntity.getUniqueId()).thenReturn(restoredEntityId);
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        world.loadChunk(10, 10);
+        assertTrue(world.isChunkLoaded(10, 10));
+        recovery.onEntitiesLoad(world.getChunkAt(10, 10), List.of());
+        server.getScheduler().performTicks(4);
+
+        verify(provider).spawn(eq(record), argThat(location ->
+                location.getWorld().getUID().equals(world.getUID())
+                        && location.getX() == savedLocation.getX()
+                        && location.getY() == savedLocation.getY()
+                        && location.getZ() == savedLocation.getZ()));
+        verify(repository).update(argThat(updated ->
+                updated.id().equals(record.id())
+                        && restoredEntityId.equals(updated.entityUuid())));
+        assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
     private NpcRecord recordAt(Location location) {
         NpcRecord record = NpcRecord.create(
                 NpcType.GUARD, "Recovery sentinel", null, null, null, null);
