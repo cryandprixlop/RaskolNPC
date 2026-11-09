@@ -8,10 +8,12 @@ version = "0.1.0-SNAPSHOT"
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.glaremasters.me/repository/towny/")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.135-stable")
+    compileOnly("com.palmergames.bukkit.towny:towny:0.103.2.0")
 }
 
 java {
