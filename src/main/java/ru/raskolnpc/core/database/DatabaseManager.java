@@ -72,6 +72,19 @@ public final class DatabaseManager implements AutoCloseable {
         });
     }
 
+    public <T> CompletableFuture<T> query(DatabaseQuery<T> query) {
+        if (!initialized.get()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Database is not initialized."));
+        }
+
+        return submit(() -> {
+            try (Connection connection = openConnection()) {
+                return query.run(connection);
+            }
+        });
+    }
+
     private Connection openConnection() throws SQLException {
         Connection connection = DriverManager.getConnection(
                 "jdbc:sqlite:" + databaseFile.getAbsolutePath());
@@ -133,6 +146,11 @@ public final class DatabaseManager implements AutoCloseable {
     @FunctionalInterface
     public interface DatabaseTask {
         void run(Connection connection) throws SQLException;
+    }
+
+    @FunctionalInterface
+    public interface DatabaseQuery<T> {
+        T run(Connection connection) throws SQLException;
     }
 
     @FunctionalInterface
