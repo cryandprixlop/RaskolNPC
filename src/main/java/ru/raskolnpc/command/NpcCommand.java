@@ -35,7 +35,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[0].equalsIgnoreCase("create")
                 && args[1].equalsIgnoreCase("resident")
                 && sender instanceof Player
-                && isTownyEnabled();
+                && service.isTownyIntegrationEnabled();
 
         if (!admin && !townResidentCreation) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
@@ -63,12 +63,6 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             default -> help(sender, label);
         }
         return true;
-    }
-
-
-    private boolean isTownyEnabled() {
-        var towny = plugin.getServer().getPluginManager().getPlugin("Towny");
-        return towny != null && towny.isEnabled();
     }
 
     private void create(CommandSender sender, String[] args) {
