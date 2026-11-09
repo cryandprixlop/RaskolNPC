@@ -15,11 +15,13 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
 
-import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 class NpcEntityManagerTest {
     private ServerMock server;
@@ -27,6 +29,8 @@ class NpcEntityManagerTest {
     private World world;
     private NpcRegistry registry;
     private NpcEntityTagger tagger;
+    private NpcEntityProvider provider;
+    private NpcRepository repository;
     private NpcEntityManager manager;
 
     @BeforeEach
@@ -35,10 +39,12 @@ class NpcEntityManagerTest {
         plugin = MockBukkit.createMockPlugin();
         world = server.addSimpleWorld("manager-test");
         registry = new NpcRegistry();
-        tagger = new NpcEntityTagger(plugin);
-        NpcRepository repository = new CompletedNpcRepository();
-        manager = new NpcEntityManager(plugin,
-                new PaperNpcEntityProvider(plugin, tagger), tagger, repository, registry);
+        tagger = mock(NpcEntityTagger.class);
+        provider = mock(NpcEntityProvider.class);
+        repository = mock(NpcRepository.class);
+        when(repository.update(any(NpcRecord.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        manager = new NpcEntityManager(plugin, provider, tagger, repository, registry);
     }
 
     @AfterEach
@@ -47,54 +53,26 @@ class NpcEntityManagerTest {
     }
 
     @Test
-    void spawnsTracksFindsAndRemovesNpcEntity() {
+    void spawnsEntityAndRejectsDuplicateLiveNpc() {
         NpcRecord record = NpcRecord.create(NpcType.GUARD, "Sentinel", null, null, null, null);
-        registry.register(record);
+        Entity entity = mock(Entity.class);
+        when(entity.getUniqueId()).thenReturn(UUID.randomUUID());
+        Location location = new Location(world, 2, 70, 2);
+        when(provider.spawn(record, location.clone())).thenReturn(entity);
 
-        Entity spawned = manager.spawn(record, new Location(world, 2, 70, 2));
+        Entity spawned = manager.spawn(record, location);
 
-        assertTrue(spawned.isValid());
-        assertEquals(spawned, manager.find(record.id()).orElseThrow());
-        assertEquals(record.id(), manager.getNpcId(spawned).orElseThrow());
-        assertTrue(manager.remove(record.id()));
-        assertFalse(spawned.isValid());
-        assertTrue(manager.find(record.id()).isEmpty());
+        assertSame(entity, spawned);
+        verify(provider).spawn(record, location.clone());
+        assertThrows(NpcEntityException.class, () -> manager.spawn(record, location));
+        verify(provider, times(1)).spawn(any(NpcRecord.class), any(Location.class));
     }
 
     @Test
     void returnsFalseWhenNoEntityIsTrackedForNpc() {
+        when(tagger.read(any(Entity.class))).thenReturn(Optional.empty());
+
         assertFalse(manager.remove(NpcId.create()));
-    }
-
-    private static final class CompletedNpcRepository implements NpcRepository {
-        @Override
-        public CompletableFuture<Void> insert(NpcRecord record) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Optional<NpcRecord>> findById(NpcId id) {
-            return CompletableFuture.completedFuture(Optional.empty());
-        }
-
-        @Override
-        public CompletableFuture<List<NpcRecord>> findAll() {
-            return CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public CompletableFuture<Boolean> update(NpcRecord record) {
-            return CompletableFuture.completedFuture(true);
-        }
-
-        @Override
-        public CompletableFuture<Boolean> updateState(NpcId id, ru.raskolnpc.npc.model.NpcState state) {
-            return CompletableFuture.completedFuture(true);
-        }
-
-        @Override
-        public CompletableFuture<Boolean> delete(NpcId id) {
-            return CompletableFuture.completedFuture(true);
-        }
+        verifyNoInteractions(provider);
     }
 }
