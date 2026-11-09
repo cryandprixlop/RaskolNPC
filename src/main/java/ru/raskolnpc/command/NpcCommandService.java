@@ -32,22 +32,46 @@ public final class NpcCommandService {
     public CompletableFuture<NpcRecord> createResident(String name, Player player) {
         Location location = player.getLocation().clone();
         return lifecycle.create(NpcType.RESIDENT, name, null, null, null, "{}")
-                .thenApply(record -> {
-                    if (plugin.isEnabled()) {
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (plugin.isEnabled()) {
-                                try {
-                                    entities.spawn(record, location);
-                                } catch (RuntimeException exception) {
-                                    lifecycle.delete(record.id());
-                                    plugin.getLogger().severe("Could not spawn resident "
-                                            + record.id() + ": " + exception.getMessage());
+                .thenCompose(record -> onMainThread(() -> entities.spawnAsync(record, location))
+                        .thenCompose(future -> future)
+                        .handle((bound, error) -> {
+                            if (error == null) return CompletableFuture.completedFuture(bound);
+                            return lifecycle.delete(record.id()).handle((deleted, cleanupError) -> {
+                                if (cleanupError != null) {
+                                    error.addSuppressed(cleanupError);
                                 }
-                            }
-                        });
-                    }
-                    return record;
-                });
+                                throw new java.util.concurrent.CompletionException(error);
+                            });
+                        }).thenCompose(future -> future));
+    }
+
+    private <T> CompletableFuture<T> onMainThread(
+            java.util.concurrent.Callable<CompletableFuture<T>> action) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        if (!plugin.isEnabled()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Plugin is disabled."));
+        }
+        try {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!plugin.isEnabled()) {
+                    result.completeExceptionally(
+                            new IllegalStateException("Plugin is disabled."));
+                    return;
+                }
+                try {
+                    action.call().whenComplete((value, error) -> {
+                        if (error != null) result.completeExceptionally(error);
+                        else result.complete(value);
+                    });
+                } catch (Exception exception) {
+                    result.completeExceptionally(exception);
+                }
+            });
+        } catch (RuntimeException exception) {
+            result.completeExceptionally(exception);
+        }
+        return result;
     }
 
     public List<NpcRecord> list() {
@@ -61,13 +85,10 @@ public final class NpcCommandService {
     }
 
     public CompletableFuture<Boolean> delete(NpcId id) {
-        return lifecycle.delete(id).thenApply(deleted -> {
-            if (deleted && plugin.isEnabled()) {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (plugin.isEnabled()) entities.remove(id);
-                });
-            }
-            return deleted;
+        return lifecycle.delete(id).thenCompose(deleted -> {
+            if (!deleted) return CompletableFuture.completedFuture(false);
+            return onMainThread(() -> CompletableFuture.completedFuture(entities.remove(id)))
+                    .thenApply(ignored -> true);
         });
     }
 }
