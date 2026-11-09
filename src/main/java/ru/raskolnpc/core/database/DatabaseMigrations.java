@@ -1,0 +1,77 @@
+package ru.raskolnpc.core.database;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public final class DatabaseMigrations {
+
+    private DatabaseMigrations() {
+    }
+
+    public static void migrate(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+        }
+
+        if (!isApplied(connection, 1)) {
+            applyInitialSchema(connection);
+        }
+    }
+
+    private static boolean isApplied(Connection connection, int version)
+            throws SQLException {
+        try (var statement = connection.prepareStatement(
+                "SELECT 1 FROM schema_migrations WHERE version = ?")) {
+            statement.setInt(1, version);
+            try (var result = statement.executeQuery()) {
+                return result.next();
+            }
+        }
+    }
+
+    private static void applyInitialSchema(Connection connection)
+            throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS npcs (
+                        id TEXT PRIMARY KEY,
+                        type TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        owner_uuid TEXT,
+                        town_id TEXT,
+                        nation_id TEXT,
+                        state TEXT NOT NULL,
+                        data_json TEXT NOT NULL DEFAULT '{}',
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_npcs_type
+                    ON npcs(type)
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_npcs_owner
+                    ON npcs(owner_uuid)
+                    """);
+            statement.execute("""
+                    INSERT INTO schema_migrations(version) VALUES (1)
+                    """);
+            connection.commit();
+        } catch (SQLException exception) {
+            connection.rollback();
+            throw exception;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+}
