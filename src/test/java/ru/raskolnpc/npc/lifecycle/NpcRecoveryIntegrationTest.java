@@ -75,6 +75,7 @@ class NpcRecoveryIntegrationTest {
         when(restoredEntity.getUniqueId()).thenReturn(restoredEntityId);
         when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
 
+        world.loadChunk(0, 0);
         CompletableFuture<Void> result = recovery.recover();
         server.getScheduler().performOneTick();
         server.getScheduler().performOneTick();
