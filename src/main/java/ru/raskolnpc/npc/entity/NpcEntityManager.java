@@ -197,6 +197,34 @@ public final class NpcEntityManager {
         if (entity.isValid()) entity.remove();
     }
 
+    public void untrackAndPersistLocation(Entity entity) {
+        requireMainThread();
+        tagger.read(entity).ifPresent(id -> registry.get(id).ifPresent(record -> {
+            UUID actual = entity.getUniqueId();
+            if (record.entityUuid() != null && !record.entityUuid().equals(actual)) return;
+            liveEntities.remove(id, actual);
+            NpcRecord moved = record.withEntityBinding(
+                    actual, NpcSpawnLocation.from(entity.getLocation()));
+            repository.update(moved).whenComplete((updated, error) -> {
+                if (!plugin.isEnabled()) return;
+                try {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (error != null || !Boolean.TRUE.equals(updated)) {
+                            plugin.getLogger().warning(
+                                    "Could not persist last known location for NPC " + id
+                                            + (error == null ? "." : ": " + error.getMessage()));
+                            return;
+                        }
+                        registry.put(moved);
+                    });
+                } catch (RuntimeException schedulingError) {
+                    plugin.getLogger().warning("Could not schedule location update for NPC "
+                            + id + ": " + schedulingError.getMessage());
+                }
+            });
+        }));
+    }
+
     public void untrack(Entity entity) {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> liveEntities.remove(id, entity.getUniqueId()));
