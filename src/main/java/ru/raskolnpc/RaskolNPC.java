@@ -1,6 +1,9 @@
 package ru.raskolnpc;
 
 import org.bukkit.plugin.java.JavaPlugin;
+import ru.raskolnpc.command.NpcCommand;
+import ru.raskolnpc.command.NpcCommandMessages;
+import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.npc.entity.NpcEntityListener;
@@ -12,6 +15,7 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.SqliteNpcRepository;
 
+import java.util.Objects;
 import java.util.logging.Level;
 
 public final class RaskolNPC extends JavaPlugin {
@@ -41,20 +45,32 @@ public final class RaskolNPC extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager), this);
 
+        NpcCommandService commandService = new NpcCommandService(
+                this, npcLifecycleService, npcRegistry, npcEntityManager);
+        NpcCommand commandHandler = new NpcCommand(
+                this, commandService, new NpcCommandMessages(this));
+        Objects.requireNonNull(getCommand("raskolnpc"),
+                "raskolnpc command is missing from plugin.yml")
+                .setExecutor(commandHandler);
+        getCommand("raskolnpc").setTabCompleter(commandHandler);
+
         databaseManager.initialize()
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
-                .whenComplete((records, error) -> getServer().getScheduler().runTask(this, () -> {
+                .whenComplete((records, error) -> {
                     if (!isEnabled()) return;
-                    if (error != null) {
-                        getLogger().log(Level.SEVERE,
-                                "RaskolNPC could not initialize persistent NPC data.", error);
-                        getServer().getPluginManager().disablePlugin(this);
-                        return;
-                    }
-                    npcEntityManager.trackExistingLoadedWorlds();
-                    getLogger().info("RaskolNPC is enabled. Loaded " + records.size()
-                            + " NPC record(s); tracked physical entities in loaded chunks.");
-                }));
+                    getServer().getScheduler().runTask(this, () -> {
+                        if (!isEnabled()) return;
+                        if (error != null) {
+                            getLogger().log(Level.SEVERE,
+                                    "RaskolNPC could not initialize persistent NPC data.", error);
+                            getServer().getPluginManager().disablePlugin(this);
+                            return;
+                        }
+                        npcEntityManager.trackExistingLoadedWorlds();
+                        getLogger().info("RaskolNPC is enabled. Loaded " + records.size()
+                                + " NPC record(s); tracked physical entities in loaded chunks.");
+                    });
+                });
 
         getLogger().info("RaskolNPC is starting.");
     }
