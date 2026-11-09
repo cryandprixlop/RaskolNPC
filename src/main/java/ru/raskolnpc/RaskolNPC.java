@@ -16,8 +16,8 @@ import ru.raskolnpc.npc.entity.PaperNpcEntityProvider;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
-import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
+import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
 import ru.raskolnpc.storage.SqliteNpcRepository;
 
@@ -104,3 +104,29 @@ public final class RaskolNPC extends JavaPlugin {
                         });
                     });
                 });
+
+        getLogger().info("RaskolNPC is starting.");
+    }
+
+    public NpcLifecycleService getNpcLifecycleService() {
+        return npcLifecycleService;
+    }
+
+    public NpcRegistry getNpcRegistry() {
+        return npcRegistry;
+    }
+
+    public NpcEntityManager getNpcEntityManager() {
+        return npcEntityManager;
+    }
+
+    @Override
+    public void onDisable() {
+        if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
+            npcEntityManager.clear();
+        }
+        if (npcLifecycleService != null) npcLifecycleService.clearRuntimeRegistry();
+        if (databaseManager != null) databaseManager.close();
+        getLogger().info("RaskolNPC has been disabled.");
+    }
+}
