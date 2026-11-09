@@ -155,6 +155,12 @@ public final class NpcEntityManager {
         }
     }
 
+    public void removeEntity(Entity entity) {
+        requireMainThread();
+        tagger.read(entity).ifPresent(id -> liveEntities.remove(id, entity.getUniqueId()));
+        if (entity.isValid()) entity.remove();
+    }
+
     public void untrack(Entity entity) {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> liveEntities.remove(id, entity.getUniqueId()));
