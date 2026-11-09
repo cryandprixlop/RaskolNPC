@@ -16,6 +16,7 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 public final class NpcCommandService {
     private final Plugin plugin;
@@ -39,6 +40,10 @@ public final class NpcCommandService {
         this.residentsPerTown = Math.max(1, residentsPerTown);
     }
 
+    public boolean isTownyIntegrationEnabled() {
+        return townyResidents != null;
+    }
+
     public CompletableFuture<NpcRecord> createResident(String name, Player player) {
         Location location = player.getLocation().clone();
         final TownyResidentService.TownAssignment town;
@@ -60,16 +65,14 @@ public final class NpcCommandService {
 
         return creation.thenCompose(record ->
                 onMainThread(() -> entities.spawnAsync(record, location))
-                        .thenCompose(future -> future)
-                        .handle((bound, error) -> {
-                            if (error == null) return CompletableFuture.<NpcRecord>completedFuture(bound);
-                            return lifecycle.delete(record.id()).thenCompose(deleted ->
-                                    lifecycle.completeDeletion(record.id()))
-                                    .<NpcRecord>handle((ignored, cleanupError) -> {
-                                        if (cleanupError != null) error.addSuppressed(cleanupError);
-                                        throw new java.util.concurrent.CompletionException(error);
-                                    });
-                        }).thenCompose(future -> future));
+                        .exceptionallyCompose(error -> lifecycle.delete(record.id())
+                                .thenCompose(deleted -> deleted
+                                        ? lifecycle.completeDeletion(record.id())
+                                        : CompletableFuture.completedFuture(false))
+                                .handle((ignored, cleanupError) -> {
+                                    if (cleanupError != null) error.addSuppressed(cleanupError);
+                                    throw new CompletionException(error);
+                                })));
     }
 
     private <T> CompletableFuture<T> onMainThread(
@@ -122,7 +125,7 @@ public final class NpcCommandService {
                 return removed ? lifecycle.completeDeletion(id)
                         .thenApply(ignored -> true)
                         : CompletableFuture.completedFuture(true);
-            }).thenCompose(future -> future);
+            });
         });
     }
 }
