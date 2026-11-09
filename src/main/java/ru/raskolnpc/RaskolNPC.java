@@ -14,8 +14,11 @@ import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.entity.NpcEntityTagger;
 import ru.raskolnpc.npc.entity.PaperNpcEntityProvider;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
+import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
+import ru.raskolnpc.storage.NpcDeletionRepository;
+import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
 import ru.raskolnpc.storage.SqliteNpcRepository;
 
 import java.util.Objects;
@@ -26,6 +29,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcRegistry npcRegistry;
     private NpcLifecycleService npcLifecycleService;
     private NpcEntityManager npcEntityManager;
+    private NpcRecoveryService npcRecoveryService;
 
     @Override
     public void onEnable() {
@@ -39,15 +43,20 @@ public final class RaskolNPC extends JavaPlugin {
 
         npcRegistry = new NpcRegistry();
         NpcRepository repository = new SqliteNpcRepository(databaseManager);
+        NpcDeletionRepository deletionRepository =
+                new SqliteNpcDeletionRepository(databaseManager);
         int maximumNpcs = Math.max(1, getConfig().getInt("limits.total-npcs", 150));
-        npcLifecycleService = new NpcLifecycleService(repository, npcRegistry, maximumNpcs);
+        npcLifecycleService = new NpcLifecycleService(
+                repository, npcRegistry, maximumNpcs, deletionRepository);
 
         NpcEntityTagger tagger = new NpcEntityTagger(this);
         npcEntityManager = new NpcEntityManager(this,
                 new PaperNpcEntityProvider(this, tagger),
                 tagger, repository, npcRegistry);
+        npcRecoveryService = new NpcRecoveryService(
+                this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
-                new NpcEntityListener(npcEntityManager), this);
+                new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
         TownyIntegration townyIntegration = new TownyIntegration(this);
         TownyResidentService townyResidents = townyIntegration.isAvailable()
@@ -77,34 +86,21 @@ public final class RaskolNPC extends JavaPlugin {
                             getServer().getPluginManager().disablePlugin(this);
                             return;
                         }
-                        npcEntityManager.trackExistingLoadedWorlds();
-                        getLogger().info("RaskolNPC is enabled. Loaded " + records.size()
-                                + " NPC record(s); tracked physical entities in loaded chunks.");
+                        npcRecoveryService.recover().whenComplete((ignored, recoveryError) -> {
+                            if (!isEnabled()) return;
+                            getServer().getScheduler().runTask(this, () -> {
+                                if (!isEnabled()) return;
+                                if (recoveryError != null) {
+                                    getLogger().log(Level.SEVERE,
+                                            "RaskolNPC could not recover persistent NPC entities.",
+                                            recoveryError);
+                                    getServer().getPluginManager().disablePlugin(this);
+                                    return;
+                                }
+                                npcLifecycleService.markReady();
+                                getLogger().info("RaskolNPC is enabled. Loaded "
+                                        + records.size() + " NPC record(s); recovery completed.");
+                            });
+                        });
                     });
                 });
-
-        getLogger().info("RaskolNPC is starting.");
-    }
-
-    public NpcLifecycleService getNpcLifecycleService() {
-        return npcLifecycleService;
-    }
-
-    public NpcRegistry getNpcRegistry() {
-        return npcRegistry;
-    }
-
-    public NpcEntityManager getNpcEntityManager() {
-        return npcEntityManager;
-    }
-
-    @Override
-    public void onDisable() {
-        if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
-            npcEntityManager.clear();
-        }
-        if (npcLifecycleService != null) npcLifecycleService.clearRuntimeRegistry();
-        if (databaseManager != null) databaseManager.close();
-        getLogger().info("RaskolNPC has been disabled.");
-    }
-}
