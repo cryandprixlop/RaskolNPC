@@ -16,6 +16,7 @@ dependencies {
     compileOnly("com.palmergames.bukkit.towny:towny:0.103.2.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.1")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
