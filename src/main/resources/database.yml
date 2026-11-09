@@ -1,0 +1,10 @@
+# SQLite is the initial storage provider.
+# MySQL/MariaDB support will be added behind the same storage interface.
+provider: sqlite
+
+sqlite:
+  file: raskolnpc.db
+
+async:
+  worker-threads: 2
+  queue-capacity: 512
