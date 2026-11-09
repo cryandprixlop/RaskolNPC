@@ -95,8 +95,8 @@ public final class NpcRecoveryService {
                     NpcId id = taggedId.get();
                     if (!pending.contains(id)) {
                         var record = registry.get(id).orElse(null);
-                        if (record != null && record.entityUuid() != null
-                                && !record.entityUuid().equals(entity.getUniqueId())) {
+                        if (record == null || (record.entityUuid() != null
+                                && !record.entityUuid().equals(entity.getUniqueId()))) {
                             entities.removeEntity(entity);
                             return CompletableFuture.completedFuture(null);
                         }
