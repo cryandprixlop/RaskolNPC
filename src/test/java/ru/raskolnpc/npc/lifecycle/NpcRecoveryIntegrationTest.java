@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
 class NpcRecoveryIntegrationTest {
@@ -76,18 +77,21 @@ class NpcRecoveryIntegrationTest {
         when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
 
         world.loadChunk(0, 0);
-        world.loadChunk(0, 0);
+        assertTrue(world.isChunkLoaded(0, 0), "Test setup must load chunk 0,0");
+        assertEquals(world.getUID(), savedLocation.getWorld().getUID());
         CompletableFuture<Void> result = recovery.recover();
-        server.getScheduler().performOneTick();
-        server.getScheduler().performOneTick();
+        server.getScheduler().performTicks(4);
 
         assertTrue(result.isDone());
         assertDoesNotThrow(result::join);
-        verify(provider).spawn(eq(record), argThat(location ->
-                location.getWorld().equals(world)
-                        && location.getX() == savedLocation.getX()
-                        && location.getY() == savedLocation.getY()
-                        && location.getZ() == savedLocation.getZ()));
+        ArgumentCaptor<Location> locationCaptor = ArgumentCaptor.forClass(Location.class);
+        verify(provider).spawn(eq(record), locationCaptor.capture());
+        Location actualLocation = locationCaptor.getValue();
+        assertNotNull(actualLocation.getWorld(), "Recovery must resolve the saved world");
+        assertEquals(world.getUID(), actualLocation.getWorld().getUID());
+        assertEquals(savedLocation.getX(), actualLocation.getX());
+        assertEquals(savedLocation.getY(), actualLocation.getY());
+        assertEquals(savedLocation.getZ(), actualLocation.getZ());
         verify(repository).update(argThat(updated ->
                 updated.id().equals(record.id())
                         && restoredEntityId.equals(updated.entityUuid())));
