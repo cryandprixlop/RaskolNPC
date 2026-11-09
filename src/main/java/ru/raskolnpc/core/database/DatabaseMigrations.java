@@ -22,6 +22,9 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 1)) {
             applyInitialSchema(connection);
         }
+        if (!isApplied(connection, 2)) {
+            applyEntityBindingSchema(connection);
+        }
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -35,11 +38,9 @@ public final class DatabaseMigrations {
         }
     }
 
-    private static void applyInitialSchema(Connection connection)
-            throws SQLException {
+    private static void applyInitialSchema(Connection connection) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-
         try (Statement statement = connection.createStatement()) {
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS npcs (
@@ -55,17 +56,31 @@ public final class DatabaseMigrations {
                         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
                     """);
-            statement.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_npcs_type
-                    ON npcs(type)
-                    """);
-            statement.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_npcs_owner
-                    ON npcs(owner_uuid)
-                    """);
-            statement.execute("""
-                    INSERT INTO schema_migrations(version) VALUES (1)
-                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_npcs_type ON npcs(type)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_npcs_owner ON npcs(owner_uuid)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (1)");
+            connection.commit();
+        } catch (SQLException exception) {
+            connection.rollback();
+            throw exception;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private static void applyEntityBindingSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE npcs ADD COLUMN entity_uuid TEXT");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_world_uuid TEXT");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_x REAL");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_y REAL");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_z REAL");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_yaw REAL");
+            statement.execute("ALTER TABLE npcs ADD COLUMN spawn_pitch REAL");
+            statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_npcs_entity_uuid ON npcs(entity_uuid)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (2)");
             connection.commit();
         } catch (SQLException exception) {
             connection.rollback();
