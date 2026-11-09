@@ -36,7 +36,8 @@ public final class RaskolNPC extends JavaPlugin {
 
         npcRegistry = new NpcRegistry();
         NpcRepository repository = new SqliteNpcRepository(databaseManager);
-        npcLifecycleService = new NpcLifecycleService(repository, npcRegistry);
+        int maximumNpcs = Math.max(1, getConfig().getInt("limits.total-npcs", 150));
+        npcLifecycleService = new NpcLifecycleService(repository, npcRegistry, maximumNpcs);
 
         NpcEntityTagger tagger = new NpcEntityTagger(this);
         npcEntityManager = new NpcEntityManager(this,
