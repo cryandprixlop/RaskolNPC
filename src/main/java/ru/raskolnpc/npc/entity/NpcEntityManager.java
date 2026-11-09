@@ -141,10 +141,35 @@ public final class NpcEntityManager {
     public void trackLoaded(Entity entity) {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> registry.get(id).ifPresent(record -> {
+            UUID actual = entity.getUniqueId();
             UUID expected = record.entityUuid();
-            if (expected == null || expected.equals(entity.getUniqueId())) {
-                liveEntities.putIfAbsent(id, entity.getUniqueId());
+            if (expected != null) {
+                if (expected.equals(actual)) liveEntities.putIfAbsent(id, actual);
+                return;
             }
+
+            if (liveEntities.putIfAbsent(id, actual) != null) return;
+            NpcRecord repaired = record.withEntityBinding(
+                    actual, NpcSpawnLocation.from(entity.getLocation()));
+            repository.update(repaired).whenComplete((updated, error) -> {
+                if (!plugin.isEnabled()) return;
+                try {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (error != null || !Boolean.TRUE.equals(updated)) {
+                            liveEntities.remove(id, actual);
+                            plugin.getLogger().warning(
+                                    "Could not repair the entity binding for NPC " + id
+                                            + (error == null ? "." : ": " + error.getMessage()));
+                            return;
+                        }
+                        registry.put(repaired);
+                    });
+                } catch (RuntimeException schedulingError) {
+                    liveEntities.remove(id, actual);
+                    plugin.getLogger().warning("Could not schedule entity binding repair for NPC "
+                            + id + ": " + schedulingError.getMessage());
+                }
+            });
         }));
     }
 
