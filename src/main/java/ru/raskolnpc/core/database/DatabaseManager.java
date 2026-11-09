@@ -43,6 +43,7 @@ public final class DatabaseManager implements AutoCloseable {
 
     public CompletableFuture<Void> initialize() {
         return submit(() -> {
+            Class.forName("org.sqlite.JDBC");
             File parent = databaseFile.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
                 throw new SQLException("Could not create plugin data directory.");
