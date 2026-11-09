@@ -13,6 +13,7 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.135-stable")
+    testImplementation("io.papermc.paper:paper-api:26.2.build.135-stable")
     compileOnly("com.palmergames.bukkit.towny:towny:0.103.2.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.1")
