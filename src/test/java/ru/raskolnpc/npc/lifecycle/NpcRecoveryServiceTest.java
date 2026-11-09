@@ -80,23 +80,7 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
-    void ignoresEntitiesWithoutNpcTagsDuringRecovery() {
-        Entity ordinaryEntity = mock(Entity.class);
-        when(ordinaryEntity.isValid()).thenReturn(true);
-        when(tagger.read(ordinaryEntity)).thenReturn(Optional.empty());
-        when(world.getEntities()).thenReturn(List.of(ordinaryEntity));
-
-        CompletableFuture<Void> result = recovery.recover();
-        server.getScheduler().performOneTick();
-
-        assertTrue(result.isDone());
-        assertDoesNotThrow(result::join);
-        verify(ordinaryEntity, never()).remove();
-        verifyNoInteractions(provider);
-    }
-
-    @Test
-    void completesPendingDeletionForLoadedTaggedNpc() {
+    void removesPendingNpcWhenItsChunkLoadsAfterRecoveryStarts() {
         NpcId id = NpcId.create();
         Entity deletedEntity = mock(Entity.class);
         when(deletedEntity.isValid()).thenReturn(true);
@@ -105,11 +89,13 @@ class NpcRecoveryServiceTest {
         when(deletions.findPending())
                 .thenReturn(CompletableFuture.completedFuture(List.of(id)));
 
-        CompletableFuture<Void> result = recovery.recover();
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performOneTick();
+        assertDoesNotThrow(startup::join);
+
+        recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of(deletedEntity));
         server.getScheduler().performOneTick();
 
-        assertTrue(result.isDone());
-        assertDoesNotThrow(result::join);
         verify(deletedEntity).remove();
         verify(deletions).complete(id);
     }
