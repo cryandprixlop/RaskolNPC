@@ -1,0 +1,12 @@
+# General RaskolNPC settings
+debug: false
+
+limits:
+  guards-per-nation: 30
+  residents-per-town: 15
+  companions-per-player: 3
+  total-npcs: 150
+
+performance:
+  # NPC decisions are event-driven and periodically scheduled.
+  decision-interval-ticks: 20
