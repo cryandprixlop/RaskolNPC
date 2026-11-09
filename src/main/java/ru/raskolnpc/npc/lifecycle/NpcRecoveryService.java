@@ -41,11 +41,10 @@ public final class NpcRecoveryService {
         started = true;
         return deletions.findPending().thenCompose(ids -> runOnMainThread(() -> {
             Set<NpcId> pending = Set.copyOf(ids);
-            CompletableFuture<?>[] removals = processLoadedEntities(
-                    Bukkit.getWorlds().stream()
-                            .flatMap(world -> java.util.Arrays.stream(world.getEntities()))
-                            .toList(), pending);
-            entities.trackExistingLoadedWorlds();
+            List<Entity> loadedEntities = Bukkit.getWorlds().stream()
+                    .flatMap(world -> world.getEntities().stream())
+                    .toList();
+            CompletableFuture<?>[] removals = processLoadedEntities(loadedEntities, pending);
             CompletableFuture<?>[] spawns = recoverLoadedSpawnChunks();
             CompletableFuture<?>[] all = java.util.Arrays.copyOf(
                     removals, removals.length + spawns.length);
