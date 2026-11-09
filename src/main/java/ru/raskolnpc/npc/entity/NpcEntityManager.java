@@ -129,7 +129,18 @@ public final class NpcEntityManager {
     public boolean remove(NpcId id) {
         requireMainThread();
         Optional<Entity> entity = find(id);
-        entity.ifPresent(Entity::remove);
+        if (entity.isEmpty()) {
+            for (var world : Bukkit.getWorlds()) {
+                for (Entity candidate : world.getEntities()) {
+                    if (tagger.read(candidate).filter(id::equals).isPresent()) {
+                        entity = Optional.of(candidate);
+                        break;
+                    }
+                }
+                if (entity.isPresent()) break;
+            }
+        }
+        entity.ifPresent(this::removeEntity);
         liveEntities.remove(id);
         return entity.isPresent();
     }
