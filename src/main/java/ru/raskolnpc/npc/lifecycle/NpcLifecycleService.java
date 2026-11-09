@@ -6,34 +6,45 @@ import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
+import ru.raskolnpc.storage.NpcDeletionRepository;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class NpcLifecycleService {
     private final NpcRepository repository;
     private final NpcRegistry registry;
     private final int maximumTotal;
+    private final NpcDeletionRepository deletions;
+    private final AtomicBoolean ready = new AtomicBoolean(false);
     private final Object creationLock = new Object();
     private int pendingCreations;
 
-    public NpcLifecycleService(NpcRepository repository, NpcRegistry registry) {
-        this(repository, registry, Integer.MAX_VALUE);
-    }
-
     public NpcLifecycleService(NpcRepository repository, NpcRegistry registry,
-                               int maximumTotal) {
+                               int maximumTotal, NpcDeletionRepository deletions) {
         this.repository = repository;
         this.registry = registry;
         this.maximumTotal = Math.max(1, maximumTotal);
+        this.deletions = deletions;
+    }
+
+    public boolean isReady() {
+        return ready.get();
+    }
+
+    private <T> CompletableFuture<T> notReady() {
+        return CompletableFuture.failedFuture(new NpcLifecycleException(
+                "NPC storage is still initializing. Please try again shortly."));
     }
 
     public CompletableFuture<NpcRecord> create(
             NpcType type, String name, UUID ownerUuid,
             String townId, String nationId, String dataJson
     ) {
+        if (!isReady()) return notReady();
         synchronized (creationLock) {
             if (registry.size() + pendingCreations >= maximumTotal) {
                 return CompletableFuture.failedFuture(new NpcLifecycleException(
@@ -68,17 +79,21 @@ public final class NpcLifecycleService {
     }
 
     public CompletableFuture<Optional<NpcRecord>> find(NpcId id) {
+        if (!isReady()) return notReady();
         return repository.findById(id);
     }
 
     public CompletableFuture<List<NpcRecord>> loadAll() {
+        ready.set(false);
         return repository.findAll().thenApply(records -> {
             records.forEach(registry::put);
+            ready.set(true);
             return records;
         });
     }
 
     public CompletableFuture<NpcRecord> load(NpcId id) {
+        if (!isReady()) return notReady();
         return repository.findById(id).thenCompose(optional -> {
             if (optional.isEmpty()) {
                 return CompletableFuture.failedFuture(
@@ -97,6 +112,7 @@ public final class NpcLifecycleService {
     }
 
     public CompletableFuture<Boolean> unload(NpcId id) {
+        if (!isReady()) return notReady();
         return repository.updateState(id, NpcState.UNLOADED).thenApply(updated -> {
             if (updated) {
                 registry.get(id).ifPresent(record ->
@@ -107,10 +123,15 @@ public final class NpcLifecycleService {
     }
 
     public CompletableFuture<Boolean> delete(NpcId id) {
-        return repository.delete(id).thenApply(deleted -> {
+        if (!isReady()) return notReady();
+        return deletions.deleteAndQueue(id).thenApply(deleted -> {
             if (deleted) registry.unregister(id);
             return deleted;
         });
+    }
+
+    public CompletableFuture<Boolean> completeDeletion(NpcId id) {
+        return deletions.complete(id);
     }
 
     public NpcRegistry registry() {
@@ -118,6 +139,7 @@ public final class NpcLifecycleService {
     }
 
     public void clearRuntimeRegistry() {
+        ready.set(false);
         registry.clear();
     }
 }
