@@ -35,6 +35,10 @@ public final class NpcLifecycleService {
         return ready.get();
     }
 
+    public void markReady() {
+        ready.set(true);
+    }
+
     private <T> CompletableFuture<T> notReady() {
         return CompletableFuture.failedFuture(new NpcLifecycleException(
                 "NPC storage is still initializing. Please try again shortly."));
@@ -87,7 +91,6 @@ public final class NpcLifecycleService {
         ready.set(false);
         return repository.findAll().thenApply(records -> {
             records.forEach(registry::put);
-            ready.set(true);
             return records;
         });
     }
