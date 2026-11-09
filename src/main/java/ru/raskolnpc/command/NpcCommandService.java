@@ -62,10 +62,10 @@ public final class NpcCommandService {
                 onMainThread(() -> entities.spawnAsync(record, location))
                         .thenCompose(future -> future)
                         .handle((bound, error) -> {
-                            if (error == null) return CompletableFuture.completedFuture(bound);
+                            if (error == null) return CompletableFuture.<NpcRecord>completedFuture(bound);
                             return lifecycle.delete(record.id()).thenCompose(deleted ->
                                     lifecycle.completeDeletion(record.id()))
-                                    .handle((ignored, cleanupError) -> {
+                                    .<NpcRecord>handle((ignored, cleanupError) -> {
                                         if (cleanupError != null) error.addSuppressed(cleanupError);
                                         throw new java.util.concurrent.CompletionException(error);
                                     });
