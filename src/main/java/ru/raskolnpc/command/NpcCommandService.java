@@ -1,0 +1,62 @@
+package ru.raskolnpc.command;
+
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
+import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.npc.registry.NpcRegistry;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+public final class NpcCommandService {
+    private final NpcLifecycleService lifecycle;
+    private final NpcRegistry registry;
+    private final NpcEntityManager entities;
+
+    public NpcCommandService(NpcLifecycleService lifecycle, NpcRegistry registry,
+                             NpcEntityManager entities) {
+        this.lifecycle = lifecycle;
+        this.registry = registry;
+        this.entities = entities;
+    }
+
+    public CompletableFuture<NpcRecord> createResident(String name, Player player) {
+        Location location = player.getLocation().clone();
+        return lifecycle.create(NpcType.RESIDENT, name, null, null, null, "{}")
+                .thenApply(record -> {
+                    org.bukkit.Bukkit.getScheduler().runTask(
+                            org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(
+                                    NpcCommandService.class),
+                            () -> entities.spawn(record, location));
+                    return record;
+                });
+    }
+
+    public List<NpcRecord> list() {
+        return registry.all().stream()
+                .sorted(java.util.Comparator.comparing(NpcRecord::createdAt))
+                .toList();
+    }
+
+    public CompletableFuture<Optional<NpcRecord>> find(NpcId id) {
+        return lifecycle.find(id);
+    }
+
+    public CompletableFuture<Boolean> delete(NpcId id) {
+        return lifecycle.delete(id).thenApply(deleted -> {
+            if (deleted) {
+                org.bukkit.Bukkit.getScheduler().runTask(
+                        org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(
+                                NpcCommandService.class),
+                        () -> entities.remove(id));
+            }
+            return deleted;
+        });
+    }
+}
