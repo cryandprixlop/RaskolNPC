@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import ru.raskolnpc.integration.towny.TownyNpcLimitService;
+import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.model.NpcId;
@@ -20,26 +22,49 @@ public final class NpcCommandService {
     private final NpcLifecycleService lifecycle;
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
+    private final TownyResidentService townyResidents;
+    private final TownyNpcLimitService townLimits;
+    private final int residentsPerTown;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
-                             NpcRegistry registry, NpcEntityManager entities) {
+                             NpcRegistry registry, NpcEntityManager entities,
+                             TownyResidentService townyResidents,
+                             TownyNpcLimitService townLimits, int residentsPerTown) {
         this.plugin = plugin;
         this.lifecycle = lifecycle;
         this.registry = registry;
         this.entities = entities;
+        this.townyResidents = townyResidents;
+        this.townLimits = townLimits;
+        this.residentsPerTown = Math.max(1, residentsPerTown);
     }
 
     public CompletableFuture<NpcRecord> createResident(String name, Player player) {
         Location location = player.getLocation().clone();
-        return lifecycle.create(NpcType.RESIDENT, name, null, null, null, "{}")
-                .thenCompose(record -> onMainThread(() -> entities.spawnAsync(record, location))
+        final TownyResidentService.TownAssignment town;
+        final TownyNpcLimitService.Reservation reservation;
+        try {
+            if (townyResidents == null) {
+                town = new TownyResidentService.TownAssignment(null, null);
+            } else {
+                town = townyResidents.resolveAndAuthorize(player, location);
+            }
+            reservation = townLimits.reserve(town.townId(), residentsPerTown, registry);
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+
+        CompletableFuture<NpcRecord> creation = lifecycle.create(
+                NpcType.RESIDENT, name, null, town.townId(), town.nationId(), "{}");
+        creation.whenComplete((record, error) -> reservation.close());
+
+        return creation.thenCompose(record ->
+                onMainThread(() -> entities.spawnAsync(record, location))
                         .thenCompose(future -> future)
                         .handle((bound, error) -> {
                             if (error == null) return CompletableFuture.completedFuture(bound);
                             return lifecycle.delete(record.id()).handle((deleted, cleanupError) -> {
-                                if (cleanupError != null) {
-                                    error.addSuppressed(cleanupError);
-                                }
+                                if (cleanupError != null) error.addSuppressed(cleanupError);
                                 throw new java.util.concurrent.CompletionException(error);
                             });
                         }).thenCompose(future -> future));
