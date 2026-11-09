@@ -4,10 +4,11 @@ main: ru.raskolnpc.RaskolNPC
 api-version: '26.2'
 description: Persistent NPC framework for a Paper-based Minecraft RPG server.
 authors: [cryandprixlop]
+softdepend: [Towny]
 
 commands:
   raskolnpc:
-    description: Administrative NPC management commands.
+    description: NPC management commands.
     usage: /raskolnpc <create|list|info|delete>
     aliases: [rnpc]
 
