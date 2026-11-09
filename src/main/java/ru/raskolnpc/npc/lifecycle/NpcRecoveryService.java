@@ -11,7 +11,6 @@ import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -72,6 +71,11 @@ public final class NpcRecoveryService {
                         removals, removals.length + spawns.length);
                 System.arraycopy(spawns, 0, all, removals.length, spawns.length);
                 return CompletableFuture.allOf(all);
+            }).whenComplete((ignored, recoveryError) -> {
+                if (recoveryError != null && plugin.isEnabled()) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not reconcile NPCs in a newly loaded chunk.", recoveryError);
+                }
             });
         });
     }
@@ -90,6 +94,12 @@ public final class NpcRecoveryService {
                     if (taggedId.isEmpty()) return CompletableFuture.completedFuture(null);
                     NpcId id = taggedId.get();
                     if (!pending.contains(id)) {
+                        var record = registry.get(id).orElse(null);
+                        if (record != null && record.entityUuid() != null
+                                && !record.entityUuid().equals(entity.getUniqueId())) {
+                            entities.removeEntity(entity);
+                            return CompletableFuture.completedFuture(null);
+                        }
                         entities.trackLoaded(entity);
                         return CompletableFuture.completedFuture(null);
                     }
