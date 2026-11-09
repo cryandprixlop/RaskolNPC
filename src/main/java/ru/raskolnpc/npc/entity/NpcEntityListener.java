@@ -26,7 +26,7 @@ public final class NpcEntityListener implements Listener {
 
     @EventHandler
     public void onEntitiesUnload(EntitiesUnloadEvent event) {
-        recoveryService.onEntitiesUnload(event.getEntities());
+        event.getEntities().forEach(entityManager::untrackAndPersistLocation);
     }
 
     @EventHandler
