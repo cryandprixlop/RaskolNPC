@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class NpcEntityManager {
@@ -33,31 +34,82 @@ public final class NpcEntityManager {
         this.registry = Objects.requireNonNull(registry, "registry");
     }
 
+    /**
+     * Spawns on the server thread and completes only after the entity binding
+     * has been persisted. The returned record is safe to use as an operation result.
+     */
+    public CompletableFuture<NpcRecord> spawnAsync(NpcRecord record, Location location) {
+        requireMainThread();
+        Objects.requireNonNull(record, "record");
+        Objects.requireNonNull(location, "location");
+        if (liveEntities.containsKey(record.id())) {
+            return CompletableFuture.failedFuture(
+                    new NpcEntityException("NPC already has a live entity: " + record.id()));
+        }
+
+        final Entity entity;
+        final NpcRecord boundRecord;
+        try {
+            entity = provider.spawn(record, location.clone());
+            boundRecord = record.withEntityBinding(
+                    entity.getUniqueId(), NpcSpawnLocation.from(location));
+            liveEntities.put(record.id(), entity.getUniqueId());
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+
+        CompletableFuture<NpcRecord> result = new CompletableFuture<>();
+        repository.update(boundRecord).whenComplete((updated, error) -> {
+            if (!plugin.isEnabled()) {
+                result.completeExceptionally(new IllegalStateException(
+                        "Plugin was disabled before NPC entity binding completed."));
+                return;
+            }
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (error != null || !Boolean.TRUE.equals(updated)) {
+                        entity.remove();
+                        liveEntities.remove(record.id(), entity.getUniqueId());
+                        String detail = error == null
+                                ? "Repository did not update the NPC record."
+                                : error.getMessage();
+                        result.completeExceptionally(new NpcEntityException(
+                                "Could not persist entity binding for NPC "
+                                        + record.id() + ": " + detail));
+                        return;
+                    }
+                    registry.put(boundRecord);
+                    result.complete(boundRecord);
+                });
+            } catch (RuntimeException schedulingError) {
+                result.completeExceptionally(schedulingError);
+            }
+        });
+        return result;
+    }
+
+    /** Compatibility wrapper for internal callers that only need immediate spawning. */
     public Entity spawn(NpcRecord record, Location location) {
         requireMainThread();
         if (liveEntities.containsKey(record.id())) {
             throw new NpcEntityException("NPC already has a live entity: " + record.id());
         }
-
-        Entity entity = provider.spawn(record, location);
+        Entity entity = provider.spawn(record, location.clone());
         NpcRecord boundRecord = record.withEntityBinding(
                 entity.getUniqueId(), NpcSpawnLocation.from(location));
         liveEntities.put(record.id(), entity.getUniqueId());
-
         repository.update(boundRecord).whenComplete((updated, error) -> {
-            if (!plugin.isEnabled()) {
-                return;
-            }
+            if (!plugin.isEnabled()) return;
             Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (error != null || !Boolean.TRUE.equals(updated)) {
-                        entity.remove();
-                        liveEntities.remove(record.id(), entity.getUniqueId());
-                        plugin.getLogger().severe("Could not persist entity binding for NPC "
-                                + record.id() + (error == null ? "" : ": " + error.getMessage()));
-                        return;
-                    }
-                    registry.put(boundRecord);
-                });
+                if (error != null || !Boolean.TRUE.equals(updated)) {
+                    entity.remove();
+                    liveEntities.remove(record.id(), entity.getUniqueId());
+                    plugin.getLogger().severe("Could not persist entity binding for NPC "
+                            + record.id() + (error == null ? "" : ": " + error.getMessage()));
+                    return;
+                }
+                registry.put(boundRecord);
+            });
         });
         return entity;
     }
@@ -66,7 +118,6 @@ public final class NpcEntityManager {
         requireMainThread();
         UUID entityId = liveEntities.get(id);
         if (entityId == null) return Optional.empty();
-
         for (var world : Bukkit.getWorlds()) {
             Entity entity = world.getEntity(entityId);
             if (entity != null && entity.isValid()) return Optional.of(entity);
@@ -89,14 +140,12 @@ public final class NpcEntityManager {
 
     public void trackLoaded(Entity entity) {
         requireMainThread();
-        tagger.read(entity).ifPresent(id -> {
-            registry.get(id).ifPresent(record -> {
-                UUID expected = record.entityUuid();
-                if (expected == null || expected.equals(entity.getUniqueId())) {
-                    liveEntities.putIfAbsent(id, entity.getUniqueId());
-                }
-            });
-        });
+        tagger.read(entity).ifPresent(id -> registry.get(id).ifPresent(record -> {
+            UUID expected = record.entityUuid();
+            if (expected == null || expected.equals(entity.getUniqueId())) {
+                liveEntities.putIfAbsent(id, entity.getUniqueId());
+            }
+        }));
     }
 
     public void trackExistingLoadedWorlds() {
