@@ -20,7 +20,7 @@ public final class TownyResidentService {
 
         Resident resident = TownyAPI.getInstance().getResident(player);
         boolean townManager = resident != null
-                && (town.isMayor(resident) || town.hasAssistant(resident));
+                && (town.isMayor(resident) || town.hasResidentWithRank(resident, "assistant"));
         boolean townyAdmin = player.hasPermission("towny.admin");
         boolean raskolAdmin = player.hasPermission("raskolnpc.admin");
 
