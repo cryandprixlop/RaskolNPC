@@ -38,22 +38,34 @@ public final class NpcEntityManager {
         if (liveEntities.containsKey(record.id())) {
             throw new NpcEntityException("NPC already has a live entity: " + record.id());
         }
+
         Entity entity = provider.spawn(record, location);
+        NpcRecord boundRecord = record.withEntityBinding(
+                entity.getUniqueId(), NpcSpawnLocation.from(location));
         liveEntities.put(record.id(), entity.getUniqueId());
+
+        repository.update(boundRecord).whenComplete((updated, error) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (error != null || !Boolean.TRUE.equals(updated)) {
+                        entity.remove();
+                        liveEntities.remove(record.id(), entity.getUniqueId());
+                        plugin.getLogger().severe("Could not persist entity binding for NPC "
+                                + record.id() + (error == null ? "" : ": " + error.getMessage()));
+                        return;
+                    }
+                    registry.put(boundRecord);
+                }));
         return entity;
     }
 
     public Optional<Entity> find(NpcId id) {
         requireMainThread();
         UUID entityId = liveEntities.get(id);
-        if (entityId == null) {
-            return Optional.empty();
-        }
+        if (entityId == null) return Optional.empty();
+
         for (var world : Bukkit.getWorlds()) {
             Entity entity = world.getEntity(entityId);
-            if (entity != null && entity.isValid()) {
-                return Optional.of(entity);
-            }
+            if (entity != null && entity.isValid()) return Optional.of(entity);
         }
         liveEntities.remove(id);
         return Optional.empty();
@@ -74,16 +86,20 @@ public final class NpcEntityManager {
     public void trackLoaded(Entity entity) {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> {
-            if (registry.get(id).isPresent()) {
-                liveEntities.put(id, entity.getUniqueId());
-            }
+            if (registry.get(id).isPresent()) liveEntities.put(id, entity.getUniqueId());
         });
+    }
+
+    public void trackExistingLoadedWorlds() {
+        requireMainThread();
+        for (var world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) trackLoaded(entity);
+        }
     }
 
     public void untrack(Entity entity) {
         requireMainThread();
-        tagger.read(entity).ifPresent(id ->
-                liveEntities.remove(id, entity.getUniqueId()));
+        tagger.read(entity).ifPresent(id -> liveEntities.remove(id, entity.getUniqueId()));
     }
 
     public void clear() {
