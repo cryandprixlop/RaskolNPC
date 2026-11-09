@@ -1,0 +1,6 @@
+name: RaskolNPC
+version: ${version}
+main: ru.raskolnpc.RaskolNPC
+api-version: '26.2'
+description: Persistent NPC framework for a Paper-based Minecraft RPG server.
+authors: [cryandprixlop]
