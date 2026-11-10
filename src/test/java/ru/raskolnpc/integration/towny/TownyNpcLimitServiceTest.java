@@ -6,7 +6,6 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TownyNpcLimitServiceTest {
@@ -48,7 +47,7 @@ class TownyNpcLimitServiceTest {
 
     @Test
     void closingReservationMoreThanOnceDoesNotReleaseAnotherReservation() {
-        NpcRegistry registry = residentsInTown("town-a", 14);
+        NpcRegistry registry = residentsInTown("town-a", 13);
         TownyNpcLimitService service = new TownyNpcLimitService();
 
         TownyNpcLimitService.Reservation first =
