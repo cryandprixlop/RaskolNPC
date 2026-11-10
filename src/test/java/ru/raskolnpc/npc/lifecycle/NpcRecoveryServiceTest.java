@@ -101,6 +101,53 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
+    void doesNotKeepUnloadedNpcInActiveEntityTracking() {
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = recordFor(loadedEntity);
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        entities.trackLoaded(loadedEntity);
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+
+        assertTrue(world.unloadChunk(0, 0));
+        recovery.onEntitiesUnload(List.of(loadedEntity));
+
+        assertTrue(entities.find(record.id()).isEmpty());
+        assertEquals(loadedEntity.getUniqueId(),
+                registry.get(record.id()).orElseThrow().entityUuid());
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void tracksReloadedNpcWithoutSpawningDuplicateEntity() {
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = recordFor(loadedEntity);
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        entities.trackLoaded(loadedEntity);
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+
+        assertTrue(world.unloadChunk(0, 0));
+        recovery.onEntitiesUnload(List.of(loadedEntity));
+        assertTrue(entities.find(record.id()).isEmpty());
+
+        world.loadChunk(0, 0);
+        world.addEntity(loadedEntity);
+        assertSame(loadedEntity, world.getEntity(loadedEntity.getUniqueId()));
+        recovery.recover();
+        server.getScheduler().performOneTick();
+
+        recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of(loadedEntity));
+        server.getScheduler().performTicks(3);
+
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+        verifyNoInteractions(provider);
+        verify(repository, never()).update(any(NpcRecord.class));
+    }
+
+    @Test
     void restoresNpcWhenItsSpawnChunkLoadsAfterRecoveryStarts() {
         Location savedLocation = new Location(world, 160.5, 70, 160.5);
         NpcRecord record = recordAt(savedLocation);
@@ -130,6 +177,21 @@ class NpcRecoveryServiceTest {
                 updated.id().equals(record.id())
                         && restoredEntityId.equals(updated.entityUuid())));
         assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
+    private Entity createTrackedEntity() {
+        world.loadChunk(0, 0);
+        Entity entity = world.createEntity(new Location(world, 2, 65, 2), Entity.class);
+        world.addEntity(entity);
+        when(entity.isValid()).thenReturn(true);
+        return entity;
+    }
+
+    private NpcRecord recordFor(Entity entity) {
+        return NpcRecord.create(
+                        NpcType.GUARD, "Recovery sentinel", null, null, null, null)
+                .withEntityBinding(entity.getUniqueId(),
+                        NpcSpawnLocation.from(entity.getLocation()));
     }
 
     private NpcRecord recordAt(Location location) {
