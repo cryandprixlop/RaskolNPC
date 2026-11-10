@@ -25,7 +25,7 @@ class NpcCommandServiceTest {
     @Test
     void reportsWhetherTownyIntegrationIsConfigured() {
         NpcCommandService enabled = service(mock(TownyResidentService.class), new NpcRegistry());
-        NpcCommandService standalone = service(null, new NpcRegistry());
+        NpcCommandService standalone = service((TownyResidentService) null, new NpcRegistry());
 
         assertTrue(enabled.isTownyIntegrationEnabled());
         assertFalse(standalone.isTownyIntegrationEnabled());
