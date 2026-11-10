@@ -58,11 +58,15 @@ class TownyNpcLimitServiceTest {
         first.close();
         first.close();
 
+        TownyNpcLimitService.Reservation third =
+                service.reserve("town-a", 15, registry);
         assertThrows(TownyIntegrationException.class,
                 () -> service.reserve("town-a", 15, registry));
 
         second.close();
         assertDoesNotThrow(() -> service.reserve("town-a", 15, registry));
+
+        third.close();
     }
 
     @Test
