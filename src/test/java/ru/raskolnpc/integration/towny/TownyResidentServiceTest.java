@@ -101,7 +101,7 @@ class TownyResidentServiceTest {
             towny.when(TownyAPI::getInstance).thenReturn(api);
             assertThrows(TownyIntegrationException.class,
                     () -> new TownyResidentService().resolveAndAuthorize(player, location));
-            verify(api, never()).getResident(any());
+            verify(api, never()).getResident(any(Player.class));
         }
     }
 }
