@@ -371,7 +371,9 @@ public final class GuardRentService {
     }
 
     private void runMain(Runnable action) {
-        runMain(action, () -> { });
+        // If the server rejects a continuation, release in-memory locks. The durable
+        // payment ledger remains authoritative and prevents an unsafe second withdrawal.
+        runMain(action, inFlight::clear);
     }
 
     private void runMain(Runnable action, Runnable rejected) {
