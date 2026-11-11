@@ -11,7 +11,7 @@ libraries:
 commands:
   raskolnpc:
     description: NPC management commands.
-    usage: /raskolnpc <create|list|info|delete>
+    usage: /raskolnpc <create|list|info|delete|guard>
     aliases: [rnpc]
 
 permissions:
