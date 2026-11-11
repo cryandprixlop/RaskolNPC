@@ -23,6 +23,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
         if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
         if (!isApplied(connection, 4)) applyGuardRentPaymentSchema(connection);
+        if (!isApplied(connection, 5)) applyGuardHiringPaymentSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -169,4 +170,52 @@ public final class DatabaseMigrations {
             }
         }
     }
+    private static void applyGuardHiringPaymentSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_hiring_payments (
+                        payment_id TEXT PRIMARY KEY,
+                        npc_id TEXT NOT NULL,
+                        owner_uuid TEXT NOT NULL,
+                        town_id TEXT NOT NULL,
+                        nation_id TEXT NOT NULL,
+                        guard_name TEXT NOT NULL,
+                        level INTEGER NOT NULL CHECK (level >= 1 AND level <= 10),
+                        hire_cost REAL NOT NULL CHECK (hire_cost >= 0),
+                        daily_rent REAL NOT NULL CHECK (daily_rent >= 0),
+                        status TEXT NOT NULL CHECK (status IN (
+                            'IN_PROGRESS', 'DEBIT_CONFIRMED', 'DEBIT_FAILED',
+                            'REFUND_IN_PROGRESS', 'COMPLETED', 'REFUNDED',
+                            'REVIEW_REQUIRED'
+                        )),
+                        failure_reason TEXT,
+                        resolved_by TEXT,
+                        resolved_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_guard_hiring_payments_status
+                    ON guard_hiring_payments(status)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (5)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
 }
