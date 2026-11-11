@@ -195,8 +195,7 @@ class NpcRecoveryServiceTest {
     }
 
     private NpcRecord recordAt(Location location) {
-        NpcRecord record = NpcRecord.create(
-                NpcType.GUARD, "Recovery sentinel", null, null, null, null);
-        return record.withEntityBinding(UUID.randomUUID(), NpcSpawnLocation.from(location));
+        return NpcRecord.create(NpcType.GUARD, "Recovery sentinel",
+                null, null, null, null, NpcSpawnLocation.from(location));
     }
 }

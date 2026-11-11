@@ -98,6 +98,36 @@ class NpcRecoveryIntegrationTest {
         assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
     }
 
+
+    @Test
+    void restoresNpcCreatedBeforeEntityWasSpawned() {
+        Location savedLocation = new Location(world, 5.5, 72, 9.5, 45, 0);
+        NpcRecord record = NpcRecord.create(NpcType.GUARD, "Interrupted guard",
+                null, null, null, null, NpcSpawnLocation.from(savedLocation));
+        assertNull(record.entityUuid());
+        registry.put(record);
+
+        Entity restoredEntity = mock(Entity.class);
+        UUID restoredEntityId = UUID.randomUUID();
+        when(restoredEntity.getUniqueId()).thenReturn(restoredEntityId);
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        world.loadChunk(0, 0);
+        CompletableFuture<Void> result = recovery.recover();
+        server.getScheduler().performTicks(4);
+
+        assertTrue(result.isDone());
+        assertDoesNotThrow(result::join);
+        verify(provider).spawn(eq(record), argThat(location ->
+                location.getWorld().getUID().equals(world.getUID())
+                        && location.getX() == savedLocation.getX()
+                        && location.getY() == savedLocation.getY()
+                        && location.getZ() == savedLocation.getZ()));
+        verify(repository).update(argThat(updated ->
+                updated.id().equals(record.id())
+                        && restoredEntityId.equals(updated.entityUuid())));
+    }
+
     @Test
     void doesNotAttemptRestoreWhenSavedWorldIsUnavailable() {
         NpcRecord record = NpcRecord.create(

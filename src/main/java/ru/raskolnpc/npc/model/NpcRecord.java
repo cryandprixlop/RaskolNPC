@@ -38,9 +38,17 @@ public record NpcRecord(
             NpcType type, String name, UUID ownerUuid,
             String townId, String nationId, String dataJson
     ) {
+        return create(type, name, ownerUuid, townId, nationId, dataJson, null);
+    }
+
+    public static NpcRecord create(
+            NpcType type, String name, UUID ownerUuid,
+            String townId, String nationId, String dataJson,
+            NpcSpawnLocation spawnLocation
+    ) {
         String now = Instant.now().toString();
         return new NpcRecord(NpcId.create(), type, name, ownerUuid, townId,
-                nationId, NpcState.UNLOADED, dataJson, now, now, null, null);
+                nationId, NpcState.UNLOADED, dataJson, now, now, null, spawnLocation);
     }
 
     public NpcRecord withState(NpcState newState) {

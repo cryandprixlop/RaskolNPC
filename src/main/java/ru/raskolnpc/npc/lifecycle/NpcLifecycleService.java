@@ -4,6 +4,7 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
@@ -53,6 +54,14 @@ public final class NpcLifecycleService {
             NpcType type, String name, UUID ownerUuid,
             String townId, String nationId, String dataJson
     ) {
+        return create(type, name, ownerUuid, townId, nationId, dataJson, null);
+    }
+
+    public CompletableFuture<NpcRecord> create(
+            NpcType type, String name, UUID ownerUuid,
+            String townId, String nationId, String dataJson,
+            NpcSpawnLocation spawnLocation
+    ) {
         if (!isReady()) return notReady();
         synchronized (creationLock) {
             if (registry.size() + pendingCreations >= maximumTotal) {
@@ -64,7 +73,7 @@ public final class NpcLifecycleService {
 
         final NpcRecord record;
         try {
-            record = NpcRecord.create(type, name, ownerUuid, townId, nationId, dataJson);
+            record = NpcRecord.create(type, name, ownerUuid, townId, nationId, dataJson, spawnLocation);
         } catch (RuntimeException exception) {
             releaseCreationSlot();
             return CompletableFuture.failedFuture(exception);

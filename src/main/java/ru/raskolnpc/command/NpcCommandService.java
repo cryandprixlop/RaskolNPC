@@ -13,6 +13,7 @@ import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
@@ -100,7 +101,8 @@ public final class NpcCommandService {
         }
 
         CompletableFuture<NpcRecord> creation = lifecycle.create(
-                NpcType.RESIDENT, name, null, town.townId(), town.nationId(), "{}");
+                NpcType.RESIDENT, name, null, town.townId(), town.nationId(), "{}",
+                NpcSpawnLocation.from(location));
         creation.whenComplete((record, error) -> reservation.close());
 
         return creation.thenCompose(record ->
@@ -192,7 +194,8 @@ public final class NpcCommandService {
         final CompletableFuture<NpcRecord> creation;
         try {
             creation = lifecycle.create(NpcType.GUARD, name, payment.ownerUuid(),
-                    placement.townId(), placement.nationId(), data);
+                    placement.townId(), placement.nationId(), data,
+                    NpcSpawnLocation.from(location));
         } catch (Throwable creationError) {
             return markHiringReview(journal, payment.paymentId(),
                     "NPC creation threw after confirmed debit; cleanup outcome is unknown: "

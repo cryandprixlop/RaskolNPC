@@ -48,6 +48,7 @@ public final class SqliteNpcRepository implements NpcRepository {
                 setNullable(statement, 6, record.nationId());
                 statement.setString(7, record.state().name());
                 statement.setString(8, record.dataJson());
+                // Persist the spawn point even when entity_uuid is still null.
                 bindEntityLocation(statement, record, 9);
                 statement.executeUpdate();
             }

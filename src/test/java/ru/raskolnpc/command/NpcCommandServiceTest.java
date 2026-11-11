@@ -81,7 +81,7 @@ class NpcCommandServiceTest {
 
         assertThrows(RuntimeException.class,
                 () -> service.createResident("Resident", player).join());
-        verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any());
+        verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -103,7 +103,7 @@ class NpcCommandServiceTest {
 
         assertThrows(RuntimeException.class,
                 () -> service.createResident("Another", player).join());
-        verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any());
+        verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any(), any());
     }
 
     private NpcCommandService service(TownyResidentService towny, NpcRegistry registry) {
