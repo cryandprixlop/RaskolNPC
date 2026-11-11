@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import ru.raskolnpc.guard.GuardHiringService;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 /** Towny-backed authorization and placement lookup for kingdom guards. */
 public final class TownyKingdomGuardAccess implements GuardHiringService.HiringAccess {
@@ -28,6 +29,16 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
 
     TownyKingdomGuardAccess(TownResolver resolver) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
+    }
+
+    /** Backwards-compatible test seam for authorization-only unit tests. */
+    TownyKingdomGuardAccess(Function<Player, NationContext> resolver) {
+        Objects.requireNonNull(resolver, "resolver");
+        this.resolver = (player, location) -> {
+            NationContext context = resolver.apply(player);
+            return context == null ? null
+                    : new Placement("test-town", context.nationId(), context.king());
+        };
     }
 
     /** Resolves the Towny town at the placement location and checks its nation king. */
