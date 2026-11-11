@@ -19,6 +19,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.1")
     testImplementation("org.mockito:mockito-core:5.24.0")
+    testImplementation("org.mockito:mockito-junit-jupiter:5.24.0")
     testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
