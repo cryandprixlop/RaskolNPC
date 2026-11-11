@@ -45,7 +45,7 @@ public final class NpcRecoveryService {
                     .flatMap(world -> world.getEntities().stream())
                     .toList();
             CompletableFuture<?>[] removals = processLoadedEntities(loadedEntities, pending);
-            CompletableFuture<?>[] spawns = recoverLoadedSpawnChunks();
+            CompletableFuture<?>[] spawns = recoverLoadedSpawnChunks(pending);
             CompletableFuture<?>[] all = java.util.Arrays.copyOf(
                     removals, removals.length + spawns.length);
             System.arraycopy(spawns, 0, all, removals.length, spawns.length);
@@ -55,6 +55,7 @@ public final class NpcRecoveryService {
 
     public void onEntitiesLoad(Chunk chunk, List<Entity> loadedEntities) {
         if (!Bukkit.isPrimaryThread() || !started || !plugin.isEnabled()) return;
+        if (!hasChunkRecoveryCandidate(chunk, loadedEntities)) return;
         deletions.findPending().whenComplete((ids, error) -> {
             if (error != null) {
                 plugin.getLogger().log(Level.SEVERE,
@@ -65,7 +66,7 @@ public final class NpcRecoveryService {
                 Set<NpcId> pending = Set.copyOf(ids);
                 CompletableFuture<?>[] removals =
                         processLoadedEntities(loadedEntities, pending);
-                CompletableFuture<?>[] spawns = recoverChunk(chunk);
+                CompletableFuture<?>[] spawns = recoverChunk(chunk, pending);
                 CompletableFuture<?>[] all = java.util.Arrays.copyOf(
                         removals, removals.length + spawns.length);
                 System.arraycopy(spawns, 0, all, removals.length, spawns.length);
@@ -108,20 +109,29 @@ public final class NpcRecoveryService {
                 .toArray(CompletableFuture[]::new);
     }
 
-    private CompletableFuture<?>[] recoverLoadedSpawnChunks() {
+    private boolean hasChunkRecoveryCandidate(Chunk chunk, List<Entity> loadedEntities) {
+        boolean hasTaggedEntity = loadedEntities.stream()
+                .filter(Entity::isValid)
+                .anyMatch(entity -> entities.getNpcId(entity).isPresent());
+        if (hasTaggedEntity) return true;
+        return registry.all().stream().anyMatch(record -> isSpawnedInChunk(record, chunk));
+    }
+
+    private CompletableFuture<?>[] recoverLoadedSpawnChunks(Set<NpcId> pending) {
         return registry.all().stream()
-                .map(record -> recoverRecordIfChunkLoaded(record, null))
+                .map(record -> recoverRecordIfChunkLoaded(record, null, pending))
                 .toArray(CompletableFuture[]::new);
     }
 
-    private CompletableFuture<?>[] recoverChunk(Chunk chunk) {
+    private CompletableFuture<?>[] recoverChunk(Chunk chunk, Set<NpcId> pending) {
         return registry.all().stream()
-                .map(record -> recoverRecordIfChunkLoaded(record, chunk))
+                .map(record -> recoverRecordIfChunkLoaded(record, chunk, pending))
                 .toArray(CompletableFuture[]::new);
     }
 
-    private CompletableFuture<?> recoverRecordIfChunkLoaded(NpcRecord record, Chunk onlyChunk) {
-        if (record.spawnLocation() == null || entities.find(record.id()).isPresent()) {
+    private CompletableFuture<?> recoverRecordIfChunkLoaded(
+            NpcRecord record, Chunk onlyChunk, Set<NpcId> pending) {
+        if (pending.contains(record.id()) || !isSpawnedInChunk(record, onlyChunk)) {
             return CompletableFuture.completedFuture(null);
         }
         Location location = record.spawnLocation().resolve();
@@ -130,11 +140,8 @@ public final class NpcRecoveryService {
         }
         int chunkX = location.getBlockX() >> 4;
         int chunkZ = location.getBlockZ() >> 4;
-        if (onlyChunk != null && (!onlyChunk.getWorld().getUID().equals(location.getWorld().getUID())
-                || onlyChunk.getX() != chunkX || onlyChunk.getZ() != chunkZ)) {
-            return CompletableFuture.completedFuture(null);
-        }
-        if (!location.getWorld().isChunkLoaded(chunkX, chunkZ)) {
+        if (!location.getWorld().isChunkLoaded(chunkX, chunkZ)
+                || entities.find(record.id()).isPresent()) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -144,6 +151,16 @@ public final class NpcRecoveryService {
                         "Could not restore NPC " + record.id() + ".", error);
             }
         });
+    }
+
+    private boolean isSpawnedInChunk(NpcRecord record, Chunk chunk) {
+        if (record.spawnLocation() == null) return false;
+        Location location = record.spawnLocation().resolve();
+        if (location == null || location.getWorld() == null) return false;
+        if (chunk == null) return true;
+        return chunk.getWorld().getUID().equals(location.getWorld().getUID())
+                && chunk.getX() == (location.getBlockX() >> 4)
+                && chunk.getZ() == (location.getBlockZ() >> 4);
     }
 
     private <T> CompletableFuture<T> runOnMainThread(

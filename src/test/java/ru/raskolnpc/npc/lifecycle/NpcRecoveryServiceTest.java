@@ -101,6 +101,41 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
+    void doesNotRecoverNpcWhileItsDeletionIsPending() {
+        Location savedLocation = new Location(world, 160.5, 70, 160.5);
+        NpcRecord record = recordAt(savedLocation);
+        registry.put(record);
+        when(deletions.findPending())
+                .thenReturn(CompletableFuture.completedFuture(List.of(record.id())));
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performOneTick();
+        assertDoesNotThrow(startup::join);
+
+        world.loadChunk(10, 10);
+        recovery.onEntitiesLoad(world.getChunkAt(10, 10), List.of());
+        server.getScheduler().performTicks(3);
+
+        verifyNoInteractions(provider);
+        verify(deletions, never()).complete(record.id());
+    }
+
+    @Test
+    void skipsPendingDeletionLookupForUnrelatedChunk() {
+        NpcRecord record = recordAt(new Location(world, 160.5, 70, 160.5));
+        registry.put(record);
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performOneTick();
+        assertDoesNotThrow(startup::join);
+        clearInvocations(deletions);
+
+        recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of());
+
+        verify(deletions, never()).findPending();
+    }
+
+    @Test
     void doesNotKeepUnloadedNpcInActiveEntityTracking() {
         Entity loadedEntity = createTrackedEntity();
         NpcRecord record = recordFor(loadedEntity);
