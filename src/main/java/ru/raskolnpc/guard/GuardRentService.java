@@ -95,11 +95,32 @@ public final class GuardRentService {
     private CompletableFuture<Void> recoverPayments(
             List<GuardRentPayment> pending, boolean paid
     ) {
-        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
-        for (GuardRentPayment payment : pending) {
-            chain = chain.thenCompose(ignored -> applyKnownPayment(payment, paid));
-        }
-        return chain;
+        List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+        CompletableFuture<?>[] attempts = pending.stream()
+                .map(payment -> applyKnownPayment(payment, paid).handle((ignored, error) -> {
+                    if (error != null) {
+                        Throwable cause = error;
+                        while ((cause instanceof java.util.concurrent.CompletionException
+                                || cause instanceof java.util.concurrent.ExecutionException)
+                                && cause.getCause() != null) {
+                            cause = cause.getCause();
+                        }
+                        failures.add(new IllegalStateException(
+                                "Could not recover rent payment " + payment.paymentId(), cause));
+                    }
+                    return null;
+                }))
+                .toArray(CompletableFuture[]::new);
+
+        return CompletableFuture.allOf(attempts).thenCompose(ignored -> {
+            if (failures.isEmpty()) return CompletableFuture.completedFuture(null);
+
+            IllegalStateException aggregate = new IllegalStateException(
+                    "Could not recover " + failures.size() + " of "
+                            + pending.size() + " rent payment(s).");
+            failures.forEach(aggregate::addSuppressed);
+            return CompletableFuture.failedFuture(aggregate);
+        });
     }
 
     public void checkDueGuards() {
