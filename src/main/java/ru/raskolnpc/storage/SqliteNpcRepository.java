@@ -109,6 +109,36 @@ public final class SqliteNpcRepository implements NpcRepository {
     }
 
     @Override
+    public CompletableFuture<Boolean> updateEntityLocationIfBindingMatches(
+            NpcId id, UUID expectedEntityUuid, NpcSpawnLocation location) {
+        if (expectedEntityUuid == null) {
+            throw new IllegalArgumentException("Expected entity UUID must not be null.");
+        }
+        if (location == null) {
+            throw new IllegalArgumentException("Entity location must not be null.");
+        }
+        return database.query(connection -> {
+            String sql = """
+                    UPDATE npcs SET spawn_world_uuid = ?, spawn_x = ?, spawn_y = ?,
+                        spawn_z = ?, spawn_yaw = ?, spawn_pitch = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND entity_uuid = ?
+                    """;
+            try (var statement = connection.prepareStatement(sql)) {
+                statement.setString(1, location.worldId().toString());
+                statement.setDouble(2, location.x());
+                statement.setDouble(3, location.y());
+                statement.setDouble(4, location.z());
+                statement.setFloat(5, location.yaw());
+                statement.setFloat(6, location.pitch());
+                statement.setString(7, id.toString());
+                statement.setString(8, expectedEntityUuid.toString());
+                return statement.executeUpdate() > 0;
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> updateState(NpcId id, NpcState state) {
         return database.query(connection -> {
             try (var statement = connection.prepareStatement("""

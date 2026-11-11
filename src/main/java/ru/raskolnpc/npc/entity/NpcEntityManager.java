@@ -233,27 +233,33 @@ public final class NpcEntityManager {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> registry.get(id).ifPresent(record -> {
             UUID actual = entity.getUniqueId();
-            if (record.entityUuid() != null && !record.entityUuid().equals(actual)) return;
+            // An unload may only update the location for the exact persisted binding.
+            // A null or different UUID means this entity is stale or its binding is not ready.
+            if (!actual.equals(record.entityUuid())) return;
             liveEntities.remove(id, actual);
-            NpcRecord moved = record.withEntityBinding(
-                    actual, NpcSpawnLocation.from(entity.getLocation()));
-            repository.update(moved).whenComplete((updated, error) -> {
-                if (!plugin.isEnabled()) return;
-                try {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (error != null || !Boolean.TRUE.equals(updated)) {
-                            plugin.getLogger().warning(
-                                    "Could not persist last known location for NPC " + id
-                                            + (error == null ? "." : ": " + error.getMessage()));
-                            return;
+            NpcSpawnLocation location = NpcSpawnLocation.from(entity.getLocation());
+            repository.updateEntityLocationIfBindingMatches(id, actual, location)
+                    .whenComplete((updated, error) -> {
+                        if (!plugin.isEnabled()) return;
+                        try {
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                if (error != null || !Boolean.TRUE.equals(updated)) {
+                                    plugin.getLogger().warning(
+                                            "Could not persist last known location for NPC " + id
+                                                    + (error == null ? "." : ": " + error.getMessage()));
+                                    return;
+                                }
+                                // Do not let a delayed unload completion overwrite a newer binding.
+                                registry.get(id)
+                                        .filter(current -> actual.equals(current.entityUuid()))
+                                        .ifPresent(current -> registry.put(
+                                                current.withEntityBinding(actual, location)));
+                            });
+                        } catch (RuntimeException schedulingError) {
+                            plugin.getLogger().warning("Could not schedule location update for NPC "
+                                    + id + ": " + schedulingError.getMessage());
                         }
-                        registry.put(moved);
                     });
-                } catch (RuntimeException schedulingError) {
-                    plugin.getLogger().warning("Could not schedule location update for NPC "
-                            + id + ": " + schedulingError.getMessage());
-                }
-            });
         }));
     }
 
