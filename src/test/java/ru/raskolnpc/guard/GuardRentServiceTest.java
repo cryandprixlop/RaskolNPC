@@ -104,7 +104,7 @@ class GuardRentServiceTest {
         NpcRecord updated = saved.getValue();
         assertEquals(NpcState.INACTIVE, updated.state());
         assertEquals(1.0, GuardRentService.number(updated.dataJson(), "overdueDays", -1));
-        verify(living).setAI(false);
+        verify(living, times(2)).setAI(false);
         verify(living, never()).setAI(true);
         verify(economy).withdraw(eq("town-uuid"), eq(30.0), anyString());
     }
