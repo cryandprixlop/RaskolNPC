@@ -97,19 +97,29 @@ public final class GuardRentService {
     ) {
         List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
         CompletableFuture<?>[] attempts = pending.stream()
-                .map(payment -> applyKnownPayment(payment, paid).handle((ignored, error) -> {
-                    if (error != null) {
-                        Throwable cause = error;
-                        while ((cause instanceof java.util.concurrent.CompletionException
-                                || cause instanceof java.util.concurrent.ExecutionException)
-                                && cause.getCause() != null) {
-                            cause = cause.getCause();
-                        }
+                .map(payment -> {
+                    try {
+                        return applyKnownPayment(payment, paid).handle((ignored, error) -> {
+                            if (error != null) {
+                                Throwable cause = error;
+                                while ((cause instanceof java.util.concurrent.CompletionException
+                                        || cause instanceof java.util.concurrent.ExecutionException)
+                                        && cause.getCause() != null) {
+                                    cause = cause.getCause();
+                                }
+                                failures.add(new IllegalStateException(
+                                        "Could not recover rent payment "
+                                                + payment.paymentId(), cause));
+                            }
+                            return null;
+                        });
+                    } catch (RuntimeException error) {
                         failures.add(new IllegalStateException(
-                                "Could not recover rent payment " + payment.paymentId(), cause));
+                                "Could not start recovery for rent payment "
+                                        + payment.paymentId(), error));
+                        return CompletableFuture.completedFuture(null);
                     }
-                    return null;
-                }))
+                })
                 .toArray(CompletableFuture[]::new);
 
         return CompletableFuture.allOf(attempts).thenCompose(ignored -> {
