@@ -4,6 +4,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import ru.raskolnpc.command.NpcCommand;
 import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
+import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -34,6 +35,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcEntityManager npcEntityManager;
     private NpcRecoveryService npcRecoveryService;
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
+    private GuardRentService guardRentService;
 
     @Override
     public void onEnable() {
@@ -112,6 +114,13 @@ public final class RaskolNPC extends JavaPlugin {
                                     return;
                                 }
                                 npcLifecycleService.markReady();
+                                if (townyEnabled && townyKingdomGuardAccess != null) {
+                                    guardRentService = new GuardRentService(this, npcRegistry,
+                                            npcLifecycleService, npcEntityManager,
+                                            new TownyTownBankEconomy(),
+                                            getConfig().getInt("guards.maximum-debt-days", 3));
+                                    guardRentService.start();
+                                }
                                 getLogger().info("RaskolNPC is enabled. Loaded "
                                         + records.size() + " NPC record(s); recovery completed.");
                             });
@@ -141,6 +150,7 @@ public final class RaskolNPC extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();
         }
