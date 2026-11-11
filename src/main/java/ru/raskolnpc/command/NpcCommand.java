@@ -8,6 +8,9 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.model.GuardRentPayment;
+import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
 
 import java.util.List;
 import java.util.Locale;
@@ -19,12 +22,17 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final Plugin plugin;
     private final NpcCommandService service;
     private final NpcCommandMessages messages;
+    private volatile GuardRentService guardRentService;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
                       NpcCommandMessages messages) {
         this.plugin = plugin;
         this.service = service;
         this.messages = messages;
+    }
+
+    public void setGuardRentService(GuardRentService guardRentService) {
+        this.guardRentService = guardRentService;
     }
 
     @Override
@@ -99,6 +107,14 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private void guard(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("rent")) {
+            if (!sender.hasPermission(PERMISSION)) {
+                deny(sender);
+                return;
+            }
+            guardRent(sender, args);
+            return;
+        }
         if (!(sender instanceof Player player)) {
             messages.send(sender, "general.player-only", "&cЭту команду может выполнить только игрок.");
             return;
@@ -127,6 +143,78 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             + " &7Стоимость: &f" + result.hireCost()
                             + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
+    }
+
+    private void guardRent(CommandSender sender, String[] args) {
+        GuardRentService rent = guardRentService;
+        if (rent == null) {
+            messages.sendRaw(sender, "&cСервис аренды недоступен: проверьте интеграцию Towny.");
+            return;
+        }
+        if (args.length == 3 && args[2].equalsIgnoreCase("review")) {
+            rent.findReviewPayments().whenComplete((payments, error) ->
+                    runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось получить спорные платежи: "
+                                    + rootMessage(error));
+                            return;
+                        }
+                        if (payments.isEmpty()) {
+                            messages.sendRaw(sender, "&aСпорных платежей нет.");
+                            return;
+                        }
+                        messages.sendRaw(sender, "&6Платежи, требующие проверки: &f"
+                                + payments.size());
+                        for (GuardRentPayment payment : payments) {
+                            messages.sendRaw(sender, "&eID: &f" + payment.paymentId()
+                                    + " &7NPC: &f" + payment.npcId()
+                                    + " &7Город: &f" + payment.townId()
+                                    + " &7Сумма: &f" + payment.amount()
+                                    + " &7Срок: &f" + payment.rentDueAt());
+                            if (payment.failureReason() != null
+                                    && !payment.failureReason().isBlank()) {
+                                messages.sendRaw(sender, "&8Причина: " + payment.failureReason());
+                            }
+                        }
+                    }));
+            return;
+        }
+        if (args.length != 5 || !args[2].equalsIgnoreCase("resolve")
+                || !(args[4].equalsIgnoreCase("paid")
+                || args[4].equalsIgnoreCase("failed"))) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard rent review");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard rent resolve <ID> <paid|failed>");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cРазрешение платежа доступно только администратору-игроку, "
+                    + "чтобы сохранить его UUID в журнале.");
+            return;
+        }
+        boolean paid = args[4].equalsIgnoreCase("paid");
+        String paymentId = args[3];
+        rent.resolveReview(paymentId, paid, player.getUniqueId())
+                .whenComplete((resolved, error) -> runMain(sender, () -> {
+                    if (error != null) {
+                        messages.sendRaw(sender, "&cОшибка разрешения платежа: " + rootMessage(error));
+                    } else if (Boolean.TRUE.equals(resolved)) {
+                        messages.sendRaw(sender, paid
+                                ? "&aПлатёж отмечен как списанный. Повторного списания не было."
+                                : "&eПлатёж отмечен как неуспешный. Применена задолженность.");
+                    } else {
+                        messages.sendRaw(sender, "&cПлатёж не найден или уже не требует проверки.");
+                    }
+                }));
+    }
+
+    private void runMain(CommandSender sender, Runnable action) {
+        if (!plugin.isEnabled()) return;
+        try {
+            if (Bukkit.isPrimaryThread()) action.run();
+            else Bukkit.getScheduler().runTask(plugin, action);
+        } catch (RuntimeException error) {
+            plugin.getLogger().severe("Could not schedule rent command response: " + error.getMessage());
+        }
     }
 
     private void list(CommandSender sender) {
@@ -201,6 +289,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
             messages.sendRaw(sender, "&e/" + label + " info <UUID> &7— информация");
             messages.sendRaw(sender, "&e/" + label + " delete <UUID> &7— удалить NPC");
+            messages.sendRaw(sender, "&e/" + label + " guard rent review &7— спорные платежи");
+            messages.sendRaw(sender, "&e/" + label + " guard rent resolve <ID> <paid|failed> &7— разрешить платёж");
         }
     }
 
@@ -224,7 +314,17 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("resident"), args[1]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
-            return startsWith(List.of("hire"), args[1]);
+            return startsWith(sender.hasPermission(PERMISSION)
+                    ? List.of("hire", "rent") : List.of("hire"), args[1]);
+        }
+        if (sender.hasPermission(PERMISSION) && args.length == 3
+                && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("rent")) {
+            return startsWith(List.of("review", "resolve"), args[2]);
+        }
+        if (sender.hasPermission(PERMISSION) && args.length == 5
+                && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("rent")
+                && args[2].equalsIgnoreCase("resolve")) {
+            return startsWith(List.of("paid", "failed"), args[4]);
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("hire")) {
