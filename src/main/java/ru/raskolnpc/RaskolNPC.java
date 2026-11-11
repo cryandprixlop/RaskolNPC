@@ -21,9 +21,11 @@ import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
+import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.SqliteGuardRentPaymentRepository;
+import ru.raskolnpc.storage.SqliteGuardHiringPaymentRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
 import ru.raskolnpc.storage.SqliteNpcRepository;
 
@@ -55,6 +57,8 @@ public final class RaskolNPC extends JavaPlugin {
                 new SqliteNpcDeletionRepository(databaseManager);
         GuardRentPaymentRepository rentPayments =
                 new SqliteGuardRentPaymentRepository(databaseManager);
+        GuardHiringPaymentRepository hiringPayments =
+                new SqliteGuardHiringPaymentRepository(databaseManager);
 
         int maximumNpcs = Math.max(1, getConfig().getInt("limits.total-npcs", 150));
         npcLifecycleService = new NpcLifecycleService(
@@ -88,6 +92,7 @@ public final class RaskolNPC extends JavaPlugin {
                 guardsPerNation,
                 getConfig().getDouble("guards.base-hire-cost", 100.0),
                 getConfig().getDouble("guards.base-daily-rent", 10.0));
+        commandService.setGuardHiringPaymentRepository(hiringPayments);
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         Objects.requireNonNull(getCommand("raskolnpc"),
@@ -119,14 +124,18 @@ public final class RaskolNPC extends JavaPlugin {
                                 guardRentService == null
                                         ? java.util.concurrent.CompletableFuture.completedFuture(null)
                                         : guardRentService.recoverPendingPayments();
+                        java.util.concurrent.CompletableFuture<Void> hiringRecovery = rentRecovery
+                                .thenCompose(ignored -> hiringPayments.moveUnfinishedToReview(
+                                        "Server restarted while guard hiring or refund result was not finalized."))
+                                .thenApply(ignored -> null);
 
-                        rentRecovery.whenComplete((ignored, rentError) -> {
+                        hiringRecovery.whenComplete((ignored, rentError) -> {
                             if (!isEnabled()) return;
                             scheduleStartupStep(() -> {
                                 if (!isEnabled()) return;
                                 if (rentError != null) {
                                     disableAfterStartupFailure(
-                                            "RaskolNPC could not recover guard rent payments.",
+                                            "RaskolNPC could not recover guard rent or hiring payments.",
                                             rentError);
                                     return;
                                 }
