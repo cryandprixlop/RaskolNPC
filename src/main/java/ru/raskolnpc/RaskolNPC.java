@@ -112,6 +112,7 @@ public final class RaskolNPC extends JavaPlugin {
                                     npcLifecycleService, npcEntityManager,
                                     new TownyTownBankEconomy(), rentPayments,
                                     getConfig().getInt("guards.maximum-debt-days", 3));
+                            commandHandler.setGuardRentService(guardRentService);
                         }
 
                         java.util.concurrent.CompletableFuture<Void> rentRecovery =
