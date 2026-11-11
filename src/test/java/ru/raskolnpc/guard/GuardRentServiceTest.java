@@ -39,6 +39,7 @@ class GuardRentServiceTest {
         plugin = MockBukkit.createMockPlugin();
         registry = new NpcRegistry();
         lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.isReady()).thenReturn(true);
         entities = mock(NpcEntityManager.class);
         economy = mock(TownyTownBankEconomy.class);
         living = mock(LivingEntity.class);
