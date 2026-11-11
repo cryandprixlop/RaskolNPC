@@ -167,18 +167,18 @@ public final class GuardRentService {
         else Bukkit.getScheduler().runTask(plugin, action);
     }
 
-    private static NpcRecord copy(NpcRecord record, NpcState state, String data) {
+    static NpcRecord copy(NpcRecord record, NpcState state, String data) {
         return new NpcRecord(record.id(), record.type(), record.name(), record.ownerUuid(),
                 record.townId(), record.nationId(), state, data, record.createdAt(),
                 Instant.now().toString(), record.entityUuid(), record.spawnLocation());
     }
 
-    private static String metadata(String json, int debt, long nextDue) {
+    static String metadata(String json, int debt, long nextDue) {
         String updated = replaceNumber(json, "overdueDays", debt);
         return replaceNumber(updated, "nextRentAt", nextDue);
     }
 
-    private static String replaceNumber(String json, String key, long value) {
+    static String replaceNumber(String json, String key, long value) {
         Pattern pattern = Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*-?[0-9]+");
         Matcher matcher = pattern.matcher(json);
         String replacement = "\"" + key + "\":" + value;
@@ -186,13 +186,13 @@ public final class GuardRentService {
                 : json.substring(0, json.length() - 1) + "," + replacement + "}";
     }
 
-    private static double number(String json, String key, double fallback) {
+    static double number(String json, String key, double fallback) {
         Matcher matcher = Pattern.compile(String.format(NUMBER.pattern(), Pattern.quote(key)))
                 .matcher(json);
         return matcher.find() ? Double.parseDouble(matcher.group(1)) : fallback;
     }
 
-    private static String string(String json, String key) {
+    static String string(String json, String key) {
         Matcher matcher = Pattern.compile(String.format(STRING.pattern(), Pattern.quote(key)))
                 .matcher(json);
         return matcher.find() ? matcher.group(1) : null;
