@@ -178,7 +178,7 @@ public final class DatabaseMigrations {
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS guard_hiring_payments (
                         payment_id TEXT PRIMARY KEY,
-                        npc_id TEXT NOT NULL,
+                        npc_id TEXT,
                         owner_uuid TEXT NOT NULL,
                         town_id TEXT NOT NULL,
                         nation_id TEXT NOT NULL,
