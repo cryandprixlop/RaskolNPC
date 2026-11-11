@@ -68,6 +68,22 @@ class NpcEntityManagerTest {
         verify(provider, times(1)).spawn(any(NpcRecord.class), any(Location.class));
     }
 
+
+    @Test
+    void clearRemovesTrackedEntitiesFromWorld() {
+        NpcRecord record = NpcRecord.create(NpcType.GUARD, "Tracked", null, null, null, null);
+        Location location = new Location(world, 4, 70, 4);
+        Entity entity = world.spawnEntity(location, org.bukkit.entity.EntityType.ZOMBIE);
+        when(provider.spawn(record, location.clone())).thenReturn(entity);
+
+        manager.spawn(record, location);
+        assertTrue(entity.isValid());
+
+        manager.clear();
+
+        assertFalse(entity.isValid());
+    }
+
     @Test
     void returnsFalseWhenNoEntityIsTrackedForNpc() {
         when(tagger.read(any(Entity.class))).thenReturn(Optional.empty());
