@@ -146,8 +146,19 @@ public final class NpcCommandService {
                 .handle((record, error) -> {
                     reservation.close();
                     if (error != null) {
-                        townBank.deposit(placement.townId(), hireCost,
-                                "RaskolNPC guard hire refund: " + name);
+                        try {
+                            boolean refunded = townBank.deposit(placement.townId(), hireCost,
+                                    "RaskolNPC guard hire refund: " + name);
+                            if (!refunded) {
+                                plugin.getLogger().severe("Could not refund guard hire cost "
+                                        + hireCost + " to town " + placement.townId()
+                                        + " after NPC creation failed.");
+                            }
+                        } catch (RuntimeException refundError) {
+                            error.addSuppressed(refundError);
+                            plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                                    "Town bank refund failed after guard creation error.", refundError);
+                        }
                         throw new CompletionException(unwrap(error));
                     }
                     return new GuardHiringService.HireResult(level, hireCost, dailyRent);
