@@ -174,12 +174,13 @@ public final class DatabaseManager implements AutoCloseable {
 
         executor.shutdown();
         try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    plugin.getLogger().warning(
-                            "Database workers did not stop within the shutdown timeout.");
-                }
+            if (!executor.awaitTermination(250, TimeUnit.MILLISECONDS)) {
+                // Do not block the server's main thread for many seconds during plugin
+                // disable. Accepted operations are allowed to drain on daemon workers;
+                // each operation owns and closes its own JDBC connection.
+                plugin.getLogger().warning(
+                        "Database workers are still draining after plugin disable; "
+                                + "accepted operations will finish on daemon workers.");
             }
         } catch (InterruptedException exception) {
             executor.shutdownNow();
