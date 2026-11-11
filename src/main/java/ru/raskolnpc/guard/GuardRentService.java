@@ -98,8 +98,13 @@ public final class GuardRentService {
             lifecycle.updateRecord(paid).whenComplete((updated, error) -> runMain(() -> {
                 try {
                     if (error != null || !Boolean.TRUE.equals(updated)) {
+                        // The Towny bank debit succeeded but the durable schedule did not.
+                        // Compensate immediately so the next poll cannot charge twice.
+                        boolean refunded = economy.deposit(payerTownId, rent,
+                                "RaskolNPC guard rent compensation: " + record.name());
                         plugin.getLogger().log(Level.SEVERE,
-                                "Could not persist successful rent payment for " + record.id(), error);
+                                "Could not persist successful rent payment for " + record.id()
+                                        + "; refund attempted=" + refunded, error);
                         return;
                     }
                     setAi(record, true);
