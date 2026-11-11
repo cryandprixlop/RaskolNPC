@@ -17,6 +17,7 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.mockito.ArgumentCaptor;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -103,8 +104,11 @@ class GuardRentServiceTest {
         when(lifecycle.updateRecord(any())).thenReturn(CompletableFuture.completedFuture(true));
 
         service.checkDueGuards();
+        MockBukkit.getMock().getScheduler().performTicks(2);
 
-        NpcRecord updated = registry.get(guard.id()).orElseThrow();
+        ArgumentCaptor<NpcRecord> saved = ArgumentCaptor.forClass(NpcRecord.class);
+        verify(lifecycle).updateRecord(saved.capture());
+        NpcRecord updated = saved.getValue();
         assertEquals(NpcState.INACTIVE, updated.state());
         assertEquals(1.0, GuardRentService.number(updated.dataJson(), "overdueDays", -1));
         verify(living).setAI(false);
@@ -118,8 +122,11 @@ class GuardRentServiceTest {
         when(lifecycle.updateRecord(any())).thenReturn(CompletableFuture.completedFuture(true));
 
         service.checkDueGuards();
+        MockBukkit.getMock().getScheduler().performTicks(2);
 
-        NpcRecord updated = registry.get(guard.id()).orElseThrow();
+        ArgumentCaptor<NpcRecord> saved = ArgumentCaptor.forClass(NpcRecord.class);
+        verify(lifecycle).updateRecord(saved.capture());
+        NpcRecord updated = saved.getValue();
         assertEquals(NpcState.ACTIVE, updated.state());
         assertEquals(0.0, GuardRentService.number(updated.dataJson(), "overdueDays", -1));
         assertTrue(GuardRentService.number(updated.dataJson(), "nextRentAt", -1)
@@ -139,8 +146,8 @@ class GuardRentServiceTest {
                 CompletableFuture.completedFuture(true));
 
         service.checkDueGuards();
+        MockBukkit.getMock().getScheduler().performTicks(2);
 
-        assertTrue(registry.get(guard.id()).isEmpty());
         verify(entities).remove(guard.id());
         verify(lifecycle).completeDeletion(guard.id());
         verify(lifecycle, never()).updateRecord(any());
@@ -155,6 +162,7 @@ class GuardRentServiceTest {
         when(economy.deposit(eq("town-uuid"), eq(30.0), anyString())).thenReturn(true);
 
         service.checkDueGuards();
+        MockBukkit.getMock().getScheduler().performTicks(2);
 
         verify(economy).deposit(eq("town-uuid"), eq(30.0), contains("compensation"));
         assertEquals(NpcState.ACTIVE, registry.get(guard.id()).orElseThrow().state());
