@@ -85,6 +85,39 @@ class NpcEntityManagerTest {
     }
 
     @Test
+    void removesEntityByPersistedUuidWithoutScanningWorldEntities() {
+        NpcId id = NpcId.create();
+        Entity entity = world.spawnEntity(
+                new Location(world, 8, 70, 8), org.bukkit.entity.EntityType.ZOMBIE);
+        NpcRecord record = NpcRecord.create(
+                        NpcType.GUARD, "Persisted sentinel", null, null, null, null)
+                .withEntityBinding(entity.getUniqueId(),
+                        NpcSpawnLocation.from(entity.getLocation()));
+        registry.put(record);
+        when(tagger.read(entity)).thenReturn(Optional.of(id));
+
+        assertTrue(manager.remove(id));
+        assertFalse(entity.isValid());
+        verify(tagger).read(entity);
+    }
+
+    @Test
+    void fallsBackToTaggedEntitySearchWhenPersistedUuidIsStale() {
+        NpcId id = NpcId.create();
+        Entity entity = world.spawnEntity(
+                new Location(world, 12, 70, 12), org.bukkit.entity.EntityType.ZOMBIE);
+        NpcRecord record = NpcRecord.create(
+                        NpcType.GUARD, "Legacy sentinel", null, null, null, null)
+                .withEntityBinding(UUID.randomUUID(),
+                        NpcSpawnLocation.from(entity.getLocation()));
+        registry.put(record);
+        when(tagger.read(entity)).thenReturn(Optional.of(id));
+
+        assertTrue(manager.remove(id));
+        assertFalse(entity.isValid());
+    }
+
+    @Test
     void returnsFalseWhenNoEntityIsTrackedForNpc() {
         when(tagger.read(any(Entity.class))).thenReturn(Optional.empty());
 

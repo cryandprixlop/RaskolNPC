@@ -143,6 +143,17 @@ public final class NpcEntityManager {
         requireMainThread();
         Optional<Entity> entity = find(id);
         if (entity.isEmpty()) {
+            UUID persistedEntityId = registry.get(id)
+                    .map(NpcRecord::entityUuid)
+                    .orElse(null);
+            if (persistedEntityId != null) {
+                entity = findLoadedEntity(persistedEntityId)
+                        .filter(candidate -> tagger.read(candidate)
+                                .filter(id::equals).isPresent());
+            }
+        }
+        // Last-resort reconciliation for legacy records or stale entity UUIDs.
+        if (entity.isEmpty()) {
             for (var world : Bukkit.getWorlds()) {
                 for (Entity candidate : world.getEntities()) {
                     if (tagger.read(candidate).filter(id::equals).isPresent()) {
@@ -156,6 +167,14 @@ public final class NpcEntityManager {
         entity.ifPresent(this::removeEntity);
         liveEntities.remove(id);
         return entity.isPresent();
+    }
+
+    private Optional<Entity> findLoadedEntity(UUID entityId) {
+        for (var world : Bukkit.getWorlds()) {
+            Entity entity = world.getEntity(entityId);
+            if (entity != null && entity.isValid()) return Optional.of(entity);
+        }
+        return Optional.empty();
     }
 
     public Optional<NpcId> getNpcId(Entity entity) {
