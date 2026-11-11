@@ -1,6 +1,12 @@
 package ru.raskolnpc.guard;
 
 import org.junit.jupiter.api.Test;
+import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
+import ru.raskolnpc.npc.model.NpcType;
+
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -42,4 +48,14 @@ class GuardRentServiceTest {
         assertEquals(-1.0, GuardRentService.number("{}", "dailyRent", -1));
         assertNull(GuardRentService.string("{}", "payerTownId"));
     }
+    @Test
+    void inactiveGuardRemainsInactiveAfterRecoveryDecision() {
+        NpcRecord guard = new NpcRecord(NpcId.create(), NpcType.GUARD, "Gatekeeper",
+                null, "town", "nation", NpcState.INACTIVE, "{}",
+                Instant.now().toString(), Instant.now().toString(), null, null);
+        assertFalse(GuardRentService.shouldGuardBeActive(guard));
+        assertTrue(GuardRentService.shouldGuardBeActive(
+                GuardRentService.copy(guard, NpcState.ACTIVE, "{}")));
+    }
+
 }
