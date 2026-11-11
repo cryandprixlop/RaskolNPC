@@ -25,6 +25,8 @@ public final class NpcEntityManager {
     private final Map<NpcId, UUID> liveEntities = new ConcurrentHashMap<>();
     private final Map<NpcId, PendingEntityBinding> pendingEntityBindings =
             new ConcurrentHashMap<>();
+    private final Map<NpcId, CompletableFuture<Void>> locationWriteTails =
+            new ConcurrentHashMap<>();
 
     private record PendingEntityBinding(UUID entityUuid, NpcSpawnLocation location) {}
 
@@ -283,7 +285,7 @@ public final class NpcEntityManager {
             // A null or different UUID means this entity is stale or its binding is not ready.
             if (!actual.equals(record.entityUuid())) return;
             liveEntities.remove(id, actual);
-            repository.updateEntityLocationIfBindingMatches(id, actual, location)
+            persistLocationInOrder(id, actual, location)
                     .whenComplete((updated, error) -> {
                         if (!plugin.isEnabled()) return;
                         try {
@@ -319,7 +321,7 @@ public final class NpcEntityManager {
         if (Objects.equals(latestLocation, boundRecord.spawnLocation())) {
             return CompletableFuture.completedFuture(completed);
         }
-        return repository.updateEntityLocationIfBindingMatches(id, entityUuid, latestLocation)
+        return persistLocationInOrder(id, entityUuid, latestLocation)
                 .thenApply(updated -> {
                     if (!Boolean.TRUE.equals(updated)) {
                         throw new NpcEntityException(
@@ -327,6 +329,23 @@ public final class NpcEntityManager {
                     }
                     return completed;
                 });
+    }
+
+    /**
+     * Serializes location writes for one NPC while allowing different NPCs to
+     * persist concurrently. A failed write does not block later location updates.
+     */
+    private CompletableFuture<Boolean> persistLocationInOrder(
+            NpcId id, UUID entityUuid, NpcSpawnLocation location) {
+        CompletableFuture<Void> previous = locationWriteTails.getOrDefault(
+                id, CompletableFuture.completedFuture(null));
+        CompletableFuture<Boolean> write = previous.handle((ignored, error) -> null)
+                .thenCompose(ignored -> repository.updateEntityLocationIfBindingMatches(
+                        id, entityUuid, location));
+        CompletableFuture<Void> tail = write.handle((updated, error) -> null);
+        locationWriteTails.put(id, tail);
+        tail.whenComplete((ignored, error) -> locationWriteTails.remove(id, tail));
+        return write;
     }
 
     private void clearPendingBinding(NpcId id, UUID entityUuid) {

@@ -180,6 +180,45 @@ class NpcEntityManagerTest {
     }
 
     @Test
+    void serializesLocationWritesForTheSameNpc() {
+        NpcId id = NpcId.create();
+        Entity entity = world.spawnEntity(
+                new Location(world, 10, 70, 10), org.bukkit.entity.EntityType.ZOMBIE);
+        UUID entityUuid = entity.getUniqueId();
+        NpcSpawnLocation firstLocation = new NpcSpawnLocation(
+                world.getUID(), 20, 71, 20, 0, 0);
+        NpcSpawnLocation secondLocation = new NpcSpawnLocation(
+                world.getUID(), 30, 72, 30, 0, 0);
+        NpcRecord record = new NpcRecord(id, NpcType.GUARD, "Ordered guard",
+                null, null, null, NpcState.ACTIVE, "{}", null, null,
+                entityUuid, NpcSpawnLocation.from(entity.getLocation()));
+        when(tagger.read(entity)).thenReturn(Optional.of(id));
+        registry.put(record);
+        CompletableFuture<Boolean> firstWrite = new CompletableFuture<>();
+        CompletableFuture<Boolean> secondWrite = new CompletableFuture<>();
+        when(repository.updateEntityLocationIfBindingMatches(id, entityUuid, firstLocation))
+                .thenReturn(firstWrite);
+        when(repository.updateEntityLocationIfBindingMatches(id, entityUuid, secondLocation))
+                .thenReturn(secondWrite);
+
+        entity.teleport(new Location(world, 20, 71, 20));
+        manager.untrackAndPersistLocation(entity);
+        entity.teleport(new Location(world, 30, 72, 30));
+        manager.untrackAndPersistLocation(entity);
+
+        verify(repository).updateEntityLocationIfBindingMatches(id, entityUuid, firstLocation);
+        verify(repository, never()).updateEntityLocationIfBindingMatches(
+                id, entityUuid, secondLocation);
+
+        firstWrite.complete(true);
+        verify(repository).updateEntityLocationIfBindingMatches(id, entityUuid, secondLocation);
+        secondWrite.complete(true);
+        server.getScheduler().performOneTick();
+
+        assertEquals(secondLocation, registry.get(id).orElseThrow().spawnLocation());
+    }
+
+    @Test
     void delayedUnloadCompletionDoesNotOverwriteANewerEntityBinding() {
         NpcId id = NpcId.create();
         Entity entity = world.spawnEntity(
