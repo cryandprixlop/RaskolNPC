@@ -7,6 +7,7 @@ import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.towny.TownyIntegration;
+import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityListener;
@@ -30,6 +31,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcLifecycleService npcLifecycleService;
     private NpcEntityManager npcEntityManager;
     private NpcRecoveryService npcRecoveryService;
+    private TownyKingdomGuardAccess townyKingdomGuardAccess;
 
     @Override
     public void onEnable() {
@@ -59,8 +61,10 @@ public final class RaskolNPC extends JavaPlugin {
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
         TownyIntegration townyIntegration = new TownyIntegration(this);
-        TownyResidentService townyResidents = townyIntegration.isAvailable()
-                && getConfig().getBoolean("integrations.towny.enabled", true)
+        boolean townyEnabled = townyIntegration.isAvailable()
+                && getConfig().getBoolean("integrations.towny.enabled", true);
+        townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
+        TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;
         int residentsPerTown = Math.max(1,
                 getConfig().getInt("limits.residents-per-town", 15));
@@ -118,6 +122,11 @@ public final class RaskolNPC extends JavaPlugin {
 
     public NpcEntityManager getNpcEntityManager() {
         return npcEntityManager;
+    }
+
+    /** Returns Towny-backed guard authorization when the integration is enabled. */
+    public TownyKingdomGuardAccess getTownyKingdomGuardAccess() {
+        return townyKingdomGuardAccess;
     }
 
     @Override
