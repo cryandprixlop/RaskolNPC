@@ -23,6 +23,10 @@ public final class NpcEntityManager {
     private final NpcRepository repository;
     private final NpcRegistry registry;
     private final Map<NpcId, UUID> liveEntities = new ConcurrentHashMap<>();
+    private final Map<NpcId, PendingEntityBinding> pendingEntityBindings =
+            new ConcurrentHashMap<>();
+
+    private record PendingEntityBinding(UUID entityUuid, NpcSpawnLocation location) {}
 
     public NpcEntityManager(Plugin plugin, NpcEntityProvider provider,
                             NpcEntityTagger tagger, NpcRepository repository,
@@ -54,6 +58,8 @@ public final class NpcEntityManager {
             boundRecord = record.withEntityBinding(
                     entity.getUniqueId(), NpcSpawnLocation.from(location));
             liveEntities.put(record.id(), entity.getUniqueId());
+            pendingEntityBindings.put(record.id(), new PendingEntityBinding(
+                    entity.getUniqueId(), NpcSpawnLocation.from(entity.getLocation())));
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
@@ -70,6 +76,7 @@ public final class NpcEntityManager {
                     if (error != null || !Boolean.TRUE.equals(updated)) {
                         entity.remove();
                         liveEntities.remove(record.id(), entity.getUniqueId());
+                        clearPendingBinding(record.id(), entity.getUniqueId());
                         String detail = error == null
                                 ? "Repository did not update the NPC record."
                                 : error.getMessage();
@@ -78,8 +85,16 @@ public final class NpcEntityManager {
                                         + record.id() + ": " + detail));
                         return;
                     }
-                    registry.put(boundRecord);
-                    result.complete(boundRecord);
+                    completePendingBinding(record.id(), entity.getUniqueId(), boundRecord)
+                            .whenComplete((completed, persistError) -> {
+                                if (persistError != null) {
+                                    result.completeExceptionally(new NpcEntityException(
+                                            "Could not persist the latest location for NPC "
+                                                    + record.id() + ": " + persistError.getMessage()));
+                                } else {
+                                    result.complete(completed);
+                                }
+                            });
                 });
             } catch (RuntimeException schedulingError) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE,
@@ -104,6 +119,8 @@ public final class NpcEntityManager {
         NpcRecord boundRecord = record.withEntityBinding(
                 entity.getUniqueId(), NpcSpawnLocation.from(location));
         liveEntities.put(record.id(), entity.getUniqueId());
+        pendingEntityBindings.put(record.id(), new PendingEntityBinding(
+                entity.getUniqueId(), NpcSpawnLocation.from(entity.getLocation())));
         repository.update(boundRecord).whenComplete((updated, error) -> {
             if (!plugin.isEnabled()) return;
             try {
@@ -111,11 +128,19 @@ public final class NpcEntityManager {
                     if (error != null || !Boolean.TRUE.equals(updated)) {
                         entity.remove();
                         liveEntities.remove(record.id(), entity.getUniqueId());
+                        clearPendingBinding(record.id(), entity.getUniqueId());
                         plugin.getLogger().severe("Could not persist entity binding for NPC "
                                 + record.id() + (error == null ? "" : ": " + error.getMessage()));
                         return;
                     }
-                    registry.put(boundRecord);
+                    completePendingBinding(record.id(), entity.getUniqueId(), boundRecord)
+                            .whenComplete((completed, persistError) -> {
+                                if (persistError != null && plugin.isEnabled()) {
+                                    plugin.getLogger().warning(
+                                            "Could not persist the latest location for NPC " + record.id()
+                                                    + ": " + persistError.getMessage());
+                                }
+                            });
                 });
             } catch (RuntimeException schedulingError) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE,
@@ -192,23 +217,33 @@ public final class NpcEntityManager {
             }
 
             if (liveEntities.putIfAbsent(id, actual) != null) return;
-            NpcRecord repaired = record.withEntityBinding(
-                    actual, NpcSpawnLocation.from(entity.getLocation()));
+            NpcSpawnLocation initialLocation = NpcSpawnLocation.from(entity.getLocation());
+            NpcRecord repaired = record.withEntityBinding(actual, initialLocation);
+            pendingEntityBindings.put(id, new PendingEntityBinding(actual, initialLocation));
             repository.update(repaired).whenComplete((updated, error) -> {
                 if (!plugin.isEnabled()) return;
                 try {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         if (error != null || !Boolean.TRUE.equals(updated)) {
                             liveEntities.remove(id, actual);
+                            clearPendingBinding(id, actual);
                             plugin.getLogger().warning(
                                     "Could not repair the entity binding for NPC " + id
                                             + (error == null ? "." : ": " + error.getMessage()));
                             return;
                         }
-                        registry.put(repaired);
+                        completePendingBinding(id, actual, repaired)
+                                .whenComplete((completed, persistError) -> {
+                                    if (persistError != null && plugin.isEnabled()) {
+                                        plugin.getLogger().warning(
+                                                "Could not persist the latest location for NPC " + id
+                                                        + ": " + persistError.getMessage());
+                                    }
+                                });
                     });
                 } catch (RuntimeException schedulingError) {
                     liveEntities.remove(id, actual);
+                    clearPendingBinding(id, actual);
                     plugin.getLogger().warning("Could not schedule entity binding repair for NPC "
                             + id + ": " + schedulingError.getMessage());
                 }
@@ -233,11 +268,21 @@ public final class NpcEntityManager {
         requireMainThread();
         tagger.read(entity).ifPresent(id -> registry.get(id).ifPresent(record -> {
             UUID actual = entity.getUniqueId();
+            NpcSpawnLocation location = NpcSpawnLocation.from(entity.getLocation());
+            PendingEntityBinding pending = pendingEntityBindings.get(id);
+            if (pending != null && pending.entityUuid().equals(actual)) {
+                // Defer the location write until the initial UUID binding is persisted.
+                // This avoids racing a conditional UPDATE against the first binding UPDATE.
+                pendingEntityBindings.computeIfPresent(id, (ignored, current) ->
+                        current.entityUuid().equals(actual)
+                                ? new PendingEntityBinding(actual, location) : current);
+                liveEntities.remove(id, actual);
+                return;
+            }
             // An unload may only update the location for the exact persisted binding.
             // A null or different UUID means this entity is stale or its binding is not ready.
             if (!actual.equals(record.entityUuid())) return;
             liveEntities.remove(id, actual);
-            NpcSpawnLocation location = NpcSpawnLocation.from(entity.getLocation());
             repository.updateEntityLocationIfBindingMatches(id, actual, location)
                     .whenComplete((updated, error) -> {
                         if (!plugin.isEnabled()) return;
@@ -261,6 +306,32 @@ public final class NpcEntityManager {
                         }
                     });
         }));
+    }
+
+    private CompletableFuture<NpcRecord> completePendingBinding(
+            NpcId id, UUID entityUuid, NpcRecord boundRecord) {
+        PendingEntityBinding pending = pendingEntityBindings.remove(id);
+        NpcSpawnLocation latestLocation = pending != null
+                && pending.entityUuid().equals(entityUuid)
+                ? pending.location() : boundRecord.spawnLocation();
+        NpcRecord completed = boundRecord.withEntityBinding(entityUuid, latestLocation);
+        registry.put(completed);
+        if (Objects.equals(latestLocation, boundRecord.spawnLocation())) {
+            return CompletableFuture.completedFuture(completed);
+        }
+        return repository.updateEntityLocationIfBindingMatches(id, entityUuid, latestLocation)
+                .thenApply(updated -> {
+                    if (!Boolean.TRUE.equals(updated)) {
+                        throw new NpcEntityException(
+                                "Could not persist the latest location for NPC " + id);
+                    }
+                    return completed;
+                });
+    }
+
+    private void clearPendingBinding(NpcId id, UUID entityUuid) {
+        pendingEntityBindings.computeIfPresent(id, (ignored, pending) ->
+                pending.entityUuid().equals(entityUuid) ? null : pending);
     }
 
     public void untrack(Entity entity) {

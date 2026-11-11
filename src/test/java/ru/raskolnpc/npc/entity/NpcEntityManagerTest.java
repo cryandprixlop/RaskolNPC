@@ -147,6 +147,39 @@ class NpcEntityManagerTest {
     }
 
     @Test
+    void persistsUnloadLocationAfterPendingEntityBindingCompletes() {
+        NpcId id = NpcId.create();
+        Entity entity = world.spawnEntity(
+                new Location(world, 26, 75, 27), org.bukkit.entity.EntityType.ZOMBIE);
+        UUID entityUuid = entity.getUniqueId();
+        NpcRecord record = new NpcRecord(id, NpcType.GUARD, "Pending binding guard",
+                null, null, null, NpcState.ACTIVE, "{}", null, null,
+                null, NpcSpawnLocation.from(entity.getLocation()));
+        registry.put(record);
+        when(tagger.read(entity)).thenReturn(Optional.of(id));
+        CompletableFuture<Boolean> initialBinding = new CompletableFuture<>();
+        when(repository.update(any(NpcRecord.class))).thenReturn(initialBinding);
+        when(repository.updateEntityLocationIfBindingMatches(
+                eq(id), eq(entityUuid), any(NpcSpawnLocation.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        manager.trackLoaded(entity);
+        entity.teleport(new Location(world, 42.5, 78.0, -13.5, 135.0f, 10.0f));
+        NpcSpawnLocation moved = NpcSpawnLocation.from(entity.getLocation());
+
+        manager.untrackAndPersistLocation(entity);
+        verify(repository, never()).updateEntityLocationIfBindingMatches(
+                any(), any(), any());
+
+        initialBinding.complete(true);
+        server.getScheduler().performOneTick();
+
+        verify(repository).updateEntityLocationIfBindingMatches(id, entityUuid, moved);
+        assertEquals(entityUuid, registry.get(id).orElseThrow().entityUuid());
+        assertEquals(moved, registry.get(id).orElseThrow().spawnLocation());
+    }
+
+    @Test
     void delayedUnloadCompletionDoesNotOverwriteANewerEntityBinding() {
         NpcId id = NpcId.create();
         Entity entity = world.spawnEntity(
