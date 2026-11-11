@@ -1,29 +1,38 @@
 package ru.raskolnpc.guard;
 
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
+import ru.raskolnpc.guard.model.GuardRentPayment;
+import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
 import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
+import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.storage.GuardRentPaymentRepository;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Persistent, wall-clock based rent collection for Towny kingdom guards. */
+/**
+ * Collects guard rent using a durable SQLite ledger. Towny calls are made only
+ * on the server thread; an ambiguous result is never retried automatically.
+ */
 public final class GuardRentService {
     private static final long DAY_SECONDS = Duration.ofDays(1).toSeconds();
     private static final Pattern NUMBER = Pattern.compile("\"%s\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)");
@@ -34,25 +43,32 @@ public final class GuardRentService {
     private final NpcLifecycleService lifecycle;
     private final NpcEntityManager entities;
     private final TownyTownBankEconomy economy;
+    private final GuardRentPaymentRepository payments;
     private final int maximumDebtDays;
+    private final Set<NpcId> inFlight = ConcurrentHashMap.newKeySet();
     private BukkitTask task;
-    private final Set<ru.raskolnpc.npc.model.NpcId> inFlight = ConcurrentHashMap.newKeySet();
 
-    public GuardRentService(Plugin plugin, NpcRegistry registry,
-                            NpcLifecycleService lifecycle, NpcEntityManager entities,
-                            TownyTownBankEconomy economy, int maximumDebtDays) {
+    public GuardRentService(
+            Plugin plugin,
+            NpcRegistry registry,
+            NpcLifecycleService lifecycle,
+            NpcEntityManager entities,
+            TownyTownBankEconomy economy,
+            GuardRentPaymentRepository payments,
+            int maximumDebtDays
+    ) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.economy = Objects.requireNonNull(economy, "economy");
-        this.maximumDebtDays = Math.max(1, maximumDebtDays);
+        this.payments = Objects.requireNonNull(payments, "payments");
+        this.maximumDebtDays = Math.max(1, Math.min(3, maximumDebtDays));
     }
 
     public void start() {
         requireMainThread();
         if (task != null) return;
-        // Frequent lightweight due-time check; payment dates use epoch time, not ticks.
         task = Bukkit.getScheduler().runTaskTimer(plugin, this::checkDueGuards, 20L, 20L * 60L);
     }
 
@@ -63,98 +79,217 @@ public final class GuardRentService {
         }
     }
 
+    /**
+     * Must run after NPC records have been loaded and before normal rent polling.
+     * IN_PROGRESS is deliberately not retried: it may have reached Towny's bank.
+     */
+    public CompletableFuture<Void> recoverPendingPayments() {
+        return payments.moveUnfinishedToReview(
+                        "Server restarted while the Towny payment result was not finalized.")
+                .thenCompose(ignored -> payments.findByStatus(GuardRentPaymentStatus.PAID))
+                .thenCompose(paid -> recoverPayments(paid, true))
+                .thenCompose(ignored -> payments.findByStatus(GuardRentPaymentStatus.FAILED))
+                .thenCompose(failed -> recoverPayments(failed, false));
+    }
+
+    private CompletableFuture<Void> recoverPayments(
+            List<GuardRentPayment> pending, boolean paid
+    ) {
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (GuardRentPayment payment : pending) {
+            chain = chain.thenCompose(ignored -> applyKnownPayment(payment, paid));
+        }
+        return chain;
+    }
+
     public void checkDueGuards() {
         requireMainThread();
         if (!lifecycle.isReady()) return;
         long now = Instant.now().getEpochSecond();
+
         for (NpcRecord record : registry.all()) {
             if (record.type() != NpcType.GUARD) continue;
-            // Keep vanilla mob AI disabled; domain-specific guard behavior is managed separately.
             keepVanillaAiDisabled(record);
+
             try {
                 long dueAt = (long) number(record.dataJson(), "nextRentAt", 0);
-                if (dueAt <= 0 || dueAt > now) continue;
-                if (inFlight.add(record.id())) collect(record, now);
+                if (dueAt <= 0 || dueAt > now || !inFlight.add(record.id())) continue;
+                preparePayment(record, dueAt, now);
             } catch (RuntimeException exception) {
                 inFlight.remove(record.id());
                 plugin.getLogger().log(Level.SEVERE,
-                        "Could not process rent for guard " + record.id(), exception);
+                        "Could not prepare rent for guard " + record.id(), exception);
             }
         }
     }
 
-    private void collect(NpcRecord record, long now) {
+    private void preparePayment(NpcRecord record, long dueAt, long now) {
         double rent = number(record.dataJson(), "dailyRent", -1);
-        String payerTownId = string(record.dataJson(), "payerTownId");
+        String townId = string(record.dataJson(), "payerTownId");
         int debtDays = (int) number(record.dataJson(), "overdueDays", 0);
-        if (!Double.isFinite(rent) || rent < 0 || payerTownId == null || payerTownId.isBlank()) {
+
+        if (!Double.isFinite(rent) || rent < 0 || townId == null || townId.isBlank()
+                || debtDays < 0 || debtDays > maximumDebtDays) {
             inFlight.remove(record.id());
             plugin.getLogger().severe("Guard " + record.id()
-                    + " has invalid rent metadata; automatic removal is suspended.");
+                    + " has invalid rent metadata; automatic collection is suspended.");
             return;
         }
 
-        if (economy.withdraw(payerTownId, rent, "RaskolNPC daily guard rent: " + record.name())) {
-            String data = metadata(record.dataJson(), 0, now + DAY_SECONDS);
-            NpcRecord paid = copy(record, NpcState.ACTIVE, data);
-            lifecycle.updateRecord(paid).whenComplete((updated, error) -> runMain(() -> {
-                try {
-                    if (error != null || !Boolean.TRUE.equals(updated)) {
-                        // The Towny bank debit succeeded but the durable schedule did not.
-                        // Compensate immediately so the next poll cannot charge twice.
-                        boolean refunded = economy.deposit(payerTownId, rent,
-                                "RaskolNPC guard rent compensation: " + record.name());
-                        plugin.getLogger().log(Level.SEVERE,
-                                "Could not persist successful rent payment for " + record.id()
-                                        + "; refund attempted=" + refunded, error);
-                        return;
-                    }
-                } finally {
-                    inFlight.remove(record.id());
-                }
-            }));
-            return;
-        }
+        int nextDebt = Math.min(maximumDebtDays, debtDays + 1);
+        GuardRentPayment payment = new GuardRentPayment(
+                UUID.randomUUID().toString(),
+                record.id(),
+                dueAt,
+                townId,
+                rent,
+                GuardRentPaymentStatus.IN_PROGRESS,
+                nextDebt,
+                now + DAY_SECONDS,
+                null,
+                null,
+                null
+        );
 
-        int nextDebt = debtDays + 1;
-        if (nextDebt >= maximumDebtDays) {
-            lifecycle.delete(record.id()).thenCompose(deleted -> deleted
-                    ? removeEntityAndComplete(record) : CompletableFuture.completedFuture(false))
-                    .whenComplete((removed, error) -> {
-                        inFlight.remove(record.id());
-                        if (error != null) plugin.getLogger().log(Level.SEVERE,
-                                "Could not dismiss guard after rent debt: " + record.id(), error);
-                    });
-            return;
-        }
-
-        NpcRecord unpaid = copy(record, NpcState.INACTIVE,
-                metadata(record.dataJson(), nextDebt, now + DAY_SECONDS));
-        lifecycle.updateRecord(unpaid).whenComplete((updated, error) -> runMain(() -> {
-            try {
-                if (error != null || !Boolean.TRUE.equals(updated)) {
-                    plugin.getLogger().log(Level.SEVERE,
-                            "Could not persist rent debt for guard " + record.id(), error);
-                    return;
-                }
-                keepVanillaAiDisabled(record);
-            } finally {
+        payments.createIfAbsent(payment).whenComplete((created, error) -> runMain(() -> {
+            if (error != null) {
+                logFailure("Could not create durable rent payment for guard " + record.id(), error);
                 inFlight.remove(record.id());
+                return;
             }
+            if (!Boolean.TRUE.equals(created)) {
+                payments.findByDue(record.id(), dueAt).whenComplete((existing, lookupError) ->
+                        runMain(() -> {
+                            if (lookupError != null) {
+                                logFailure("Could not inspect existing rent payment for "
+                                        + record.id(), lookupError);
+                            } else if (existing.isPresent()) {
+                                handleExistingPayment(existing.get());
+                            }
+                            inFlight.remove(record.id());
+                        }));
+                return;
+            }
+            withdrawOnce(record, payment);
         }));
     }
 
-    private CompletableFuture<Boolean> removeEntityAndComplete(NpcRecord record) {
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
+    private void withdrawOnce(NpcRecord record, GuardRentPayment payment) {
+        requireMainThread();
+        final boolean withdrawn;
+        try {
+            withdrawn = economy.withdraw(payment.townId(), payment.amount(),
+                    "RaskolNPC daily guard rent: " + record.name());
+        } catch (Throwable ambiguous) {
+            payments.markReviewRequired(payment.paymentId(),
+                    "Towny withdrawal threw an exception; the bank result is unknown: "
+                            + safeMessage(ambiguous))
+                    .whenComplete((changed, error) -> runMain(() -> {
+                        if (error != null) logFailure(
+                                "Could not flag ambiguous rent payment " + payment.paymentId(), error);
+                        else if (!Boolean.TRUE.equals(changed)) plugin.getLogger().severe(
+                                "Ambiguous rent payment could not leave IN_PROGRESS: "
+                                        + payment.paymentId());
+                        inFlight.remove(record.id());
+                    }));
+            return;
+        }
+
+        CompletableFuture<Boolean> transition = withdrawn
+                ? payments.markPaid(payment.paymentId())
+                : payments.markFailed(payment.paymentId(),
+                        "Towny returned false: the town bank declined the withdrawal.");
+        transition.whenComplete((changed, error) -> runMain(() -> {
+            if (error != null) {
+                // Keep IN_PROGRESS if the database result is uncertain. Startup recovery
+                // moves it to REVIEW_REQUIRED, and this code never calls withdraw again.
+                logFailure("Could not finalize Towny rent result for " + payment.paymentId(), error);
+                inFlight.remove(record.id());
+                return;
+            }
+            if (!Boolean.TRUE.equals(changed)) {
+                plugin.getLogger().severe("Rent payment state was not changed after Towny returned "
+                        + (withdrawn ? "success" : "failure") + ": " + payment.paymentId());
+                inFlight.remove(record.id());
+                return;
+            }
+            applyKnownPayment(payment, withdrawn).whenComplete((ignored, applyError) -> runMain(() -> {
+                if (applyError != null) {
+                    logFailure("Could not apply rent payment state for " + payment.paymentId(),
+                            applyError);
+                }
+                inFlight.remove(record.id());
+            }));
+        }));
+    }
+
+    private void handleExistingPayment(GuardRentPayment payment) {
+        switch (payment.status()) {
+            case PAID -> applyKnownPayment(payment, true).whenComplete((ignored, error) -> {
+                if (error != null) logFailure("Could not recover paid rent " + payment.paymentId(), error);
+            });
+            case FAILED -> applyKnownPayment(payment, false).whenComplete((ignored, error) -> {
+                if (error != null) logFailure("Could not recover failed rent " + payment.paymentId(), error);
+            });
+            case IN_PROGRESS, REVIEW_REQUIRED ->
+                    plugin.getLogger().warning("Rent payment " + payment.paymentId()
+                            + " is not eligible for automatic retry (status "
+                            + payment.status() + ").");
+            case PAID_APPLIED, DEBT_APPLIED -> {
+                // The ledger already records that the NPC-side effect was committed.
+            }
+        }
+    }
+
+    private CompletableFuture<Void> applyKnownPayment(
+            GuardRentPayment payment, boolean paid
+    ) {
+        NpcRecord current = registry.get(payment.npcId()).orElse(null);
+        if (!paid && payment.targetDebtDays() >= maximumDebtDays) {
+            return payments.applyDebtAndQueueDeletion(payment.paymentId(), payment.npcId())
+                    .thenCompose(applied -> {
+                        if (!applied) return failed("Could not atomically queue guard deletion "
+                                + payment.npcId());
+                        return onMain(() -> {
+                            registry.unregister(payment.npcId());
+                            entities.remove(payment.npcId());
+                        }).thenCompose(ignored -> lifecycle.completeDeletion(payment.npcId()))
+                                .thenApply(ignored -> null);
+                    });
+        }
+
+        if (current == null) {
+            return failed("NPC record is missing while applying rent payment "
+                    + payment.paymentId());
+        }
+
+        int debt = paid ? 0 : payment.targetDebtDays();
+        NpcState state = paid ? NpcState.ACTIVE : NpcState.INACTIVE;
+        String data = metadata(current.dataJson(), debt, payment.targetNextRentAt());
+        NpcRecord updated = copy(current, state, data);
+
+        CompletableFuture<Boolean> persisted = paid
+                ? payments.applyPaid(payment.paymentId(), updated)
+                : payments.applyDebt(payment.paymentId(), updated);
+
+        return persisted.thenCompose(applied -> {
+            if (!applied) return failed("Could not atomically apply rent payment "
+                    + payment.paymentId());
+            return onMain(() -> {
+                registry.put(updated);
+                if (!paid) keepVanillaAiDisabled(updated);
+            });
+        });
+    }
+
+    private CompletableFuture<Void> onMain(Runnable action) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
         runMain(() -> {
             try {
-                entities.remove(record.id());
-                lifecycle.completeDeletion(record.id()).whenComplete((done, error) -> {
-                    if (error != null) result.completeExceptionally(error);
-                    else result.complete(Boolean.TRUE.equals(done));
-                });
-            } catch (RuntimeException exception) {
-                result.completeExceptionally(exception);
+                action.run();
+                result.complete(null);
+            } catch (Throwable error) {
+                result.completeExceptionally(error);
             }
         });
         return result;
@@ -169,10 +304,29 @@ public final class GuardRentService {
 
     private void runMain(Runnable action) {
         if (!plugin.isEnabled()) return;
-        if (Bukkit.isPrimaryThread()) action.run();
-        else Bukkit.getScheduler().runTask(plugin, action);
+        try {
+            if (Bukkit.isPrimaryThread()) action.run();
+            else Bukkit.getScheduler().runTask(plugin, action);
+        } catch (RuntimeException schedulingError) {
+            plugin.getLogger().log(Level.SEVERE,
+                    "Could not schedule guard rent continuation on the server thread.",
+                    schedulingError);
+        }
     }
 
+    private static CompletableFuture<Void> failed(String message) {
+        return CompletableFuture.failedFuture(new IllegalStateException(message));
+    }
+
+    private void logFailure(String message, Throwable error) {
+        plugin.getLogger().log(Level.SEVERE, message, error);
+    }
+
+    private static String safeMessage(Throwable error) {
+        String message = error.getMessage();
+        return message == null || message.isBlank()
+                ? error.getClass().getSimpleName() : message;
+    }
 
     static NpcRecord copy(NpcRecord record, NpcState state, String data) {
         return new NpcRecord(record.id(), record.type(), record.name(), record.ownerUuid(),
@@ -207,7 +361,8 @@ public final class GuardRentService {
 
     private void requireMainThread() {
         if (!Bukkit.isPrimaryThread()) {
-            throw new IllegalStateException("Guard rent Towny and entity operations must run on main thread.");
+            throw new IllegalStateException(
+                    "Guard rent Towny and entity operations must run on the server thread.");
         }
     }
 }
