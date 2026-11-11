@@ -1,13 +1,11 @@
 package ru.raskolnpc.integration.towny;
 
-import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.object.Nation;
 import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Town;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 
 import java.util.UUID;
 
@@ -23,9 +21,9 @@ class TownyResidentServiceTest {
         Town town = mock(Town.class);
         Resident resident = mock(Resident.class);
         Nation nation = mock(Nation.class);
+        TownyResidentService.TownyAccess api = mock(TownyResidentService.TownyAccess.class);
         UUID townId = UUID.randomUUID();
         UUID nationId = UUID.randomUUID();
-        TownyAPI api = mock(TownyAPI.class);
 
         when(api.getTown(location)).thenReturn(town);
         when(api.getResident(player)).thenReturn(resident);
@@ -34,15 +32,11 @@ class TownyResidentServiceTest {
         when(api.getTownNationOrNull(town)).thenReturn(nation);
         when(nation.getUUID()).thenReturn(nationId);
 
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
+        TownyResidentService.TownAssignment assignment =
+                new TownyResidentService(api).resolveAndAuthorize(player, location);
 
-            TownyResidentService.TownAssignment assignment =
-                    new TownyResidentService().resolveAndAuthorize(player, location);
-
-            assertEquals(townId.toString(), assignment.townId());
-            assertEquals(nationId.toString(), assignment.nationId());
-        }
+        assertEquals(townId.toString(), assignment.townId());
+        assertEquals(nationId.toString(), assignment.nationId());
     }
 
     @Test
@@ -51,7 +45,7 @@ class TownyResidentServiceTest {
         Location location = mock(Location.class);
         Town town = mock(Town.class);
         Resident resident = mock(Resident.class);
-        TownyAPI api = mock(TownyAPI.class);
+        TownyResidentService.TownyAccess api = mock(TownyResidentService.TownyAccess.class);
         when(api.getTown(location)).thenReturn(town);
         when(api.getResident(player)).thenReturn(resident);
         when(town.isMayor(resident)).thenReturn(false);
@@ -59,13 +53,11 @@ class TownyResidentServiceTest {
         when(town.getUUID()).thenReturn(UUID.randomUUID());
         when(api.getTownNationOrNull(town)).thenReturn(null);
 
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-            TownyResidentService.TownAssignment assignment =
-                    new TownyResidentService().resolveAndAuthorize(player, location);
-            assertNotNull(assignment.townId());
-            assertNull(assignment.nationId());
-        }
+        TownyResidentService.TownAssignment assignment =
+                new TownyResidentService(api).resolveAndAuthorize(player, location);
+
+        assertNotNull(assignment.townId());
+        assertNull(assignment.nationId());
     }
 
     @Test
@@ -74,7 +66,7 @@ class TownyResidentServiceTest {
         Location location = mock(Location.class);
         Town town = mock(Town.class);
         Resident resident = mock(Resident.class);
-        TownyAPI api = mock(TownyAPI.class);
+        TownyResidentService.TownyAccess api = mock(TownyResidentService.TownyAccess.class);
         when(api.getTown(location)).thenReturn(town);
         when(api.getResident(player)).thenReturn(resident);
         when(town.isMayor(resident)).thenReturn(false);
@@ -82,26 +74,20 @@ class TownyResidentServiceTest {
         when(player.hasPermission("towny.admin")).thenReturn(false);
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
 
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-            assertThrows(TownyIntegrationException.class,
-                    () -> new TownyResidentService().resolveAndAuthorize(player, location));
-            verify(api, never()).getTownNationOrNull(any());
-        }
+        assertThrows(TownyIntegrationException.class,
+                () -> new TownyResidentService(api).resolveAndAuthorize(player, location));
+        verify(api, never()).getTownNationOrNull(any());
     }
 
     @Test
     void rejectsLocationsOutsideTownyTowns() {
         Player player = mock(Player.class);
         Location location = mock(Location.class);
-        TownyAPI api = mock(TownyAPI.class);
+        TownyResidentService.TownyAccess api = mock(TownyResidentService.TownyAccess.class);
         when(api.getTown(location)).thenReturn(null);
 
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-            assertThrows(TownyIntegrationException.class,
-                    () -> new TownyResidentService().resolveAndAuthorize(player, location));
-            verify(api, never()).getResident(any(Player.class));
-        }
+        assertThrows(TownyIntegrationException.class,
+                () -> new TownyResidentService(api).resolveAndAuthorize(player, location));
+        verify(api, never()).getResident(any(Player.class));
     }
 }
