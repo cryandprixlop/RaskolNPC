@@ -17,6 +17,16 @@ public final class TownyTownBankEconomy {
         return town != null && town.getAccount().withdraw(amount, reason);
     }
 
+    /**
+     * Credits a town bank. Used only to compensate a confirmed guard-hiring
+     * debit when NPC creation fails; rent collection never calls this method.
+     */
+    public boolean deposit(String townId, double amount, String reason) {
+        if (!valid(townId, amount)) return false;
+        Town town = findTown(townId);
+        return town != null && town.getAccount().deposit(amount, reason);
+    }
+
     private Town findTown(String townId) {
         try {
             return TownyAPI.getInstance().getTown(UUID.fromString(townId));
