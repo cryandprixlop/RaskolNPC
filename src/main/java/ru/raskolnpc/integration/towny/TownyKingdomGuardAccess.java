@@ -16,7 +16,7 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
     private final TownResolver resolver;
 
     public TownyKingdomGuardAccess() {
-        this((player, location) -> {
+        this((TownResolver) (player, location) -> {
             Town town = TownyAPI.getInstance().getTown(location);
             if (town == null) return null;
             Nation nation = TownyAPI.getInstance().getTownNationOrNull(town);
@@ -77,4 +77,6 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
     }
 
     public record Placement(String townId, String nationId, boolean king) { }
+
+    record NationContext(String nationId, boolean king) { }
 }
