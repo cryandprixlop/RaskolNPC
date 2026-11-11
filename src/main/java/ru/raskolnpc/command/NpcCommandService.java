@@ -339,6 +339,21 @@ public final class NpcCommandService {
         return result;
     }
 
+    public CompletableFuture<List<GuardHiringPayment>> findReviewHiringPayments() {
+        GuardHiringPaymentRepository journal = hiringPayments;
+        return journal == null ? CompletableFuture.failedFuture(
+                new IllegalStateException("Guard hiring journal is unavailable."))
+                : journal.findReviewRequired();
+    }
+
+    public CompletableFuture<Boolean> resolveHiringReview(
+            String paymentId, String resolution, UUID administratorUuid) {
+        GuardHiringPaymentRepository journal = hiringPayments;
+        return journal == null ? CompletableFuture.failedFuture(
+                new IllegalStateException("Guard hiring journal is unavailable."))
+                : journal.resolveReview(paymentId, resolution, administratorUuid);
+    }
+
     public List<NpcRecord> list() {
         if (!lifecycle.isReady()) {
             throw new IllegalStateException("NPC storage is still initializing.");
