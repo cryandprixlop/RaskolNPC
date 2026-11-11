@@ -20,8 +20,10 @@ import ru.raskolnpc.npc.entity.PaperNpcEntityProvider;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
+import ru.raskolnpc.storage.SqliteGuardRentPaymentRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
 import ru.raskolnpc.storage.SqliteNpcRepository;
 
@@ -51,6 +53,9 @@ public final class RaskolNPC extends JavaPlugin {
         NpcRepository repository = new SqliteNpcRepository(databaseManager);
         NpcDeletionRepository deletionRepository =
                 new SqliteNpcDeletionRepository(databaseManager);
+        GuardRentPaymentRepository rentPayments =
+                new SqliteGuardRentPaymentRepository(databaseManager);
+
         int maximumNpcs = Math.max(1, getConfig().getInt("limits.total-npcs", 150));
         npcLifecycleService = new NpcLifecycleService(
                 repository, npcRegistry, maximumNpcs, deletionRepository);
@@ -97,38 +102,62 @@ public final class RaskolNPC extends JavaPlugin {
                     getServer().getScheduler().runTask(this, () -> {
                         if (!isEnabled()) return;
                         if (error != null) {
-                            getLogger().log(Level.SEVERE,
+                            disableAfterStartupFailure(
                                     "RaskolNPC could not initialize persistent NPC data.", error);
-                            getServer().getPluginManager().disablePlugin(this);
                             return;
                         }
-                        npcRecoveryService.recover().whenComplete((ignored, recoveryError) -> {
+
+                        if (townyEnabled) {
+                            guardRentService = new GuardRentService(this, npcRegistry,
+                                    npcLifecycleService, npcEntityManager,
+                                    new TownyTownBankEconomy(), rentPayments,
+                                    getConfig().getInt("guards.maximum-debt-days", 3));
+                        }
+
+                        java.util.concurrent.CompletableFuture<Void> rentRecovery =
+                                guardRentService == null
+                                        ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                                        : guardRentService.recoverPendingPayments();
+
+                        rentRecovery.whenComplete((ignored, rentError) -> {
                             if (!isEnabled()) return;
                             getServer().getScheduler().runTask(this, () -> {
                                 if (!isEnabled()) return;
-                                if (recoveryError != null) {
-                                    getLogger().log(Level.SEVERE,
-                                            "RaskolNPC could not recover persistent NPC entities.",
-                                            recoveryError);
-                                    getServer().getPluginManager().disablePlugin(this);
+                                if (rentError != null) {
+                                    disableAfterStartupFailure(
+                                            "RaskolNPC could not recover guard rent payments.",
+                                            rentError);
                                     return;
                                 }
-                                npcLifecycleService.markReady();
-                                if (townyEnabled && townyKingdomGuardAccess != null) {
-                                    guardRentService = new GuardRentService(this, npcRegistry,
-                                            npcLifecycleService, npcEntityManager,
-                                            new TownyTownBankEconomy(),
-                                            getConfig().getInt("guards.maximum-debt-days", 3));
-                                    guardRentService.start();
-                                }
-                                getLogger().info("RaskolNPC is enabled. Loaded "
-                                        + records.size() + " NPC record(s); recovery completed.");
+
+                                npcRecoveryService.recover().whenComplete((recovered, recoveryError) -> {
+                                    if (!isEnabled()) return;
+                                    getServer().getScheduler().runTask(this, () -> {
+                                        if (!isEnabled()) return;
+                                        if (recoveryError != null) {
+                                            disableAfterStartupFailure(
+                                                    "RaskolNPC could not recover persistent NPC entities.",
+                                                    recoveryError);
+                                            return;
+                                        }
+                                        npcLifecycleService.markReady();
+                                        if (guardRentService != null) guardRentService.start();
+                                        getLogger().info("RaskolNPC is enabled. Loaded "
+                                                + records.size()
+                                                + " NPC record(s); payment and entity recovery completed.");
+                                    });
+                                });
                             });
                         });
                     });
                 });
 
         getLogger().info("RaskolNPC is starting.");
+    }
+
+    private void disableAfterStartupFailure(String message, Throwable error) {
+        getLogger().log(Level.SEVERE, message, error);
+        getServer().getPluginManager().disablePlugin(this);
     }
 
     public NpcLifecycleService getNpcLifecycleService() {
