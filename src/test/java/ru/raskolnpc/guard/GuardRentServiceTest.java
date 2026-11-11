@@ -131,7 +131,10 @@ class GuardRentServiceTest {
     void thirdConsecutiveFailedPaymentDeletesGuardAndCompletesDeletion() {
         NpcRecord guard = addDueGuard(NpcState.INACTIVE, 2);
         when(economy.withdraw(eq("town-uuid"), eq(30.0), anyString())).thenReturn(false);
-        when(lifecycle.delete(guard.id())).thenReturn(CompletableFuture.completedFuture(true));
+        when(lifecycle.delete(guard.id())).thenAnswer(invocation -> {
+            registry.unregister(guard.id());
+            return CompletableFuture.completedFuture(true);
+        });
         when(lifecycle.completeDeletion(guard.id())).thenReturn(
                 CompletableFuture.completedFuture(true));
 
