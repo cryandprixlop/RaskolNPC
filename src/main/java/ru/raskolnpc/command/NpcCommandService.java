@@ -284,7 +284,7 @@ public final class NpcCommandService {
                                 .thenCompose(saved -> saved
                                         ? CompletableFuture.<GuardHiringService.HireResult>failedFuture(
                                                 new CompletionException(unwrap(spawnError)))
-                                        : markHiringReview(journal, payment.paymentId(),
+                                        : markHiringReview(journal, payment.paymentId(), "REFUND_IN_PROGRESS",
                                                 "Refund was accepted by Towny but could not be finalized in SQLite.",
                                                 unwrap(spawnError)));
                     });
@@ -293,7 +293,13 @@ public final class NpcCommandService {
 
     private CompletableFuture<GuardHiringService.HireResult> markHiringReview(
             GuardHiringPaymentRepository journal, String paymentId, String reason, Throwable cause) {
-        return journal.transition(paymentId, "DEBIT_CONFIRMED", "REVIEW_REQUIRED", reason)
+        return markHiringReview(journal, paymentId, "DEBIT_CONFIRMED", reason, cause);
+    }
+
+    private CompletableFuture<GuardHiringService.HireResult> markHiringReview(
+            GuardHiringPaymentRepository journal, String paymentId, String expectedStatus,
+            String reason, Throwable cause) {
+        return journal.transition(paymentId, expectedStatus, "REVIEW_REQUIRED", reason)
                 .handle((changed, journalError) -> {
                     if (journalError != null) cause.addSuppressed(journalError);
                     throw new CompletionException(new IllegalStateException(
