@@ -115,7 +115,7 @@ public final class SqliteGuardHiringPaymentRepository implements GuardHiringPaym
             try (PreparedStatement statement = connection.prepareStatement("""
                     UPDATE guard_hiring_payments SET status = 'REVIEW_REQUIRED',
                         failure_reason = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE status IN ('IN_PROGRESS', 'REFUND_IN_PROGRESS')
+                    WHERE status IN ('IN_PROGRESS', 'DEBIT_CONFIRMED', 'REFUND_IN_PROGRESS')
                     """)) {
                 statement.setString(1, reason);
                 return statement.executeUpdate();
