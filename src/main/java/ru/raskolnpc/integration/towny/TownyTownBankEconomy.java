@@ -27,6 +27,8 @@ public final class TownyTownBankEconomy {
         }
     }
 
+    public boolean withdraw(String townId, double amount, String reason) { return withdraw(townId, amount, reason); }
+
     private boolean valid(String townId, double amount) {
         return townId != null && !townId.isBlank()
                 && Double.isFinite(amount) && amount >= 0;
