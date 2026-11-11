@@ -16,6 +16,8 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
@@ -34,6 +36,7 @@ public final class GuardRentService {
     private final TownyTownBankEconomy economy;
     private final int maximumDebtDays;
     private BukkitTask task;
+    private final Set<ru.raskolnpc.npc.model.NpcId> inFlight = ConcurrentHashMap.newKeySet();
 
     public GuardRentService(Plugin plugin, NpcRegistry registry,
                             NpcLifecycleService lifecycle, NpcEntityManager entities,
@@ -69,7 +72,7 @@ public final class GuardRentService {
             try {
                 long dueAt = (long) number(record.dataJson(), "nextRentAt", 0);
                 if (dueAt <= 0 || dueAt > now) continue;
-                collect(record, now);
+                if (inFlight.add(record.id())) collect(record, now);
             } catch (RuntimeException exception) {
                 plugin.getLogger().log(Level.SEVERE,
                         "Could not process rent for guard " + record.id(), exception);
@@ -98,6 +101,8 @@ public final class GuardRentService {
                 }
                 setAi(record, true);
             }));
+                inFlight.remove(record.id());
+            });
             return;
         }
 
@@ -106,6 +111,7 @@ public final class GuardRentService {
             lifecycle.delete(record.id()).thenCompose(deleted -> deleted
                     ? removeEntityAndComplete(record) : CompletableFuture.completedFuture(false))
                     .whenComplete((removed, error) -> {
+                        inFlight.remove(record.id());
                         if (error != null) plugin.getLogger().log(Level.SEVERE,
                                 "Could not dismiss guard after rent debt: " + record.id(), error);
                     });
@@ -121,6 +127,7 @@ public final class GuardRentService {
                 return;
             }
             setAi(record, false);
+            inFlight.remove(record.id());
         }));
     }
 
