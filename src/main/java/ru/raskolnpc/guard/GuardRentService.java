@@ -69,8 +69,8 @@ public final class GuardRentService {
         long now = Instant.now().getEpochSecond();
         for (NpcRecord record : registry.all()) {
             if (record.type() != NpcType.GUARD) continue;
-            // Reapply persisted activity after restart or chunk reload.
-            setAi(record, shouldGuardBeActive(record));
+            // Keep vanilla mob AI disabled; domain-specific guard behavior is managed separately.
+            keepVanillaAiDisabled(record);
             try {
                 long dueAt = (long) number(record.dataJson(), "nextRentAt", 0);
                 if (dueAt <= 0 || dueAt > now) continue;
@@ -109,7 +109,6 @@ public final class GuardRentService {
                                         + "; refund attempted=" + refunded, error);
                         return;
                     }
-                    setAi(record, true);
                 } finally {
                     inFlight.remove(record.id());
                 }
@@ -138,7 +137,7 @@ public final class GuardRentService {
                             "Could not persist rent debt for guard " + record.id(), error);
                     return;
                 }
-                setAi(record, false);
+                keepVanillaAiDisabled(record);
             } finally {
                 inFlight.remove(record.id());
             }
@@ -161,10 +160,10 @@ public final class GuardRentService {
         return result;
     }
 
-    private void setAi(NpcRecord record, boolean enabled) {
+    private void keepVanillaAiDisabled(NpcRecord record) {
         requireMainThread();
         entities.find(record.id()).ifPresent(entity -> {
-            if (entity instanceof LivingEntity living) living.setAI(enabled);
+            if (entity instanceof LivingEntity living) living.setAI(false);
         });
     }
 
@@ -174,9 +173,6 @@ public final class GuardRentService {
         else Bukkit.getScheduler().runTask(plugin, action);
     }
 
-    static boolean shouldGuardBeActive(NpcRecord record) {
-        return record.type() == NpcType.GUARD && record.state() == NpcState.ACTIVE;
-    }
 
     static NpcRecord copy(NpcRecord record, NpcState state, String data) {
         return new NpcRecord(record.id(), record.type(), record.name(), record.ownerUuid(),
