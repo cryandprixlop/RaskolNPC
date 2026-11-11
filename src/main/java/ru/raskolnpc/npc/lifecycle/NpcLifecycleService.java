@@ -114,6 +114,14 @@ public final class NpcLifecycleService {
         });
     }
 
+    public CompletableFuture<Boolean> updateRecord(NpcRecord record) {
+        if (!isReady()) return notReady();
+        return repository.update(record).thenApply(updated -> {
+            if (updated) registry.put(record);
+            return updated;
+        });
+    }
+
     public CompletableFuture<Boolean> unload(NpcId id) {
         if (!isReady()) return notReady();
         return repository.updateState(id, NpcState.UNLOADED).thenApply(updated -> {
