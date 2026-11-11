@@ -69,7 +69,16 @@ public final class GuardRentService {
     public void start() {
         requireMainThread();
         if (task != null) return;
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::checkDueGuards, 20L, 20L * 60L);
+        try {
+            task = Bukkit.getScheduler().runTaskTimer(
+                    plugin, this::checkDueGuards, 20L, 20L * 60L);
+        } catch (RuntimeException schedulingError) {
+            plugin.getLogger().log(Level.SEVERE,
+                    "Could not start the guard rent scheduler; automatic rent collection is disabled.",
+                    schedulingError);
+            throw new IllegalStateException(
+                    "Could not start the guard rent scheduler.", schedulingError);
+        }
     }
 
     public void stop() {
@@ -349,7 +358,8 @@ public final class GuardRentService {
             } catch (Throwable error) {
                 result.completeExceptionally(error);
             }
-        });
+        }, () -> result.completeExceptionally(new IllegalStateException(
+                "Could not continue a guard rent operation because the plugin is stopping.")));
         return result;
     }
 
@@ -361,7 +371,14 @@ public final class GuardRentService {
     }
 
     private void runMain(Runnable action) {
-        if (!plugin.isEnabled()) return;
+        runMain(action, () -> { });
+    }
+
+    private void runMain(Runnable action, Runnable rejected) {
+        if (!plugin.isEnabled()) {
+            rejected.run();
+            return;
+        }
         try {
             if (Bukkit.isPrimaryThread()) action.run();
             else Bukkit.getScheduler().runTask(plugin, action);
@@ -369,6 +386,7 @@ public final class GuardRentService {
             plugin.getLogger().log(Level.SEVERE,
                     "Could not schedule guard rent continuation on the server thread.",
                     schedulingError);
+            rejected.run();
         }
     }
 
