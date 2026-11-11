@@ -85,6 +85,50 @@ public final class DatabaseManager implements AutoCloseable {
         });
     }
 
+    /**
+     * Runs the supplied callback in one SQLite transaction on a database worker.
+     * The callback must use only the supplied connection and must not perform
+     * Bukkit or Towny operations.
+     */
+    public <T> CompletableFuture<T> transaction(DatabaseTransaction<T> task) {
+        if (!initialized.get()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Database is not initialized."));
+        }
+
+        return submit(() -> {
+            try (Connection connection = openConnection()) {
+                boolean previousAutoCommit = connection.getAutoCommit();
+                connection.setAutoCommit(false);
+                Throwable failure = null;
+
+                try {
+                    T result = task.run(connection);
+                    connection.commit();
+                    return result;
+                } catch (SQLException | RuntimeException | Error exception) {
+                    failure = exception;
+                    try {
+                        connection.rollback();
+                    } catch (SQLException rollbackException) {
+                        exception.addSuppressed(rollbackException);
+                    }
+                    throw exception;
+                } finally {
+                    try {
+                        connection.setAutoCommit(previousAutoCommit);
+                    } catch (SQLException restoreException) {
+                        if (failure != null) {
+                            failure.addSuppressed(restoreException);
+                        } else {
+                            throw restoreException;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     private Connection openConnection() throws SQLException {
         Connection connection = DriverManager.getConnection(
                 "jdbc:sqlite:" + databaseFile.getAbsolutePath());
@@ -150,6 +194,11 @@ public final class DatabaseManager implements AutoCloseable {
 
     @FunctionalInterface
     public interface DatabaseQuery<T> {
+        T run(Connection connection) throws SQLException;
+    }
+
+    @FunctionalInterface
+    public interface DatabaseTransaction<T> {
         T run(Connection connection) throws SQLException;
     }
 
