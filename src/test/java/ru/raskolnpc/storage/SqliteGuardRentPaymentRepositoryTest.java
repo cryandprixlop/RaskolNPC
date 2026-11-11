@@ -177,6 +177,67 @@ class SqliteGuardRentPaymentRepositoryTest {
                 "any-id", GuardRentPaymentStatus.IN_PROGRESS, UUID.randomUUID()).join());
     }
 
+    @Test
+    void ordinaryDeletionIsBlockedForEveryUnresolvedRentStatus() {
+        GuardRentPaymentStatus[] blockedStatuses = {
+                GuardRentPaymentStatus.IN_PROGRESS,
+                GuardRentPaymentStatus.PAID,
+                GuardRentPaymentStatus.FAILED,
+                GuardRentPaymentStatus.REVIEW_REQUIRED
+        };
+
+        long dueAt = 1_800_100_000L;
+        for (GuardRentPaymentStatus status : blockedStatuses) {
+            NpcRecord guard = insertGuard();
+            String paymentId = "blocked-" + status.name().toLowerCase();
+            payments.createIfAbsent(payment(paymentId, guard.id(), dueAt++, status)).join();
+
+            CompletionException error = assertThrows(CompletionException.class,
+                    () -> new SqliteNpcDeletionRepository(database)
+                            .deleteAndQueue(guard.id()).join());
+            assertTrue(rootMessage(error).contains(paymentId));
+            assertTrue(npcs.findById(guard.id()).join().isPresent());
+            assertEquals(0, pendingDeletionCount(guard.id()));
+        }
+    }
+
+    @Test
+    void ordinaryDeletionIsAllowedAfterRentPaymentWasApplied() {
+        GuardRentPaymentStatus[] completedStatuses = {
+                GuardRentPaymentStatus.PAID_APPLIED,
+                GuardRentPaymentStatus.DEBT_APPLIED
+        };
+
+        long dueAt = 1_800_200_000L;
+        for (GuardRentPaymentStatus status : completedStatuses) {
+            NpcRecord guard = insertGuard();
+            payments.createIfAbsent(payment("completed-" + status.name().toLowerCase(),
+                    guard.id(), dueAt++, status)).join();
+
+            assertTrue(new SqliteNpcDeletionRepository(database)
+                    .deleteAndQueue(guard.id()).join());
+            assertTrue(npcs.findById(guard.id()).join().isEmpty());
+            assertEquals(1, pendingDeletionCount(guard.id()));
+        }
+    }
+
+    @Test
+    void ordinaryDeletionOfNonGuardIsNotBlockedByGuardRentLedger() {
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Test resident",
+                null, "town-test", null, "{}");
+        npcs.insert(resident).join();
+
+        assertTrue(new SqliteNpcDeletionRepository(database)
+                .deleteAndQueue(resident.id()).join());
+        assertTrue(npcs.findById(resident.id()).join().isEmpty());
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) current = current.getCause();
+        return current.getMessage() == null ? "" : current.getMessage();
+    }
+
     private NpcRecord insertGuard() {
         NpcRecord record = NpcRecord.create(NpcType.GUARD, "Test guard",
                 null, "town-test", null, "{\"level\":1}");
