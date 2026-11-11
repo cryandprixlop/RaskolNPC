@@ -136,7 +136,8 @@ public final class NpcCommandService {
         }
 
         String data = "{\"level\":" + level + ",\"dailyRent\":" + dailyRent
-                + ",\"payerTownId\":\"" + placement.townId() + "\"}";
+                + ",\"payerTownId\":\"" + placement.townId() + "\",\"overdueDays\":0,\"nextRentAt\":"
+                + (java.time.Instant.now().getEpochSecond() + 86400) + "}";
         CompletableFuture<NpcRecord> creation = lifecycle.create(NpcType.GUARD, name,
                 player.getUniqueId(), placement.townId(), placement.nationId(), data);
         return creation.thenCompose(record ->
