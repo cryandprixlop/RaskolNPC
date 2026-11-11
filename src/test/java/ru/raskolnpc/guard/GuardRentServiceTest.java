@@ -130,6 +130,28 @@ class GuardRentServiceTest {
         }
     }
 
+
+    @Test
+    void startFailsClearlyWhenSchedulerRejectsRentTask() {
+        try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+            org.bukkit.scheduler.BukkitScheduler scheduler =
+                    mock(org.bukkit.scheduler.BukkitScheduler.class);
+            bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+            bukkit.when(Bukkit::getScheduler).thenReturn(scheduler);
+            when(scheduler.runTaskTimer(any(Plugin.class), any(Runnable.class),
+                    anyLong(), anyLong())).thenThrow(new IllegalStateException("scheduler stopping"));
+
+            Plugin plugin = mock(Plugin.class);
+            when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("test"));
+            GuardRentService service = new GuardRentService(plugin, new NpcRegistry(),
+                    mock(NpcLifecycleService.class), mock(NpcEntityManager.class),
+                    mock(TownyTownBankEconomy.class), mock(GuardRentPaymentRepository.class), 3);
+
+            IllegalStateException failure = assertThrows(IllegalStateException.class, service::start);
+            assertTrue(failure.getMessage().contains("Could not start"));
+        }
+    }
+
     private static GuardRentPayment paidPayment(
             NpcRegistry registry, String paymentId
     ) {
