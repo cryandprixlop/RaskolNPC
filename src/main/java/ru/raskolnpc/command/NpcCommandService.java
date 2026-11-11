@@ -185,9 +185,9 @@ public final class NpcCommandService {
             GuardHiringPaymentRepository journal, GuardHiringPayment payment,
             TownyKingdomGuardAccess.Placement placement, String name, int level,
             double dailyRent, Location location) {
-        String data = "{\\"level\\":" + level + ",\\"dailyRent\\":" + dailyRent
-                + ",\\"payerTownId\\":\\"" + placement.townId()
-                + "\\",\\"overdueDays\\":0,\\"nextRentAt\\":"
+        String data = "{\"level\":" + level + ",\"dailyRent\":" + dailyRent
+                + ",\"payerTownId\":\"" + placement.townId()
+                + "\",\"overdueDays\":0,\"nextRentAt\":"
                 + (java.time.Instant.now().getEpochSecond() + 86400) + "}";
         final CompletableFuture<NpcRecord> creation;
         try {
