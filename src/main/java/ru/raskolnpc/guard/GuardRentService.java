@@ -74,6 +74,7 @@ public final class GuardRentService {
                 if (dueAt <= 0 || dueAt > now) continue;
                 if (inFlight.add(record.id())) collect(record, now);
             } catch (RuntimeException exception) {
+                inFlight.remove(record.id());
                 plugin.getLogger().log(Level.SEVERE,
                         "Could not process rent for guard " + record.id(), exception);
             }
@@ -85,6 +86,7 @@ public final class GuardRentService {
         String payerTownId = string(record.dataJson(), "payerTownId");
         int debtDays = (int) number(record.dataJson(), "overdueDays", 0);
         if (!Double.isFinite(rent) || rent < 0 || payerTownId == null || payerTownId.isBlank()) {
+            inFlight.remove(record.id());
             plugin.getLogger().severe("Guard " + record.id()
                     + " has invalid rent metadata; automatic removal is suspended.");
             return;
