@@ -94,15 +94,17 @@ public final class GuardRentService {
             String data = metadata(record.dataJson(), 0, now + DAY_SECONDS);
             NpcRecord paid = copy(record, NpcState.ACTIVE, data);
             lifecycle.updateRecord(paid).whenComplete((updated, error) -> runMain(() -> {
-                if (error != null || !Boolean.TRUE.equals(updated)) {
-                    plugin.getLogger().log(Level.SEVERE,
-                            "Could not persist successful rent payment for " + record.id(), error);
-                    return;
+                try {
+                    if (error != null || !Boolean.TRUE.equals(updated)) {
+                        plugin.getLogger().log(Level.SEVERE,
+                                "Could not persist successful rent payment for " + record.id(), error);
+                        return;
+                    }
+                    setAi(record, true);
+                } finally {
+                    inFlight.remove(record.id());
                 }
-                setAi(record, true);
             }));
-                inFlight.remove(record.id());
-            });
             return;
         }
 
@@ -121,13 +123,16 @@ public final class GuardRentService {
         NpcRecord unpaid = copy(record, NpcState.INACTIVE,
                 metadata(record.dataJson(), nextDebt, now + DAY_SECONDS));
         lifecycle.updateRecord(unpaid).whenComplete((updated, error) -> runMain(() -> {
-            if (error != null || !Boolean.TRUE.equals(updated)) {
-                plugin.getLogger().log(Level.SEVERE,
-                        "Could not persist rent debt for guard " + record.id(), error);
-                return;
+            try {
+                if (error != null || !Boolean.TRUE.equals(updated)) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not persist rent debt for guard " + record.id(), error);
+                    return;
+                }
+                setAi(record, false);
+            } finally {
+                inFlight.remove(record.id());
             }
-            setAi(record, false);
-            inFlight.remove(record.id());
         }));
     }
 
