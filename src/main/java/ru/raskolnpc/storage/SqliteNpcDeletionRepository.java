@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public final class SqliteNpcDeletionRepository implements NpcDeletionRepository {
+    private static final String BLOCKED_DELETION_MESSAGE =
+            "Cannot delete guard while rent payment requires reconciliation: ";
+
     private final DatabaseManager database;
 
     public SqliteNpcDeletionRepository(DatabaseManager database) {
@@ -17,38 +20,53 @@ public final class SqliteNpcDeletionRepository implements NpcDeletionRepository 
 
     @Override
     public CompletableFuture<Boolean> deleteAndQueue(NpcId id) {
-        return database.query(connection -> {
-            boolean autoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                int queued;
+        return database.transaction(connection -> {
+            boolean isGuard;
+            try (var statement = connection.prepareStatement(
+                    "SELECT 1 FROM npcs WHERE id = ? AND type = 'GUARD'")) {
+                statement.setString(1, id.toString());
+                try (var result = statement.executeQuery()) {
+                    isGuard = result.next();
+                }
+            }
+
+            if (isGuard) {
                 try (var statement = connection.prepareStatement("""
-                        INSERT OR IGNORE INTO pending_npc_deletions(npc_id)
-                        SELECT id FROM npcs WHERE id = ?
+                        SELECT payment_id
+                        FROM guard_rent_payments
+                        WHERE npc_id = ?
+                          AND status IN ('IN_PROGRESS', 'PAID', 'FAILED', 'REVIEW_REQUIRED')
+                        ORDER BY rent_due_at, payment_id
+                        LIMIT 1
                         """)) {
                     statement.setString(1, id.toString());
-                    queued = statement.executeUpdate();
-                }
-                if (queued == 0) {
-                    connection.rollback();
-                    return false;
-                }
-                try (var statement = connection.prepareStatement(
-                        "DELETE FROM npcs WHERE id = ?")) {
-                    statement.setString(1, id.toString());
-                    if (statement.executeUpdate() == 0) {
-                        connection.rollback();
-                        return false;
+                    try (var result = statement.executeQuery()) {
+                        if (result.next()) {
+                            throw new SQLException(BLOCKED_DELETION_MESSAGE
+                                    + result.getString("payment_id"));
+                        }
                     }
                 }
-                connection.commit();
-                return true;
-            } catch (SQLException exception) {
-                connection.rollback();
-                throw exception;
-            } finally {
-                connection.setAutoCommit(autoCommit);
             }
+
+            int queued;
+            try (var statement = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO pending_npc_deletions(npc_id)
+                    SELECT id FROM npcs WHERE id = ?
+                    """)) {
+                statement.setString(1, id.toString());
+                queued = statement.executeUpdate();
+            }
+            if (queued == 0) return false;
+
+            try (var statement = connection.prepareStatement(
+                    "DELETE FROM npcs WHERE id = ?")) {
+                statement.setString(1, id.toString());
+                if (statement.executeUpdate() == 0) {
+                    throw new SQLException("NPC disappeared during deletion: " + id);
+                }
+            }
+            return true;
         });
     }
 
