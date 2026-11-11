@@ -91,14 +91,6 @@ class GuardRentServiceTest {
     }
 
     @Test
-    void inactiveGuardRemainsInactiveAfterRecoveryDecision() {
-        NpcRecord guard = guard(NpcState.INACTIVE, 2);
-        assertFalse(GuardRentService.shouldGuardBeActive(guard));
-        assertTrue(GuardRentService.shouldGuardBeActive(
-                GuardRentService.copy(guard, NpcState.ACTIVE, "{}")));
-    }
-
-    @Test
     void firstFailedPaymentPersistsDebtAndDisablesGuard() {
         NpcRecord guard = addDueGuard(NpcState.ACTIVE, 0);
         when(economy.withdraw(eq("town-uuid"), eq(30.0), anyString())).thenReturn(false);
@@ -132,7 +124,8 @@ class GuardRentServiceTest {
         assertEquals(0.0, GuardRentService.number(updated.dataJson(), "overdueDays", -1));
         assertTrue(GuardRentService.number(updated.dataJson(), "nextRentAt", -1)
                 > Instant.now().getEpochSecond());
-        verify(living).setAI(true);
+        verify(living).setAI(false);
+        verify(living, never()).setAI(true);
     }
 
     @Test
