@@ -98,7 +98,7 @@ class NpcEntityManagerTest {
 
         assertTrue(manager.remove(id));
         assertFalse(entity.isValid());
-        verify(tagger).read(entity);
+        verify(tagger, times(2)).read(entity);
     }
 
     @Test
