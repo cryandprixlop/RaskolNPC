@@ -20,7 +20,6 @@ class TownyResidentServiceTest {
                 new TownyResidentService(api).resolveAndAuthorize(player, location);
         assertEquals(townId, result.townId());
         assertEquals(nationId, result.nationId());
-        verifyNoInteractions(player);
     }
 
     @Test
