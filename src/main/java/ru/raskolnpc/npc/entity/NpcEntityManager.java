@@ -82,7 +82,13 @@ public final class NpcEntityManager {
                     result.complete(boundRecord);
                 });
             } catch (RuntimeException schedulingError) {
-                result.completeExceptionally(schedulingError);
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Could not schedule entity binding completion for NPC " + record.id()
+                                + ". The spawned entity will remain tracked for shutdown cleanup.",
+                        schedulingError);
+                result.completeExceptionally(new NpcEntityException(
+                        "Could not schedule entity binding completion for NPC " + record.id()
+                                + ": " + schedulingError.getMessage()));
             }
         });
         return result;
@@ -100,16 +106,23 @@ public final class NpcEntityManager {
         liveEntities.put(record.id(), entity.getUniqueId());
         repository.update(boundRecord).whenComplete((updated, error) -> {
             if (!plugin.isEnabled()) return;
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (error != null || !Boolean.TRUE.equals(updated)) {
-                    entity.remove();
-                    liveEntities.remove(record.id(), entity.getUniqueId());
-                    plugin.getLogger().severe("Could not persist entity binding for NPC "
-                            + record.id() + (error == null ? "" : ": " + error.getMessage()));
-                    return;
-                }
-                registry.put(boundRecord);
-            });
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (error != null || !Boolean.TRUE.equals(updated)) {
+                        entity.remove();
+                        liveEntities.remove(record.id(), entity.getUniqueId());
+                        plugin.getLogger().severe("Could not persist entity binding for NPC "
+                                + record.id() + (error == null ? "" : ": " + error.getMessage()));
+                        return;
+                    }
+                    registry.put(boundRecord);
+                });
+            } catch (RuntimeException schedulingError) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Could not schedule entity binding completion for NPC " + record.id()
+                                + ". The entity remains tracked for shutdown cleanup.",
+                        schedulingError);
+            }
         });
         return entity;
     }
@@ -232,6 +245,15 @@ public final class NpcEntityManager {
 
     public void clear() {
         requireMainThread();
+        for (UUID entityId : liveEntities.values()) {
+            for (var world : Bukkit.getWorlds()) {
+                Entity entity = world.getEntity(entityId);
+                if (entity != null && entity.isValid()) {
+                    entity.remove();
+                    break;
+                }
+            }
+        }
         liveEntities.clear();
     }
 
