@@ -50,7 +50,8 @@ class SqliteGuardRentPaymentRepositoryTest {
 
     @Test
     void uniqueNpcAndDueTimestampPreventsDuplicatePayment() {
-        GuardRentPayment first = payment("payment-1", NpcId.create(), 1_800_000_000L,
+        NpcRecord guard = insertGuard();
+        GuardRentPayment first = payment("payment-1", guard.id(), 1_800_000_000L,
                 GuardRentPaymentStatus.IN_PROGRESS);
         GuardRentPayment duplicate = payment("payment-2", first.npcId(), first.rentDueAt(),
                 GuardRentPaymentStatus.IN_PROGRESS);
@@ -63,11 +64,11 @@ class SqliteGuardRentPaymentRepositoryTest {
 
     @Test
     void startupRecoveryMovesOnlyUnfinishedPaymentsToManualReview() {
-        GuardRentPayment unfinished = payment("unfinished", NpcId.create(), 1_800_000_000L,
+        GuardRentPayment unfinished = payment("unfinished", insertGuard().id(), 1_800_000_000L,
                 GuardRentPaymentStatus.IN_PROGRESS);
-        GuardRentPayment paid = payment("paid", NpcId.create(), 1_800_000_001L,
+        GuardRentPayment paid = payment("paid", insertGuard().id(), 1_800_000_001L,
                 GuardRentPaymentStatus.PAID);
-        GuardRentPayment failed = payment("failed", NpcId.create(), 1_800_000_002L,
+        GuardRentPayment failed = payment("failed", insertGuard().id(), 1_800_000_002L,
                 GuardRentPaymentStatus.FAILED);
 
         payments.createIfAbsent(unfinished).join();
@@ -85,7 +86,7 @@ class SqliteGuardRentPaymentRepositoryTest {
 
     @Test
     void paymentCanLeaveInProgressOnlyOnce() {
-        GuardRentPayment payment = payment("transition", NpcId.create(), 1_800_000_000L,
+        GuardRentPayment payment = payment("transition", insertGuard().id(), 1_800_000_000L,
                 GuardRentPaymentStatus.IN_PROGRESS);
         payments.createIfAbsent(payment).join();
 
@@ -156,7 +157,7 @@ class SqliteGuardRentPaymentRepositoryTest {
 
     @Test
     void administratorCanResolveOnlyReviewPaymentAndResolutionIsAudited() {
-        GuardRentPayment payment = payment("manual-review", NpcId.create(), 1_800_000_000L,
+        GuardRentPayment payment = payment("manual-review", insertGuard().id(), 1_800_000_000L,
                 GuardRentPaymentStatus.REVIEW_REQUIRED);
         payments.createIfAbsent(payment).join();
         UUID administrator = UUID.randomUUID();
@@ -175,6 +176,45 @@ class SqliteGuardRentPaymentRepositoryTest {
     void reviewResolutionRejectsNonFinalStatuses() {
         assertThrows(CompletionException.class, () -> payments.resolveReview(
                 "any-id", GuardRentPaymentStatus.IN_PROGRESS, UUID.randomUUID()).join());
+    }
+
+    @Test
+    void paymentCreationIsRejectedAfterGuardWasDeleted() {
+        NpcRecord guard = insertGuard();
+        SqliteNpcDeletionRepository deletions = new SqliteNpcDeletionRepository(database);
+        assertTrue(deletions.deleteAndQueue(guard.id()).join());
+
+        GuardRentPayment payment = payment("after-deletion", guard.id(), 1_800_300_000L,
+                GuardRentPaymentStatus.IN_PROGRESS);
+        assertFalse(payments.createIfAbsent(payment).join());
+        assertTrue(payments.findById(payment.paymentId()).join().isEmpty());
+    }
+
+    @Test
+    void paymentCreatedBeforeDeletionPreventsGuardDeletion() {
+        NpcRecord guard = insertGuard();
+        GuardRentPayment payment = payment("before-deletion", guard.id(), 1_800_400_000L,
+                GuardRentPaymentStatus.IN_PROGRESS);
+        assertTrue(payments.createIfAbsent(payment).join());
+
+        CompletionException error = assertThrows(CompletionException.class,
+                () -> new SqliteNpcDeletionRepository(database)
+                        .deleteAndQueue(guard.id()).join());
+        assertTrue(rootMessage(error).contains(payment.paymentId()));
+        assertTrue(npcs.findById(guard.id()).join().isPresent());
+        assertEquals(0, pendingDeletionCount(guard.id()));
+    }
+
+    @Test
+    void paymentCreationIsRejectedForResidentEvenWhenNpcExists() {
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Test resident",
+                null, "town-test", null, "{}");
+        npcs.insert(resident).join();
+
+        GuardRentPayment payment = payment("resident-payment", resident.id(), 1_800_500_000L,
+                GuardRentPaymentStatus.IN_PROGRESS);
+        assertFalse(payments.createIfAbsent(payment).join());
+        assertTrue(payments.findById(payment.paymentId()).join().isEmpty());
     }
 
     @Test
