@@ -11,6 +11,8 @@ guards:
   # Hiring and daily rent are charged to the bank of the placement town.
   base-hire-cost: 100.0
   base-daily-rent: 10.0
+  # A guard is dismissed after this many consecutive missed daily payments.
+  maximum-debt-days: 3
 
 integrations:
   towny:
