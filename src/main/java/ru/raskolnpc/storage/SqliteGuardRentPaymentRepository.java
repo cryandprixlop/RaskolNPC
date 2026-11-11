@@ -36,16 +36,21 @@ public final class SqliteGuardRentPaymentRepository implements GuardRentPaymentR
 
     @Override
     public CompletableFuture<Boolean> createIfAbsent(GuardRentPayment payment) {
-        return database.query(connection -> {
+        return database.transaction(connection -> {
             String sql = """
                     INSERT OR IGNORE INTO guard_rent_payments (
                         payment_id, npc_id, rent_due_at, town_id, amount, status,
                         target_debt_days, target_next_rent_at, failure_reason,
                         resolved_by, resolved_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    )
+                    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    WHERE EXISTS (
+                        SELECT 1 FROM npcs WHERE id = ? AND type = 'GUARD'
+                    )
                     """;
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 bindPayment(statement, payment);
+                statement.setString(12, payment.npcId().toString());
                 return statement.executeUpdate() == 1;
             }
         });
