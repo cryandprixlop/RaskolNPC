@@ -69,6 +69,8 @@ public final class GuardRentService {
         long now = Instant.now().getEpochSecond();
         for (NpcRecord record : registry.all()) {
             if (record.type() != NpcType.GUARD) continue;
+            // Reapply persisted activity after restart or chunk reload.
+            setAi(record, shouldGuardBeActive(record));
             try {
                 long dueAt = (long) number(record.dataJson(), "nextRentAt", 0);
                 if (dueAt <= 0 || dueAt > now) continue;
@@ -170,6 +172,10 @@ public final class GuardRentService {
         if (!plugin.isEnabled()) return;
         if (Bukkit.isPrimaryThread()) action.run();
         else Bukkit.getScheduler().runTask(plugin, action);
+    }
+
+    static boolean shouldGuardBeActive(NpcRecord record) {
+        return record.type() == NpcType.GUARD && record.state() == NpcState.ACTIVE;
     }
 
     static NpcRecord copy(NpcRecord record, NpcState state, String data) {
