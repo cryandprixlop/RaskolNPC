@@ -122,7 +122,7 @@ public final class RaskolNPC extends JavaPlugin {
 
                         rentRecovery.whenComplete((ignored, rentError) -> {
                             if (!isEnabled()) return;
-                            getServer().getScheduler().runTask(this, () -> {
+                            scheduleStartupStep(() -> {
                                 if (!isEnabled()) return;
                                 if (rentError != null) {
                                     disableAfterStartupFailure(
@@ -133,7 +133,7 @@ public final class RaskolNPC extends JavaPlugin {
 
                                 npcRecoveryService.recover().whenComplete((recovered, recoveryError) -> {
                                     if (!isEnabled()) return;
-                                    getServer().getScheduler().runTask(this, () -> {
+                                    scheduleStartupStep(() -> {
                                         if (!isEnabled()) return;
                                         if (recoveryError != null) {
                                             disableAfterStartupFailure(
