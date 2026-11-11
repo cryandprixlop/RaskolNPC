@@ -20,7 +20,6 @@ public record GuardHiringPayment(
 ) {
     public GuardHiringPayment {
         if (paymentId == null || paymentId.isBlank()) throw new IllegalArgumentException("Payment ID is required.");
-        if (npcId == null || npcId.isBlank()) throw new IllegalArgumentException("NPC ID is required.");
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         if (townId == null || townId.isBlank()) throw new IllegalArgumentException("Town ID is required.");
         if (nationId == null || nationId.isBlank()) throw new IllegalArgumentException("Nation ID is required.");
