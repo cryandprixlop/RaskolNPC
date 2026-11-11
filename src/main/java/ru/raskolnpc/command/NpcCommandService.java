@@ -199,38 +199,45 @@ public final class NpcCommandService {
                             + safeMessage(creationError), creationError);
         }
 
-        return creation.thenCompose(record ->
-                journal.attachNpcId(payment.paymentId(), record.id().toString())
-                        .thenCompose(attached -> {
-                            if (!attached) return markHiringReview(journal, payment.paymentId(),
-                                    "Could not attach created NPC ID to the confirmed hiring payment.",
-                                    new IllegalStateException("Could not attach NPC ID."));
-                            return onMainThread(() -> entities.spawnAsync(record, location))
-                                    .thenCompose(spawned -> journal.transition(
-                                            payment.paymentId(), "DEBIT_CONFIRMED", "COMPLETED", null)
-                                            .thenApply(completed -> {
-                                                if (!completed) throw new CompletionException(
-                                                        new IllegalStateException("Guard spawned, but "
-                                                                + "hiring completion was not persisted."));
-                                                return new GuardHiringService.HireResult(
-                                                        level, payment.hireCost(), dailyRent);
-                                            }))
-                                    .exceptionallyCompose(spawnError ->
-                                            cleanupGuardAfterSpawnFailure(record)
-                                                    .thenCompose(cleaned -> {
-                                                        if (!cleaned) return markHiringReview(
-                                                                journal, payment.paymentId(),
-                                                                "Guard spawn failed and NPC cleanup "
-                                                                        + "was not confirmed; no refund was attempted.",
-                                                                unwrap(spawnError));
-                                                        return refundConfirmedHire(journal, payment,
-                                                                placement, name, spawnError);
-                                                    }));
-                        }))
-                .exceptionallyCompose(creationError -> markHiringReview(
-                        journal, payment.paymentId(),
+        return creation.handle((record, creationError) -> {
+            if (creationError != null) {
+                return markHiringReview(journal, payment.paymentId(),
                         "NPC persistence failed after confirmed debit; automatic refund was withheld: "
-                                + safeMessage(unwrap(creationError)), unwrap(creationError)));
+                                + safeMessage(unwrap(creationError)), unwrap(creationError));
+            }
+            return journal.attachNpcId(payment.paymentId(), record.id().toString())
+                    .thenCompose(attached -> {
+                        if (!attached) return markHiringReview(journal, payment.paymentId(),
+                                "Could not attach created NPC ID to the confirmed hiring payment.",
+                                new IllegalStateException("Could not attach NPC ID."));
+                        CompletableFuture<GuardHiringService.HireResult> spawn =
+                                onMainThread(() -> entities.spawnAsync(record, location))
+                                        .handle((spawned, spawnError) -> {
+                                            if (spawnError != null) {
+                                                return cleanupGuardAfterSpawnFailure(record)
+                                                        .thenCompose(cleaned -> {
+                                                            if (!cleaned) return markHiringReview(
+                                                                    journal, payment.paymentId(),
+                                                                    "Guard spawn failed and NPC cleanup "
+                                                                            + "was not confirmed; no refund was attempted.",
+                                                                    unwrap(spawnError));
+                                                            return refundConfirmedHire(journal, payment,
+                                                                    placement, name, spawnError);
+                                                        });
+                                            }
+                                            return journal.transition(payment.paymentId(),
+                                                            "DEBIT_CONFIRMED", "COMPLETED", null)
+                                                    .thenApply(completed -> {
+                                                        if (!completed) throw new CompletionException(
+                                                                new IllegalStateException("Guard spawned, but "
+                                                                        + "hiring completion was not persisted."));
+                                                        return new GuardHiringService.HireResult(
+                                                                level, payment.hireCost(), dailyRent);
+                                                    });
+                                        }).thenCompose(java.util.function.Function.identity());
+                        return spawn;
+                    });
+        }).thenCompose(java.util.function.Function.identity());
     }
 
     private CompletableFuture<Boolean> cleanupGuardAfterSpawnFailure(NpcRecord record) {
