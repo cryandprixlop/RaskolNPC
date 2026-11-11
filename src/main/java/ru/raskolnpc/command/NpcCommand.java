@@ -36,8 +36,13 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("resident")
                 && sender instanceof Player
                 && service.isTownyIntegrationEnabled();
+        boolean guardHiring = args.length >= 2
+                && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("hire")
+                && sender instanceof Player
+                && service.isGuardHiringEnabled();
 
-        if (!admin && !townResidentCreation) {
+        if (!admin && !townResidentCreation && !guardHiring) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -48,6 +53,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "create" -> create(sender, args);
+            case "guard" -> guard(sender, args);
             case "list" -> {
                 if (admin) list(sender);
                 else deny(sender);
@@ -89,6 +95,37 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                         return;
                     }
                     messages.sendRaw(sender, "&aЖитель создан. UUID: &f" + record.id());
+                }));
+    }
+
+    private void guard(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "general.player-only", "&cЭту команду может выполнить только игрок.");
+            return;
+        }
+        if (args.length < 4 || !args[1].equalsIgnoreCase("hire")) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard hire <уровень> <имя>");
+            return;
+        }
+        final int level;
+        try {
+            level = Integer.parseInt(args[2]);
+        } catch (NumberFormatException exception) {
+            messages.sendRaw(sender, "&cУровень должен быть числом от 1 до 10.");
+            return;
+        }
+        String name = NpcCommandParser.joinName(args, 3);
+        service.hireGuard(name, level, player).whenComplete((result, error) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!plugin.isEnabled()) return;
+                    if (error != null) {
+                        messages.send(sender, "general.operation-failed",
+                                "&cНе удалось нанять стража: " + rootMessage(error));
+                        return;
+                    }
+                    messages.sendRaw(sender, "&aСтраж нанят. Уровень: &f" + result.level()
+                            + " &7Стоимость: &f" + result.hireCost()
+                            + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
     }
 
@@ -157,6 +194,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private void help(CommandSender sender, String label) {
         messages.sendRaw(sender, "&6Команды RaskolNPC:");
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
+        if (service.isGuardHiringEnabled()) {
+            messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
+        }
         if (sender.hasPermission(PERMISSION)) {
             messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
             messages.sendRaw(sender, "&e/" + label + " info <UUID> &7— информация");
@@ -169,14 +209,26 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                                       String alias, String[] args) {
         boolean canCreateTownResident = sender instanceof Player
                 && service.isTownyIntegrationEnabled();
-        if (!sender.hasPermission(PERMISSION) && !canCreateTownResident) return List.of();
+        boolean canHireGuard = sender instanceof Player && service.isGuardHiringEnabled();
+        if (!sender.hasPermission(PERMISSION) && !canCreateTownResident && !canHireGuard) {
+            return List.of();
+        }
         if (args.length == 1) {
-            List<String> values = sender.hasPermission(PERMISSION)
-                    ? List.of("create", "list", "info", "delete") : List.of("create");
+            java.util.ArrayList<String> values = new java.util.ArrayList<>();
+            if (sender.hasPermission(PERMISSION)) values.addAll(List.of("create", "list", "info", "delete"));
+            if (canHireGuard) values.add("guard");
+            if (canCreateTownResident && !values.contains("create")) values.add("create");
             return startsWith(values, args[0]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("create")) {
             return startsWith(List.of("resident"), args[1]);
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
+            return startsWith(List.of("hire"), args[1]);
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("hire")) {
+            return startsWith(List.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), args[2]);
         }
         return List.of();
     }
@@ -188,8 +240,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private String rootMessage(Throwable error) {
         Throwable current = error;
-        while (current.getCause() != null
-                && (current instanceof CompletionException || current.getCause() != null)) {
+        while (current instanceof CompletionException && current.getCause() != null) {
             current = current.getCause();
         }
         return current.getMessage() == null
