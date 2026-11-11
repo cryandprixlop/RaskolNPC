@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -239,6 +240,32 @@ public final class GuardRentService {
                 // The ledger already records that the NPC-side effect was committed.
             }
         }
+    }
+
+    /** Returns unresolved rent operations for the administrative review screen. */
+    public CompletableFuture<List<GuardRentPayment>> findReviewPayments() {
+        return payments.findByStatus(GuardRentPaymentStatus.REVIEW_REQUIRED);
+    }
+
+    /**
+     * Resolves an ambiguous operation without calling Towny again. The chosen
+     * outcome is persisted first, then the already-decided NPC effect is applied.
+     */
+    public CompletableFuture<Boolean> resolveReview(
+            String paymentId, boolean paid, UUID administratorUuid
+    ) {
+        GuardRentPaymentStatus resolution = paid
+                ? GuardRentPaymentStatus.PAID : GuardRentPaymentStatus.FAILED;
+        return payments.resolveReview(paymentId, resolution, administratorUuid)
+                .thenCompose(resolved -> {
+                    if (!resolved) return CompletableFuture.completedFuture(false);
+                    return payments.findById(paymentId).thenCompose(found -> {
+                        if (found.isEmpty()) return failed(
+                                "Resolved rent payment disappeared: " + paymentId);
+                        return applyKnownPayment(found.get(), paid)
+                                .thenApply(ignored -> true);
+                    });
+                });
     }
 
     private CompletableFuture<Void> applyKnownPayment(
