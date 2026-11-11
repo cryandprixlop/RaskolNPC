@@ -5,18 +5,16 @@ import com.palmergames.bukkit.towny.object.Town;
 
 import java.util.UUID;
 
-/** Charges and refunds the bank belonging to the town where a guard is stationed. */
+/** Withdraws guard rent from the bank of the town where the guard is stationed. */
 public final class TownyTownBankEconomy {
+    /**
+     * Returns Towny's definitive result. Exceptions are intentionally propagated:
+     * callers must treat an exception as an unknown outcome, not as a failed debit.
+     */
     public boolean withdraw(String townId, double amount, String reason) {
         if (!valid(townId, amount)) return false;
         Town town = findTown(townId);
         return town != null && town.getAccount().withdraw(amount, reason);
-    }
-
-    public boolean deposit(String townId, double amount, String reason) {
-        if (!valid(townId, amount)) return false;
-        Town town = findTown(townId);
-        return town != null && town.getAccount().deposit(amount, reason);
     }
 
     private Town findTown(String townId) {
