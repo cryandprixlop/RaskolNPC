@@ -7,6 +7,11 @@ limits:
   companions-per-player: 3
   total-npcs: 150
 
+guards:
+  # Hiring and daily rent are charged to the bank of the placement town.
+  base-hire-cost: 100.0
+  base-daily-rent: 10.0
+
 integrations:
   towny:
     enabled: true
