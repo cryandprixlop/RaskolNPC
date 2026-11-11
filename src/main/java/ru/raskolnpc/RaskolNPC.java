@@ -6,10 +6,12 @@ import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
+import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
+import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
 import ru.raskolnpc.npc.entity.NpcEntityListener;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.entity.NpcEntityTagger;
@@ -68,9 +70,17 @@ public final class RaskolNPC extends JavaPlugin {
                 ? townyIntegration.residents() : null;
         int residentsPerTown = Math.max(1,
                 getConfig().getInt("limits.residents-per-town", 15));
+        int guardsPerNation = Math.max(1,
+                getConfig().getInt("limits.guards-per-nation", 30));
         NpcCommandService commandService = new NpcCommandService(
                 this, npcLifecycleService, npcRegistry, npcEntityManager,
-                townyResidents, new TownyNpcLimitService(), residentsPerTown);
+                townyResidents, new TownyNpcLimitService(), residentsPerTown,
+                townyKingdomGuardAccess,
+                townyEnabled ? new TownyTownBankEconomy() : null,
+                townyEnabled ? new KingdomGuardService() : null,
+                guardsPerNation,
+                getConfig().getDouble("guards.base-hire-cost", 100.0),
+                getConfig().getDouble("guards.base-daily-rent", 10.0));
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         Objects.requireNonNull(getCommand("raskolnpc"),
