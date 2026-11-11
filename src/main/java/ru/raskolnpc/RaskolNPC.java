@@ -99,7 +99,7 @@ public final class RaskolNPC extends JavaPlugin {
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
                 .whenComplete((records, error) -> {
                     if (!isEnabled()) return;
-                    getServer().getScheduler().runTask(this, () -> {
+                    scheduleStartupStep(() -> {
                         if (!isEnabled()) return;
                         if (error != null) {
                             disableAfterStartupFailure(
@@ -142,7 +142,16 @@ public final class RaskolNPC extends JavaPlugin {
                                             return;
                                         }
                                         npcLifecycleService.markReady();
-                                        if (guardRentService != null) guardRentService.start();
+                                        if (guardRentService != null) {
+                                            try {
+                                                guardRentService.start();
+                                            } catch (RuntimeException startError) {
+                                                disableAfterStartupFailure(
+                                                        "RaskolNPC could not start guard rent collection.",
+                                                        startError);
+                                                return;
+                                            }
+                                        }
                                         getLogger().info("RaskolNPC is enabled. Loaded "
                                                 + records.size()
                                                 + " NPC record(s); payment and entity recovery completed.");
@@ -154,6 +163,16 @@ public final class RaskolNPC extends JavaPlugin {
                 });
 
         getLogger().info("RaskolNPC is starting.");
+    }
+
+    private void scheduleStartupStep(Runnable action) {
+        if (!isEnabled()) return;
+        try {
+            getServer().getScheduler().runTask(this, action);
+        } catch (RuntimeException schedulingError) {
+            disableAfterStartupFailure(
+                    "RaskolNPC could not schedule a startup continuation.", schedulingError);
+        }
     }
 
     private void disableAfterStartupFailure(String message, Throwable error) {
