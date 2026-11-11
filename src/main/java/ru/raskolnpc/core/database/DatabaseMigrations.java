@@ -22,6 +22,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 1)) applyInitialSchema(connection);
         if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
         if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
+        if (!isApplied(connection, 4)) applyGuardRentPaymentSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -106,6 +107,66 @@ public final class DatabaseMigrations {
             throw exception;
         } finally {
             connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private static void applyGuardRentPaymentSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_rent_payments (
+                        payment_id TEXT PRIMARY KEY,
+                        npc_id TEXT NOT NULL,
+                        rent_due_at INTEGER NOT NULL CHECK (rent_due_at > 0),
+                        town_id TEXT NOT NULL,
+                        amount REAL NOT NULL CHECK (amount >= 0),
+                        status TEXT NOT NULL CHECK (status IN (
+                            'IN_PROGRESS',
+                            'PAID',
+                            'PAID_APPLIED',
+                            'FAILED',
+                            'DEBT_APPLIED',
+                            'REVIEW_REQUIRED'
+                        )),
+                        target_debt_days INTEGER NOT NULL
+                            CHECK (target_debt_days >= 0 AND target_debt_days <= 3),
+                        target_next_rent_at INTEGER NOT NULL
+                            CHECK (target_next_rent_at > 0),
+                        failure_reason TEXT,
+                        resolved_by TEXT,
+                        resolved_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (npc_id, rent_due_at)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_guard_rent_payments_status
+                    ON guard_rent_payments(status)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (4)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackException) {
+                exception.addSuppressed(rollbackException);
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException restoreException) {
+                if (failure != null) {
+                    failure.addSuppressed(restoreException);
+                } else {
+                    throw restoreException;
+                }
+            }
         }
     }
 }
