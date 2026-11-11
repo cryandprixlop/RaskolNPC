@@ -177,7 +177,7 @@ public final class NpcCommandService {
                                     new IllegalStateException("Списание подтверждено, но результат "
                                             + "не записан. Требуется ручная проверка."));
                             return createGuardAfterConfirmedDebit(journal, payment, placement,
-                                    name, level, dailyRent, location);
+                                    name, level, dailyRent, location, reservation);
                         });
             });
         }).whenComplete((result, error) -> reservation.close());
@@ -186,16 +186,18 @@ public final class NpcCommandService {
     private CompletableFuture<GuardHiringService.HireResult> createGuardAfterConfirmedDebit(
             GuardHiringPaymentRepository journal, GuardHiringPayment payment,
             TownyKingdomGuardAccess.Placement placement, String name, int level,
-            double dailyRent, Location location) {
+            double dailyRent, Location location,
+            KingdomGuardService.Reservation reservation) {
         String data = "{\"level\":" + level + ",\"dailyRent\":" + dailyRent
                 + ",\"payerTownId\":\"" + placement.townId()
                 + "\",\"overdueDays\":0,\"nextRentAt\":"
                 + (java.time.Instant.now().getEpochSecond() + 86400) + "}";
         final CompletableFuture<NpcRecord> creation;
         try {
-            creation = lifecycle.create(NpcType.GUARD, name, payment.ownerUuid(),
-                    placement.townId(), placement.nationId(), data,
-                    NpcSpawnLocation.from(location));
+            creation = releaseReservationAfterCreation(
+                    lifecycle.create(NpcType.GUARD, name, payment.ownerUuid(),
+                            placement.townId(), placement.nationId(), data,
+                            NpcSpawnLocation.from(location)), reservation);
         } catch (Throwable creationError) {
             return markHiringReview(journal, payment.paymentId(),
                     "NPC creation threw after confirmed debit; cleanup outcome is unknown: "
@@ -241,6 +243,12 @@ public final class NpcCommandService {
                         return spawn;
                     });
         }).thenCompose(java.util.function.Function.identity());
+    }
+
+    static CompletableFuture<NpcRecord> releaseReservationAfterCreation(
+            CompletableFuture<NpcRecord> creation,
+            KingdomGuardService.Reservation reservation) {
+        return creation.whenComplete((record, error) -> reservation.close());
     }
 
     private CompletableFuture<Boolean> cleanupGuardAfterSpawnFailure(NpcRecord record) {

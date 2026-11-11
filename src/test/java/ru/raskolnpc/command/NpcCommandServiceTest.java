@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
+import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
@@ -104,6 +105,42 @@ class NpcCommandServiceTest {
         assertThrows(RuntimeException.class,
                 () -> service.createResident("Another", player).join());
         verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void releasesGuardReservationAsSoonAsLifecycleCreationCompletes() {
+        NpcRegistry registry = new NpcRegistry();
+        KingdomGuardService guardLimits = new KingdomGuardService();
+        for (int i = 0; i < 28; i++) {
+            registry.put(NpcRecord.create(NpcType.GUARD, "Guard " + i,
+                    null, "town-1", "nation-1", "{}"));
+        }
+
+        KingdomGuardService.Reservation reservation =
+                guardLimits.reserve("nation-1", 30, registry);
+        CompletableFuture<NpcRecord> creation = new CompletableFuture<>();
+        CompletableFuture<NpcRecord> tracked =
+                NpcCommandService.releaseReservationAfterCreation(creation, reservation);
+
+        // One slot remains while creation is pending.
+        try (KingdomGuardService.Reservation available =
+                     guardLimits.reserve("nation-1", 30, registry)) {
+            assertNotNull(available);
+        }
+
+        NpcRecord created = NpcRecord.create(NpcType.GUARD, "New guard",
+                null, "town-1", "nation-1", "{}");
+        registry.put(created);
+        creation.complete(created);
+
+        assertSame(created, tracked.join());
+        // The newly registered guard counts once, and its pending reservation
+        // has already been released, so the final slot remains available.
+        try (KingdomGuardService.Reservation available =
+                     guardLimits.reserve("nation-1", 30, registry)) {
+            assertNotNull(available);
+        }
+        reservation.close(); // The outer operation's fallback close is idempotent.
     }
 
     private NpcCommandService service(TownyResidentService towny, NpcRegistry registry) {
