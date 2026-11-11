@@ -5,6 +5,8 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.guard.GuardHiringService;
+import ru.raskolnpc.guard.model.GuardHiringPayment;
+import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.UUID;
 
 public final class NpcCommandService {
     private final Plugin plugin;
@@ -36,6 +39,7 @@ public final class NpcCommandService {
     private final int guardsPerNation;
     private final double guardBaseHireCost;
     private final double guardBaseDailyRent;
+    private volatile GuardHiringPaymentRepository hiringPayments;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
                              NpcRegistry registry, NpcEntityManager entities,
@@ -66,6 +70,10 @@ public final class NpcCommandService {
         this.guardsPerNation = Math.max(1, guardsPerNation);
         this.guardBaseHireCost = requireMoney(guardBaseHireCost);
         this.guardBaseDailyRent = requireMoney(guardBaseDailyRent);
+    }
+
+    public void setGuardHiringPaymentRepository(GuardHiringPaymentRepository repository) {
+        this.hiringPayments = repository;
     }
 
     public boolean isTownyIntegrationEnabled() {
@@ -107,6 +115,11 @@ public final class NpcCommandService {
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "Найм стражи недоступен: интеграция Towny не настроена."));
         }
+        GuardHiringPaymentRepository journal = hiringPayments;
+        if (journal == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Журнал найма стражи не инициализирован; списание запрещено."));
+        }
         if (level < 1 || level > 10) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "Уровень стража должен быть от 1 до 10."));
@@ -128,41 +141,162 @@ public final class NpcCommandService {
 
         double hireCost = guardBaseHireCost * level;
         double dailyRent = guardBaseDailyRent * level;
-        if (!townBank.withdraw(placement.townId(), hireCost,
-                "RaskolNPC guard hire: " + name + " (level " + level + ")")) {
-            reservation.close();
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                    "В банке города недостаточно средств для найма стража."));
+        String paymentId = UUID.randomUUID().toString();
+        GuardHiringPayment payment = new GuardHiringPayment(
+                paymentId, null, player.getUniqueId(), placement.townId(),
+                placement.nationId(), name, level, hireCost, dailyRent,
+                "IN_PROGRESS", null, null, null);
+
+        return journal.create(payment).thenCompose(created -> {
+            if (!created) return CompletableFuture.failedFuture(
+                    new IllegalStateException("Не удалось зарегистрировать операцию найма."));
+            return onMainThread(() -> {
+                final boolean withdrawn;
+                try {
+                    withdrawn = townBank.withdraw(placement.townId(), hireCost,
+                            "RaskolNPC guard hire: " + name + " (level " + level + ")");
+                } catch (Throwable ambiguous) {
+                    return journal.transition(paymentId, "IN_PROGRESS", "REVIEW_REQUIRED",
+                                    "Towny withdrawal threw; bank result is unknown: "
+                                            + safeMessage(ambiguous))
+                            .thenCompose(ignored -> CompletableFuture.failedFuture(
+                                    new IllegalStateException("Результат списания неизвестен. "
+                                            + "Операция передана администратору на проверку.", ambiguous)));
+                }
+                if (!withdrawn) {
+                    return journal.transition(paymentId, "IN_PROGRESS", "DEBIT_FAILED",
+                                    "Towny returned false; no debit was confirmed.")
+                            .thenCompose(ignored -> CompletableFuture.failedFuture(
+                                    new IllegalStateException("В банке города недостаточно средств.")));
+                }
+                return journal.transition(paymentId, "IN_PROGRESS", "DEBIT_CONFIRMED", null)
+                        .thenCompose(marked -> {
+                            if (!marked) return CompletableFuture.failedFuture(
+                                    new IllegalStateException("Списание подтверждено, но результат "
+                                            + "не записан. Требуется ручная проверка."));
+                            return createGuardAfterConfirmedDebit(journal, payment, placement,
+                                    name, level, dailyRent, location);
+                        });
+            });
+        }).whenComplete((result, error) -> reservation.close());
+    }
+
+    private CompletableFuture<GuardHiringService.HireResult> createGuardAfterConfirmedDebit(
+            GuardHiringPaymentRepository journal, GuardHiringPayment payment,
+            TownyKingdomGuardAccess.Placement placement, String name, int level,
+            double dailyRent, Location location) {
+        String data = "{\\"level\\":" + level + ",\\"dailyRent\\":" + dailyRent
+                + ",\\"payerTownId\\":\\"" + placement.townId()
+                + "\\",\\"overdueDays\\":0,\\"nextRentAt\\":"
+                + (java.time.Instant.now().getEpochSecond() + 86400) + "}";
+        final CompletableFuture<NpcRecord> creation;
+        try {
+            creation = lifecycle.create(NpcType.GUARD, name, payment.ownerUuid(),
+                    placement.townId(), placement.nationId(), data);
+        } catch (Throwable creationError) {
+            return markHiringReview(journal, payment.paymentId(),
+                    "NPC creation threw after confirmed debit; cleanup outcome is unknown: "
+                            + safeMessage(creationError), creationError);
         }
 
-        String data = "{\"level\":" + level + ",\"dailyRent\":" + dailyRent
-                + ",\"payerTownId\":\"" + placement.townId() + "\",\"overdueDays\":0,\"nextRentAt\":"
-                + (java.time.Instant.now().getEpochSecond() + 86400) + "}";
-        CompletableFuture<NpcRecord> creation = lifecycle.create(NpcType.GUARD, name,
-                player.getUniqueId(), placement.townId(), placement.nationId(), data);
         return creation.thenCompose(record ->
-                onMainThread(() -> entities.spawnAsync(record, location))
-                        .exceptionallyCompose(error -> cleanup(record, error)))
-                .handle((record, error) -> {
-                    reservation.close();
-                    if (error != null) {
+                journal.attachNpcId(payment.paymentId(), record.id().toString())
+                        .thenCompose(attached -> {
+                            if (!attached) return markHiringReview(journal, payment.paymentId(),
+                                    "Could not attach created NPC ID to the confirmed hiring payment.",
+                                    new IllegalStateException("Could not attach NPC ID."));
+                            return onMainThread(() -> entities.spawnAsync(record, location))
+                                    .thenCompose(spawned -> journal.transition(
+                                            payment.paymentId(), "DEBIT_CONFIRMED", "COMPLETED", null)
+                                            .thenApply(completed -> {
+                                                if (!completed) throw new CompletionException(
+                                                        new IllegalStateException("Guard spawned, but "
+                                                                + "hiring completion was not persisted."));
+                                                return new GuardHiringService.HireResult(
+                                                        level, payment.hireCost(), dailyRent);
+                                            }))
+                                    .exceptionallyCompose(spawnError ->
+                                            cleanupGuardAfterSpawnFailure(record)
+                                                    .thenCompose(cleaned -> {
+                                                        if (!cleaned) return markHiringReview(
+                                                                journal, payment.paymentId(),
+                                                                "Guard spawn failed and NPC cleanup "
+                                                                        + "was not confirmed; no refund was attempted.",
+                                                                unwrap(spawnError));
+                                                        return refundConfirmedHire(journal, payment,
+                                                                placement, name, spawnError);
+                                                    }));
+                        }))
+                .exceptionallyCompose(creationError -> markHiringReview(
+                        journal, payment.paymentId(),
+                        "NPC persistence failed after confirmed debit; automatic refund was withheld: "
+                                + safeMessage(unwrap(creationError)), unwrap(creationError)));
+    }
+
+    private CompletableFuture<Boolean> cleanupGuardAfterSpawnFailure(NpcRecord record) {
+        return onMainThread(() -> {
+            entities.remove(record.id());
+            return lifecycle.delete(record.id()).thenCompose(deleted -> {
+                if (!deleted) return CompletableFuture.completedFuture(false);
+                return lifecycle.completeDeletion(record.id());
+            });
+        }).exceptionally(error -> false);
+    }
+
+    private CompletableFuture<GuardHiringService.HireResult> refundConfirmedHire(
+            GuardHiringPaymentRepository journal, GuardHiringPayment payment,
+            TownyKingdomGuardAccess.Placement placement, String name, Throwable spawnError) {
+        return journal.transition(payment.paymentId(), "DEBIT_CONFIRMED",
+                        "REFUND_IN_PROGRESS", "Guard spawn failed after confirmed cleanup: "
+                                + safeMessage(unwrap(spawnError)))
+                .thenCompose(started -> {
+                    if (!started) return markHiringReview(journal, payment.paymentId(),
+                            "Cleanup succeeded, but refund state could not be started; refund withheld.",
+                            unwrap(spawnError));
+                    return onMainThread(() -> {
+                        final boolean refunded;
                         try {
-                            boolean refunded = townBank.deposit(placement.townId(), hireCost,
+                            refunded = townBank.deposit(placement.townId(), payment.hireCost(),
                                     "RaskolNPC guard hire refund: " + name);
-                            if (!refunded) {
-                                plugin.getLogger().severe("Could not refund guard hire cost "
-                                        + hireCost + " to town " + placement.townId()
-                                        + " after NPC creation failed.");
-                            }
-                        } catch (RuntimeException refundError) {
-                            error.addSuppressed(refundError);
-                            plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                                    "Town bank refund failed after guard creation error.", refundError);
+                        } catch (Throwable refundError) {
+                            return journal.transition(payment.paymentId(), "REFUND_IN_PROGRESS",
+                                            "REVIEW_REQUIRED", "Towny refund threw; bank result is unknown: "
+                                                    + safeMessage(refundError))
+                                    .thenCompose(ignored -> CompletableFuture.failedFuture(
+                                            new IllegalStateException("Результат возврата неизвестен.",
+                                                    refundError)));
                         }
-                        throw new CompletionException(unwrap(error));
-                    }
-                    return new GuardHiringService.HireResult(level, hireCost, dailyRent);
+                        if (!refunded) {
+                            return journal.transition(payment.paymentId(), "REFUND_IN_PROGRESS",
+                                            "REVIEW_REQUIRED", "Towny returned false for the refund.")
+                                    .thenCompose(ignored -> CompletableFuture.failedFuture(
+                                            new IllegalStateException("Towny не подтвердил возврат средств.")));
+                        }
+                        return journal.transition(payment.paymentId(), "REFUND_IN_PROGRESS",
+                                        "REFUNDED", null)
+                                .thenCompose(saved -> saved
+                                        ? CompletableFuture.<GuardHiringService.HireResult>failedFuture(
+                                                new CompletionException(unwrap(spawnError)))
+                                        : markHiringReview(journal, payment.paymentId(),
+                                                "Refund was accepted by Towny but could not be finalized in SQLite.",
+                                                unwrap(spawnError)));
+                    });
                 });
+    }
+
+    private CompletableFuture<GuardHiringService.HireResult> markHiringReview(
+            GuardHiringPaymentRepository journal, String paymentId, String reason, Throwable cause) {
+        return journal.transition(paymentId, "DEBIT_CONFIRMED", "REVIEW_REQUIRED", reason)
+                .handle((changed, journalError) -> {
+                    if (journalError != null) cause.addSuppressed(journalError);
+                    throw new CompletionException(new IllegalStateException(
+                            "Найм требует ручной проверки. ID операции: " + paymentId, cause));
+                });
+    }
+
+    private static String safeMessage(Throwable error) {
+        return error.getMessage() == null || error.getMessage().isBlank()
+                ? error.getClass().getSimpleName() : error.getMessage();
     }
 
     private CompletableFuture<NpcRecord> cleanup(NpcRecord record, Throwable error) {
