@@ -27,7 +27,7 @@ public final class SqliteGuardHiringPaymentRepository implements GuardHiringPaym
     public CompletableFuture<Boolean> create(GuardHiringPayment payment) {
         return database.transaction(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO guard_hiring_payments (
+                    INSERT OR IGNORE INTO guard_hiring_payments (
                         payment_id, npc_id, owner_uuid, town_id, nation_id, guard_name,
                         level, hire_cost, daily_rent, status, failure_reason, resolved_by, resolved_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
