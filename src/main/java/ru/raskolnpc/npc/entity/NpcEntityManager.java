@@ -59,7 +59,7 @@ public final class NpcEntityManager {
                     entity.getUniqueId(), NpcSpawnLocation.from(location));
             liveEntities.put(record.id(), entity.getUniqueId());
             pendingEntityBindings.put(record.id(), new PendingEntityBinding(
-                    entity.getUniqueId(), NpcSpawnLocation.from(entity.getLocation())));
+                    entity.getUniqueId(), boundRecord.spawnLocation()));
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
@@ -120,7 +120,7 @@ public final class NpcEntityManager {
                 entity.getUniqueId(), NpcSpawnLocation.from(location));
         liveEntities.put(record.id(), entity.getUniqueId());
         pendingEntityBindings.put(record.id(), new PendingEntityBinding(
-                entity.getUniqueId(), NpcSpawnLocation.from(entity.getLocation())));
+                entity.getUniqueId(), boundRecord.spawnLocation()));
         repository.update(boundRecord).whenComplete((updated, error) -> {
             if (!plugin.isEnabled()) return;
             try {
