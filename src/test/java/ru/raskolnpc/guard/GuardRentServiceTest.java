@@ -1,6 +1,6 @@
 package ru.raskolnpc.guard;
 
-import be.seeseemelk.mockbukkit.MockBukkit;
+import org.mockbukkit.mockbukkit.MockBukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
