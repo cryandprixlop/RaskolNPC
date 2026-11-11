@@ -259,8 +259,9 @@ public final class GuardRentService {
                 .thenCompose(resolved -> {
                     if (!resolved) return CompletableFuture.completedFuture(false);
                     return payments.findById(paymentId).thenCompose(found -> {
-                        if (found.isEmpty()) return failed(
-                                "Resolved rent payment disappeared: " + paymentId);
+                        if (found.isEmpty()) return CompletableFuture.<Boolean>failedFuture(
+                                new IllegalStateException(
+                                        "Resolved rent payment disappeared: " + paymentId));
                         return applyKnownPayment(found.get(), paid)
                                 .thenApply(ignored -> true);
                     });
