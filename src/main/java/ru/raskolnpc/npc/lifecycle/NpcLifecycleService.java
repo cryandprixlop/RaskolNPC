@@ -8,13 +8,18 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class NpcLifecycleService {
+    private static final String RENT_DELETION_BLOCK_PREFIX =
+            "Cannot delete guard while rent payment requires reconciliation: ";
+
     private final NpcRepository repository;
     private final NpcRegistry registry;
     private final int maximumTotal;
@@ -135,10 +140,39 @@ public final class NpcLifecycleService {
 
     public CompletableFuture<Boolean> delete(NpcId id) {
         if (!isReady()) return notReady();
-        return deletions.deleteAndQueue(id).thenApply(deleted -> {
+        return deletions.deleteAndQueue(id).handle((deleted, error) -> {
+            if (error != null) {
+                SQLException blocked = findBlockedRentDeletion(error);
+                if (blocked != null) {
+                    throw new CompletionException(new NpcLifecycleException(
+                            blocked.getMessage(), blocked));
+                }
+                throw new CompletionException(unwrap(error));
+            }
             if (deleted) registry.unregister(id);
             return deleted;
         });
+    }
+
+    private static SQLException findBlockedRentDeletion(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof SQLException sqlException
+                    && sqlException.getMessage() != null
+                    && sqlException.getMessage().startsWith(RENT_DELETION_BLOCK_PREFIX)) {
+                return sqlException;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     public CompletableFuture<Boolean> completeDeletion(NpcId id) {
