@@ -51,6 +51,20 @@ public final class SqliteGuardHiringPaymentRepository implements GuardHiringPaym
     }
 
     @Override
+    public CompletableFuture<Boolean> attachNpcId(String paymentId, String npcId) {
+        return database.query(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE guard_hiring_payments SET npc_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE payment_id = ? AND npc_id IS NULL
+                    """)) {
+                statement.setString(1, npcId);
+                statement.setString(2, paymentId);
+                return statement.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> transition(String paymentId, String expectedStatus,
                                                   String newStatus, String reason) {
         return database.query(connection -> {
