@@ -24,6 +24,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
         if (!isApplied(connection, 4)) applyGuardRentPaymentSchema(connection);
         if (!isApplied(connection, 5)) applyGuardHiringPaymentSchema(connection);
+        if (!isApplied(connection, 6)) applyResidentProfileSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -170,6 +171,7 @@ public final class DatabaseMigrations {
             }
         }
     }
+
     private static void applyGuardHiringPaymentSchema(Connection connection) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
@@ -218,4 +220,61 @@ public final class DatabaseMigrations {
         }
     }
 
+    private static void applyResidentProfileSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_profiles (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        age INTEGER NOT NULL CHECK (age BETWEEN 1 AND 120),
+                        profession TEXT NOT NULL,
+                        hunger INTEGER NOT NULL CHECK (hunger BETWEEN 0 AND 100),
+                        energy INTEGER NOT NULL CHECK (energy BETWEEN 0 AND 100),
+                        rest INTEGER NOT NULL CHECK (rest BETWEEN 0 AND 100),
+                        social INTEGER NOT NULL CHECK (social BETWEEN 0 AND 100),
+                        housing_satisfaction INTEGER NOT NULL
+                            CHECK (housing_satisfaction BETWEEN 0 AND 100),
+                        mood INTEGER NOT NULL CHECK (mood BETWEEN 0 AND 100)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_traits (
+                        npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        trait TEXT NOT NULL,
+                        PRIMARY KEY (npc_id, trait)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_skills (
+                        npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        profession TEXT NOT NULL,
+                        skill_level TEXT NOT NULL,
+                        PRIMARY KEY (npc_id, profession)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_resident_profiles_profession "
+                    + "ON resident_profiles(profession)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (6)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackException) {
+                exception.addSuppressed(rollbackException);
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
 }
