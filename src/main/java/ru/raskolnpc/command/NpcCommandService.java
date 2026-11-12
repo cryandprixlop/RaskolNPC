@@ -19,6 +19,7 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.ResidentProfileService;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +42,7 @@ public final class NpcCommandService {
     private final double guardBaseHireCost;
     private final double guardBaseDailyRent;
     private volatile GuardHiringPaymentRepository hiringPayments;
+    private volatile ResidentProfileService residentProfileService;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
                              NpcRegistry registry, NpcEntityManager entities,
@@ -77,6 +79,10 @@ public final class NpcCommandService {
         this.hiringPayments = repository;
     }
 
+    public void setResidentProfileService(ResidentProfileService service) {
+        this.residentProfileService = service;
+    }
+
     public boolean isTownyIntegrationEnabled() {
         return townyResidents != null;
     }
@@ -105,9 +111,16 @@ public final class NpcCommandService {
                 NpcSpawnLocation.from(location));
         creation.whenComplete((record, error) -> reservation.close());
 
-        return creation.thenCompose(record ->
-                onMainThread(() -> entities.spawnAsync(record, location))
-                        .exceptionallyCompose(error -> cleanup(record, error)));
+        return creation.thenCompose(record -> {
+            ResidentProfileService profiles = residentProfileService;
+            if (profiles == null) {
+                return cleanup(record, new IllegalStateException(
+                        "Resident profile service is not initialized."));
+            }
+            return profiles.createIfMissing(record)
+                    .thenCompose(ignored -> onMainThread(() -> entities.spawnAsync(record, location)))
+                    .exceptionallyCompose(error -> cleanup(record, error));
+        });
     }
 
     /** Creates a GUARD bound to the nation and town at the player's current location. */

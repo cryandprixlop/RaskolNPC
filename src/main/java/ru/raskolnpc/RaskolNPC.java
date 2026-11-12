@@ -20,10 +20,13 @@ import ru.raskolnpc.npc.entity.PaperNpcEntityProvider;
 import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
+import ru.raskolnpc.storage.ResidentProfileRepository;
+import ru.raskolnpc.storage.SqliteResidentProfileRepository;
 import ru.raskolnpc.storage.SqliteGuardRentPaymentRepository;
 import ru.raskolnpc.storage.SqliteGuardHiringPaymentRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
@@ -40,6 +43,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcRecoveryService npcRecoveryService;
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
+    private ResidentProfileService residentProfileService;
 
     @Override
     public void onEnable() {
@@ -53,6 +57,9 @@ public final class RaskolNPC extends JavaPlugin {
 
         npcRegistry = new NpcRegistry();
         NpcRepository repository = new SqliteNpcRepository(databaseManager);
+        ResidentProfileRepository residentProfiles =
+                new SqliteResidentProfileRepository(databaseManager);
+        residentProfileService = new ResidentProfileService(residentProfiles);
         NpcDeletionRepository deletionRepository =
                 new SqliteNpcDeletionRepository(databaseManager);
         GuardRentPaymentRepository rentPayments =
@@ -93,6 +100,7 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("guards.base-hire-cost", 100.0),
                 getConfig().getDouble("guards.base-daily-rent", 10.0));
         commandService.setGuardHiringPaymentRepository(hiringPayments);
+        commandService.setResidentProfileService(residentProfileService);
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         Objects.requireNonNull(getCommand("raskolnpc"),
@@ -102,6 +110,8 @@ public final class RaskolNPC extends JavaPlugin {
 
         databaseManager.initialize()
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
+                .thenCompose(records -> residentProfileService.ensureProfiles(records)
+                        .thenApply(ignored -> records))
                 .whenComplete((records, error) -> {
                     if (!isEnabled()) return;
                     scheduleStartupStep(() -> {
