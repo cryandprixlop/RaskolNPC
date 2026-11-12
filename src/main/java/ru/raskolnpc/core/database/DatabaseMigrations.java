@@ -25,6 +25,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 4)) applyGuardRentPaymentSchema(connection);
         if (!isApplied(connection, 5)) applyGuardHiringPaymentSchema(connection);
         if (!isApplied(connection, 6)) applyResidentProfileSchema(connection);
+        if (!isApplied(connection, 7)) applyResidentScheduleSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -259,6 +260,67 @@ public final class DatabaseMigrations {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_resident_profiles_profession "
                     + "ON resident_profiles(profession)");
             statement.execute("INSERT INTO schema_migrations(version) VALUES (6)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackException) {
+                exception.addSuppressed(rollbackException);
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentScheduleSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_schedules (
+                        npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+                        start_minute INTEGER NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
+                        end_minute INTEGER NOT NULL CHECK (end_minute BETWEEN 1 AND 1440),
+                        activity TEXT NOT NULL,
+                        destination_type TEXT NOT NULL CHECK (destination_type IN (
+                            'HOME', 'WORK', 'MARKET', 'COMMUNITY'
+                        )),
+                        PRIMARY KEY (npc_id, day_of_week, start_minute),
+                        CHECK (start_minute < end_minute)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_schedules_day_start
+                    ON resident_schedules(day_of_week, start_minute)
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_destinations (
+                        npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        destination_type TEXT NOT NULL CHECK (destination_type IN (
+                            'HOME', 'WORK', 'MARKET', 'COMMUNITY'
+                        )),
+                        world_uuid TEXT NOT NULL,
+                        x REAL NOT NULL,
+                        y REAL NOT NULL,
+                        z REAL NOT NULL,
+                        yaw REAL NOT NULL,
+                        pitch REAL NOT NULL,
+                        label TEXT,
+                        PRIMARY KEY (npc_id, destination_type)
+                    )
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (7)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
