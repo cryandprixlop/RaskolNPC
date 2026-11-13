@@ -29,6 +29,12 @@ public final class ResidentProfileService {
         this.repository = java.util.Objects.requireNonNull(repository, "repository");
     }
 
+    /** Loads a resident profile asynchronously for interaction and dialogue systems. */
+    public CompletableFuture<java.util.Optional<ResidentProfile>> find(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findByNpcId(java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
     /** Creates a profile only when one does not already exist. */
     public CompletableFuture<ResidentProfile> createIfMissing(NpcRecord npc) {
         if (npc == null || npc.type() != NpcType.RESIDENT) {
