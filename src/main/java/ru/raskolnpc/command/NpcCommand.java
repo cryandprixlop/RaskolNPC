@@ -5,9 +5,11 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.resident.ResidentDialogueService;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
@@ -15,6 +17,7 @@ import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
 import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletionException;
@@ -27,6 +30,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final NpcCommandMessages messages;
     private volatile GuardRentService guardRentService;
     private volatile ResidentScheduleCommandService residentScheduleService;
+    private volatile ResidentDialogueService residentDialogueService;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
                       NpcCommandMessages messages) {
@@ -41,6 +45,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setResidentScheduleService(ResidentScheduleCommandService service) {
         this.residentScheduleService = service;
+    }
+
+    public void setResidentDialogueService(ResidentDialogueService service) {
+        this.residentDialogueService = service;
     }
 
     @Override
@@ -117,6 +125,23 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
 
     private void resident(CommandSender sender, String[] args) {
+        if (args.length == 2 && args[1].equalsIgnoreCase("reload-dialogues")) {
+            ResidentDialogueService dialogues = residentDialogueService;
+            if (dialogues == null) {
+                messages.sendRaw(sender, "&cПерезагрузка диалогов временно недоступна.");
+                return;
+            }
+            try {
+                dialogues.reload();
+                messages.sendRaw(sender, "&aДиалоги жителей успешно перезагружены.");
+            } catch (IOException | InvalidConfigurationException exception) {
+                String reason = exception.getMessage() == null
+                        ? exception.getClass().getSimpleName() : exception.getMessage();
+                messages.sendRaw(sender, "&cНе удалось перезагрузить диалоги: &f" + reason);
+                messages.sendRaw(sender, "&eПредыдущая версия диалогов продолжает работать.");
+            }
+            return;
+        }
         ResidentScheduleCommandService schedules = residentScheduleService;
         if (schedules == null) {
             messages.sendRaw(sender, "&cУправление расписаниями жителей временно недоступно.");
@@ -458,6 +483,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " resident schedule list <UUID> &7— расписание жителя");
             messages.sendRaw(sender, "&e/" + label + " resident schedule add ... &7— добавить запись");
             messages.sendRaw(sender, "&e/" + label + " resident setpoint/delpoint ... &7— точки жителя");
+            messages.sendRaw(sender, "&e/" + label + " resident reload-dialogues &7— перезагрузить диалоги");
             messages.sendRaw(sender, "&e/" + label + " guard rent review &7— спорные платежи");
             messages.sendRaw(sender, "&e/" + label + " guard hire review &7— спорные операции найма");
             messages.sendRaw(sender, "&e/" + label + " guard hire resolve <ID> <paid|failed|refunded> &7— разрешить найм");
@@ -487,7 +513,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
 
         if (sender.hasPermission(PERMISSION) && args.length == 2 && args[0].equalsIgnoreCase("resident"))
-            return startsWith(List.of("schedule", "setpoint", "delpoint"), args[1]);
+            return startsWith(List.of("schedule", "setpoint", "delpoint", "reload-dialogues"), args[1]);
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
             return startsWith(List.of("list", "add"), args[2]);
