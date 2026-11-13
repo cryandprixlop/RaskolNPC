@@ -5,6 +5,7 @@ import ru.raskolnpc.command.NpcCommand;
 import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -121,6 +122,10 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("guards.base-daily-rent", 10.0));
         commandService.setGuardHiringPaymentRepository(hiringPayments);
         commandService.setResidentProfileService(residentProfileService);
+        if (townyKingdomGuardAccess != null) {
+            commandService.setGuardRosterService(
+                    new KingdomGuardRosterService(npcRegistry, townyKingdomGuardAccess));
+        }
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         Objects.requireNonNull(getCommand("raskolnpc"),
