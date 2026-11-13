@@ -22,6 +22,8 @@ import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.ResidentBehaviorService;
+import ru.raskolnpc.npc.resident.ResidentDialogueService;
+import ru.raskolnpc.npc.resident.ResidentInteractionListener;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
@@ -84,6 +86,11 @@ public final class RaskolNPC extends JavaPlugin {
                 this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
+
+        ResidentDialogueService residentDialogues = new ResidentDialogueService(this);
+        getServer().getPluginManager().registerEvents(
+                new ResidentInteractionListener(this, npcEntityManager, npcRegistry,
+                        residentProfileService, residentDialogues), this);
 
         ResidentScheduleRepository residentSchedules =
                 new SqliteResidentScheduleRepository(databaseManager);
