@@ -1,8 +1,8 @@
-package ru.raskolnpc.guard;
+package ru.raskolnpc.integration.towny;
 
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
-import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
