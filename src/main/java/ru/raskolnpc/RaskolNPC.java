@@ -129,6 +129,7 @@ public final class RaskolNPC extends JavaPlugin {
         getCommand("raskolnpc").setTabCompleter(commandHandler);
         commandHandler.setResidentScheduleService(new ResidentScheduleCommandService(
                 commandService, residentSchedules, residentBehaviorService));
+        commandHandler.setResidentDialogueService(residentDialogues);
 
         databaseManager.initialize()
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
