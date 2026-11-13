@@ -28,3 +28,11 @@ entities:
   # Physical entities are persistent and tagged with their RaskolNPC UUID.
   # AI is disabled until the relevant NPC behavior module is enabled.
   track-loaded-chunks: true
+
+resident-behavior:
+  # One shared timer handles all residents; never create a task per NPC.
+  interval-ticks: 10
+  # Maximum residents advanced in one timer invocation.
+  batch-size: 8
+  # Maximum horizontal movement distance per processed resident, in blocks.
+  movement-step: 0.8

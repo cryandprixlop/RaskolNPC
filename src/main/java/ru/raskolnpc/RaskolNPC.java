@@ -21,12 +21,15 @@ import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
+import ru.raskolnpc.npc.resident.ResidentBehaviorService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.ResidentProfileRepository;
+import ru.raskolnpc.storage.ResidentScheduleRepository;
 import ru.raskolnpc.storage.SqliteResidentProfileRepository;
+import ru.raskolnpc.storage.SqliteResidentScheduleRepository;
 import ru.raskolnpc.storage.SqliteGuardRentPaymentRepository;
 import ru.raskolnpc.storage.SqliteGuardHiringPaymentRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
@@ -44,6 +47,7 @@ public final class RaskolNPC extends JavaPlugin {
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
     private ResidentProfileService residentProfileService;
+    private ResidentBehaviorService residentBehaviorService;
 
     @Override
     public void onEnable() {
@@ -79,6 +83,14 @@ public final class RaskolNPC extends JavaPlugin {
                 this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
+
+        ResidentScheduleRepository residentSchedules =
+                new SqliteResidentScheduleRepository(databaseManager);
+        residentBehaviorService = new ResidentBehaviorService(this, npcRegistry,
+                npcEntityManager, residentSchedules,
+                Math.max(1, getConfig().getInt("resident-behavior.batch-size", 8)),
+                Math.max(1L, getConfig().getLong("resident-behavior.interval-ticks", 10L)),
+                getConfig().getDouble("resident-behavior.movement-step", 0.8));
 
         TownyIntegration townyIntegration = new TownyIntegration(this);
         boolean townyEnabled = townyIntegration.isAvailable()
@@ -161,6 +173,7 @@ public final class RaskolNPC extends JavaPlugin {
                                             return;
                                         }
                                         npcLifecycleService.markReady();
+                                        residentBehaviorService.start();
                                         if (guardRentService != null) {
                                             try {
                                                 guardRentService.start();
@@ -218,6 +231,7 @@ public final class RaskolNPC extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (residentBehaviorService != null) residentBehaviorService.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();
