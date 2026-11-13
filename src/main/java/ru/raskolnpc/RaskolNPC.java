@@ -22,6 +22,7 @@ import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.ResidentBehaviorService;
+import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
@@ -119,6 +120,8 @@ public final class RaskolNPC extends JavaPlugin {
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
         getCommand("raskolnpc").setTabCompleter(commandHandler);
+        commandHandler.setResidentScheduleService(new ResidentScheduleCommandService(
+                commandService, residentSchedules, residentBehaviorService));
 
         databaseManager.initialize()
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
