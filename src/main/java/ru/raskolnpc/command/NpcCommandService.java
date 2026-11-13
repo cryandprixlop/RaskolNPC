@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.guard.GuardHiringService;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.guard.model.GuardHiringPayment;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -43,6 +44,7 @@ public final class NpcCommandService {
     private final double guardBaseDailyRent;
     private volatile GuardHiringPaymentRepository hiringPayments;
     private volatile ResidentProfileService residentProfileService;
+    private volatile KingdomGuardRosterService guardRosterService;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
                              NpcRegistry registry, NpcEntityManager entities,
@@ -81,6 +83,22 @@ public final class NpcCommandService {
 
     public void setResidentProfileService(ResidentProfileService service) {
         this.residentProfileService = service;
+    }
+
+    public void setGuardRosterService(KingdomGuardRosterService service) {
+        this.guardRosterService = service;
+    }
+
+    public List<NpcRecord> guardRoster(Player player) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.listVisible(player);
+    }
+
+    public Optional<NpcRecord> findVisibleGuard(Player player, NpcId id) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.findVisible(player, id);
     }
 
     public boolean isTownyIntegrationEnabled() {
