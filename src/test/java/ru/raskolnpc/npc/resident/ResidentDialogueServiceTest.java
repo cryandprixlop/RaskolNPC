@@ -1,19 +1,27 @@
 package ru.raskolnpc.npc.resident;
 
+import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class ResidentDialogueServiceTest {
+    @TempDir
+    Path tempDir;
+
     @Test
     void catalogSelectsGreetingTraitAndProfessionLines() {
         ResidentProfile profile = profile(EnumSet.of(ResidentProfile.ResidentTrait.FRIENDLY));
@@ -30,10 +38,49 @@ class ResidentDialogueServiceTest {
     }
 
     @Test
-    void emptyCatalogReturnsNoLinesSoServiceCanUseFallback() {
-        ResidentDialogueCatalog catalog = new ResidentDialogueCatalog(List.of(), Map.of(), Map.of());
-        assertTrue(catalog.linesFor(profile(EnumSet.noneOf(
-                ResidentProfile.ResidentTrait.class))).isEmpty());
+    void emptyCatalogReturnsFallbackGreeting() throws Exception {
+        Path file = tempDir.resolve("resident-dialogues.yml");
+        Files.writeString(file, "greetings: []\ntraits: {}\nprofessions: {}\n");
+        ResidentDialogueService service = new ResidentDialogueService(mock(Plugin.class), file.toFile());
+
+        List<String> lines = service.createLines(profile(EnumSet.noneOf(
+                ResidentProfile.ResidentTrait.class)));
+        assertFalse(lines.isEmpty());
+        assertTrue(lines.stream().anyMatch(line -> line.contains("путник")
+                || line.contains("Добрый день") || line.contains("Приветствую")));
+    }
+
+    @Test
+    void reloadReplacesCatalogAfterValidFileChange() throws Exception {
+        Path file = tempDir.resolve("resident-dialogues.yml");
+        Files.writeString(file, "greetings:\n  - '&aПервый текст'\ntraits: {}\nprofessions: {}\n");
+        ResidentDialogueService service = new ResidentDialogueService(mock(Plugin.class), file.toFile());
+
+        assertEquals(1, service.createLines(profile(EnumSet.noneOf(
+                ResidentProfile.ResidentTrait.class))).size());
+        assertTrue(service.createLines(profile(EnumSet.noneOf(
+                ResidentProfile.ResidentTrait.class))).get(0).contains("Первый текст"));
+
+        Files.writeString(file, "greetings:\n  - '&bОбновлённый текст'\ntraits: {}\nprofessions: {}\n");
+        service.reload();
+
+        assertTrue(service.createLines(profile(EnumSet.noneOf(
+                ResidentProfile.ResidentTrait.class))).get(0).contains("Обновлённый текст"));
+    }
+
+    @Test
+    void failedReloadKeepsPreviouslyActiveCatalog() throws Exception {
+        Path file = tempDir.resolve("resident-dialogues.yml");
+        Files.writeString(file, "greetings:\n  - 'Рабочий текст'\ntraits: {}\nprofessions: {}\n");
+        ResidentDialogueService service = new ResidentDialogueService(mock(Plugin.class), file.toFile());
+
+        Files.writeString(file, "greetings: [\n  - broken\n");
+        assertThrows(Exception.class, service::reload);
+
+        List<String> activeLines = service.createLines(profile(EnumSet.noneOf(
+                ResidentProfile.ResidentTrait.class)));
+        assertEquals(1, activeLines.size());
+        assertTrue(activeLines.get(0).contains("Рабочий текст"));
     }
 
     private static ResidentProfile profile(java.util.Set<ResidentProfile.ResidentTrait> traits) {
