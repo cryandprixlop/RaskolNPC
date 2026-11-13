@@ -8,6 +8,9 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
+import ru.raskolnpc.npc.resident.model.ResidentDestination;
+import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
 import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
@@ -23,6 +26,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final NpcCommandService service;
     private final NpcCommandMessages messages;
     private volatile GuardRentService guardRentService;
+    private volatile ResidentScheduleCommandService residentScheduleService;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
                       NpcCommandMessages messages) {
@@ -33,6 +37,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setGuardRentService(GuardRentService guardRentService) {
         this.guardRentService = guardRentService;
+    }
+
+    public void setResidentScheduleService(ResidentScheduleCommandService service) {
+        this.residentScheduleService = service;
     }
 
     @Override
@@ -62,6 +70,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "create" -> create(sender, args);
             case "guard" -> guard(sender, args);
+            case "resident" -> resident(sender, args);
             case "list" -> {
                 if (admin) list(sender);
                 else deny(sender);
@@ -104,6 +113,95 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     }
                     messages.sendRaw(sender, "&aЖитель создан. UUID: &f" + record.id());
                 }));
+    }
+
+
+    private void resident(CommandSender sender, String[] args) {
+        ResidentScheduleCommandService schedules = residentScheduleService;
+        if (schedules == null) {
+            messages.sendRaw(sender, "&cУправление расписаниями жителей временно недоступно.");
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("schedule")) {
+            if (args.length == 4 && args[2].equalsIgnoreCase("list")) {
+                var id = NpcCommandParser.parseId(args[3]);
+                if (id.isEmpty()) { messages.sendRaw(sender, "&cНекорректный UUID жителя."); return; }
+                schedules.listSchedule(id.get()).whenComplete((schedule, error) -> runMain(sender, () -> {
+                    if (error != null) {
+                        messages.sendRaw(sender, "&cНе удалось загрузить расписание: " + rootMessage(error)); return;
+                    }
+                    if (schedule.entries().isEmpty()) {
+                        messages.sendRaw(sender, "&eУ жителя пока нет расписания."); return;
+                    }
+                    messages.sendRaw(sender, "&6Расписание жителя &f" + id.get() + "&6:");
+                    for (ResidentSchedule.Entry entry : schedule.entries()) {
+                        messages.sendRaw(sender, "&e" + entry.day() + " &f"
+                                + ResidentScheduleCommandParser.formatTime(entry.startMinute()) + "-"
+                                + ResidentScheduleCommandParser.formatTime(entry.endMinute())
+                                + " &7" + entry.activity() + " → " + entry.destinationType());
+                    }
+                }));
+                return;
+            }
+            if (args.length == 9 && args[2].equalsIgnoreCase("add")) {
+                var id = NpcCommandParser.parseId(args[3]);
+                if (id.isEmpty()) { messages.sendRaw(sender, "&cНекорректный UUID жителя."); return; }
+                try {
+                    var entry = new ResidentSchedule.Entry(
+                            ResidentScheduleCommandParser.parseDay(args[4]),
+                            ResidentScheduleCommandParser.parseStartTime(args[5]),
+                            ResidentScheduleCommandParser.parseEndTime(args[6]),
+                            ResidentScheduleCommandParser.parseActivity(args[7]),
+                            ResidentScheduleCommandParser.parseDestinationType(args[8]));
+                    schedules.addSchedule(id.get(), entry).whenComplete((saved, error) -> runMain(sender, () -> {
+                        if (error != null) messages.sendRaw(sender, "&cНе удалось добавить запись: " + rootMessage(error));
+                        else messages.sendRaw(sender, "&aЗапись расписания добавлена.");
+                    }));
+                } catch (IllegalArgumentException exception) {
+                    messages.sendRaw(sender, "&c" + exception.getMessage());
+                    messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule add <UUID> <день> <начало> <конец> <занятие> <точка>");
+                }
+                return;
+            }
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule list <UUID>");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule add <UUID> <день> <начало> <конец> <занятие> <точка>");
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("setpoint")) {
+            if (!(sender instanceof Player player)) { messages.sendRaw(sender, "&cУстановить точку может только игрок."); return; }
+            if (args.length < 4) {
+                messages.sendRaw(sender, "&eИспользование: /raskolnpc resident setpoint <UUID> <HOME|WORK|MARKET|COMMUNITY> [название]"); return;
+            }
+            var id = NpcCommandParser.parseId(args[2]);
+            if (id.isEmpty()) { messages.sendRaw(sender, "&cНекорректный UUID жителя."); return; }
+            try {
+                var type = ResidentScheduleCommandParser.parseDestinationType(args[3]);
+                var location = player.getLocation().clone();
+                String label = args.length > 4 ? NpcCommandParser.joinName(args, 4) : null;
+                var point = new ResidentDestination(id.get(), type, location.getWorld().getUID(),
+                        location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch(), label);
+                schedules.setDestination(point).whenComplete((ignored, error) -> runMain(sender, () -> {
+                    if (error != null) messages.sendRaw(sender, "&cНе удалось сохранить точку: " + rootMessage(error));
+                    else messages.sendRaw(sender, "&aТочка &f" + type + " &aсохранена.");
+                }));
+            } catch (IllegalArgumentException exception) { messages.sendRaw(sender, "&c" + exception.getMessage()); }
+            return;
+        }
+        if (args.length == 4 && args[1].equalsIgnoreCase("delpoint")) {
+            var id = NpcCommandParser.parseId(args[2]);
+            if (id.isEmpty()) { messages.sendRaw(sender, "&cНекорректный UUID жителя."); return; }
+            try {
+                var type = ResidentScheduleCommandParser.parseDestinationType(args[3]);
+                schedules.deleteDestination(id.get(), type).whenComplete((deleted, error) -> runMain(sender, () -> {
+                    if (error != null) messages.sendRaw(sender, "&cНе удалось удалить точку: " + rootMessage(error));
+                    else if (Boolean.TRUE.equals(deleted)) messages.sendRaw(sender, "&aТочка &f" + type + " &aудалена.");
+                    else messages.sendRaw(sender, "&eТочка такого типа не была задана.");
+                }));
+            } catch (IllegalArgumentException exception) { messages.sendRaw(sender, "&c" + exception.getMessage()); }
+            return;
+        }
+        messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule list|add ...");
+        messages.sendRaw(sender, "&eИспользование: /raskolnpc resident setpoint|delpoint ...");
     }
 
     private void guard(CommandSender sender, String[] args) {
@@ -357,6 +455,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
             messages.sendRaw(sender, "&e/" + label + " info <UUID> &7— информация");
             messages.sendRaw(sender, "&e/" + label + " delete <UUID> &7— удалить NPC");
+            messages.sendRaw(sender, "&e/" + label + " resident schedule list <UUID> &7— расписание жителя");
+            messages.sendRaw(sender, "&e/" + label + " resident schedule add ... &7— добавить запись");
+            messages.sendRaw(sender, "&e/" + label + " resident setpoint/delpoint ... &7— точки жителя");
             messages.sendRaw(sender, "&e/" + label + " guard rent review &7— спорные платежи");
             messages.sendRaw(sender, "&e/" + label + " guard hire review &7— спорные операции найма");
             messages.sendRaw(sender, "&e/" + label + " guard hire resolve <ID> <paid|failed|refunded> &7— разрешить найм");
@@ -383,6 +484,29 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("create")) {
             return startsWith(List.of("resident"), args[1]);
         }
+
+        if (sender.hasPermission(PERMISSION) && args.length == 2 && args[0].equalsIgnoreCase("resident"))
+            return startsWith(List.of("schedule", "setpoint", "delpoint"), args[1]);
+        if (sender.hasPermission(PERMISSION) && args.length == 3
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
+            return startsWith(List.of("list", "add"), args[2]);
+        if (sender.hasPermission(PERMISSION) && args.length == 5
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule")
+                && args[2].equalsIgnoreCase("add"))
+            return startsWith(List.of("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY",
+                    "пн", "вт", "ср", "чт", "пт", "сб", "вс"), args[4]);
+        if (sender.hasPermission(PERMISSION) && args.length == 8
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule")
+                && args[2].equalsIgnoreCase("add"))
+            return startsWith(List.of("SLEEP", "WORK", "EAT", "SOCIALIZE", "LEISURE", "REST", "ERRAND"), args[7]);
+        if (sender.hasPermission(PERMISSION) && args.length == 9
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule")
+                && args[2].equalsIgnoreCase("add"))
+            return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[8]);
+        if (sender.hasPermission(PERMISSION) && args.length == 4
+                && args[0].equalsIgnoreCase("resident")
+                && (args[1].equalsIgnoreCase("setpoint") || args[1].equalsIgnoreCase("delpoint")))
+            return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
                     ? List.of("hire", "rent") : List.of("hire"), args[1]);
