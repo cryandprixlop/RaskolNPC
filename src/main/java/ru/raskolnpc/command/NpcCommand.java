@@ -60,13 +60,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("resident")
                 && sender instanceof Player
                 && service.isTownyIntegrationEnabled();
+        boolean guardRosterViewing = args.length >= 2
+                && args[0].equalsIgnoreCase("guard")
+                && (args[1].equalsIgnoreCase("list") || args[1].equalsIgnoreCase("info"))
+                && sender instanceof Player
+                && service.isGuardHiringEnabled();
         boolean guardHiring = args.length >= 2
                 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("hire")
                 && sender instanceof Player
                 && service.isGuardHiringEnabled();
 
-        if (!admin && !townResidentCreation && !guardHiring) {
+        if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -230,6 +235,14 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private void guard(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("list")) {
+            guardList(sender);
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("info")) {
+            guardInfo(sender, args);
+            return;
+        }
         if (args.length >= 2 && args[1].equalsIgnoreCase("hire")
                 && args.length >= 3 && (args[2].equalsIgnoreCase("review")
                 || args[2].equalsIgnoreCase("resolve"))) {
@@ -276,6 +289,58 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             + " &7Стоимость: &f" + result.hireCost()
                             + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
+    }
+
+    private void guardList(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cПросмотр состава доступен только игроку.");
+            return;
+        }
+        try {
+            List<NpcRecord> guards = service.guardRoster(player);
+            if (guards.isEmpty()) {
+                messages.sendRaw(sender, "&eВ доступной вам нации стража пока не нанята.");
+                return;
+            }
+            messages.sendRaw(sender, "&6Стража вашей нации: &f" + guards.size());
+            for (NpcRecord guard : guards) {
+                messages.sendRaw(sender, "&e" + guard.name() + " &7(" + guard.id()
+                        + ") &8— город: " + guard.townId() + ", состояние: " + guard.state());
+            }
+        } catch (RuntimeException exception) {
+            messages.sendRaw(sender, "&c" + exception.getMessage());
+        }
+    }
+
+    private void guardInfo(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cПросмотр состава доступен только игроку.");
+            return;
+        }
+        if (args.length < 3) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard info <UUID>");
+            return;
+        }
+        var id = NpcCommandParser.parseId(args[2]);
+        if (id.isEmpty()) {
+            messages.sendRaw(sender, "&cНекорректный UUID стража.");
+            return;
+        }
+        try {
+            var guard = service.findVisibleGuard(player, id.get());
+            if (guard.isEmpty()) {
+                messages.sendRaw(sender, "&cСтраж не найден или у вас нет доступа к этой нации.");
+                return;
+            }
+            NpcRecord record = guard.get();
+            messages.sendRaw(sender, "&6Страж: &f" + record.name());
+            messages.sendRaw(sender, "&7UUID: &f" + record.id());
+            messages.sendRaw(sender, "&7Нация: &f" + record.nationId()
+                    + " &7Город размещения: &f" + record.townId());
+            messages.sendRaw(sender, "&7Состояние: &f" + record.state());
+        } catch (RuntimeException exception) {
+            messages.sendRaw(sender, "&c" + exception.getMessage());
+        }
     }
 
     private void guardHireReview(CommandSender sender, String[] args) {
@@ -475,6 +540,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
+            messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
+            messages.sendRaw(sender, "&e/" + label + " guard info <UUID> &7— карточка стража");
         }
         if (sender.hasPermission(PERMISSION)) {
             messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
@@ -536,8 +603,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("hire", "rent") : List.of("hire"), args[1]);
+                    ? List.of("hire", "rent", "list", "info") : List.of("hire", "list", "info"), args[1]);
         }
+        if (args.length == 3 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("info")) return List.of();
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("hire")) {
             return startsWith(List.of("review", "resolve", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), args[2]);
