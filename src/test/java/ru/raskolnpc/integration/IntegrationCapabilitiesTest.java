@@ -34,7 +34,7 @@ class IntegrationCapabilitiesTest {
         when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
         when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
 
-        var snapshot = new IntegrationCapabilities(manager, false).snapshot();
+        var snapshot = new IntegrationCapabilities(manager, false, true).snapshot();
         var worldGuard = snapshot.stream()
                 .filter(value -> value.name().equals("WorldGuard region protection"))
                 .findFirst().orElseThrow();
