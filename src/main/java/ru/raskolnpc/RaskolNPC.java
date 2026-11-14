@@ -11,6 +11,8 @@ import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.IntegrationCapabilities;
+import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
@@ -62,6 +64,7 @@ public final class RaskolNPC extends JavaPlugin {
     private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
+    private RelationshipPolicy relationshipPolicy;
 
     @Override
     public void onEnable() {
@@ -128,6 +131,11 @@ public final class RaskolNPC extends JavaPlugin {
         TownyIntegration townyIntegration = new TownyIntegration(this);
         boolean townyEnabled = townyIntegration.isAvailable()
                 && getConfig().getBoolean("integrations.towny.enabled", true);
+        boolean siegeWarEnabled = getServer().getPluginManager().getPlugin("SiegeWar") != null
+                && getServer().getPluginManager().getPlugin("SiegeWar").isEnabled();
+        relationshipPolicy = new RelationshipPolicy(siegeWarEnabled
+                ? new SiegeWarDiplomacyAdapter()
+                : (firstNationId, secondNationId) -> RelationshipPolicy.DiplomacyRelation.UNKNOWN);
         townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
         TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;
@@ -277,6 +285,11 @@ public final class RaskolNPC extends JavaPlugin {
 
     public NpcEntityManager getNpcEntityManager() {
         return npcEntityManager;
+    }
+
+    /** Returns the provider-neutral relationship policy; unknown relations remain neutral. */
+    public RelationshipPolicy getRelationshipPolicy() {
+        return relationshipPolicy;
     }
 
     /** Returns Towny-backed guard authorization when the integration is enabled. */
