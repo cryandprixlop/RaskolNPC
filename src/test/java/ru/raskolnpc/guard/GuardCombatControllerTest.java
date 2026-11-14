@@ -381,8 +381,13 @@ class GuardCombatControllerTest {
                 plugin, registry, entities, relationships, null, 1, 12.0, 2.0, 10000L);
 
         controller.tick();
-        verify(target, atMost(1)).damage(anyDouble(), any(Entity.class));
-        verify(secondTarget, atMost(1)).damage(anyDouble(), any(Entity.class));
+        long firstBatchDamageCount = java.util.stream.Stream.concat(
+                mockingDetails(target).getInvocations().stream(),
+                mockingDetails(secondTarget).getInvocations().stream())
+                .filter(invocation -> invocation.getMethod().getName().equals("damage"))
+                .count();
+        org.junit.jupiter.api.Assertions.assertTrue(firstBatchDamageCount <= 1,
+                "one tick must process no more than one guard when batchSize is one");
 
         controller.tick();
         controller.tick();
