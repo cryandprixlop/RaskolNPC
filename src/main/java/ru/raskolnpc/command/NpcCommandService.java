@@ -374,7 +374,7 @@ public final class NpcCommandService {
                 .thenCompose(deleted -> deleted
                         ? lifecycle.completeDeletion(record.id())
                         : CompletableFuture.completedFuture(false))
-                .handle((ignored, cleanupError) -> {
+                .<NpcRecord>handle((ignored, cleanupError) -> {
                     if (cleanupError != null) error.addSuppressed(cleanupError);
                     throw new CompletionException(error);
                 }).whenComplete((ignored, cleanupError) -> refreshResidentBehavior());
