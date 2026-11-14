@@ -11,6 +11,9 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.resident.model.ResidentBehaviorData;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
+import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentSchedule;
+import ru.raskolnpc.storage.ResidentProfileRepository;
 import ru.raskolnpc.storage.ResidentScheduleRepository;
 
 import java.time.DayOfWeek;
@@ -23,27 +26,38 @@ import java.util.logging.Level;
 
 /** Cached, centrally scheduled execution of resident weekly schedules. */
 public final class ResidentBehaviorService {
+    private record LoadedData(
+            List<ResidentBehaviorData> behavior,
+            List<ResidentProfile> profiles
+    ) { }
+
     private final Plugin plugin;
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
     private final ResidentScheduleRepository repository;
+    private final ResidentProfileRepository profileRepository;
     private final ResidentSchedulePlanner planner = new ResidentSchedulePlanner();
     private final ResidentMovementController movement;
+    private final ResidentWorkActionController workActions = new ResidentWorkActionController();
     private final int batchSize;
     private final long intervalTicks;
     private final Map<ru.raskolnpc.npc.model.NpcId, ResidentBehaviorData> cache = new HashMap<>();
+    private final Map<ru.raskolnpc.npc.model.NpcId, ResidentProfile> profileCache = new HashMap<>();
     private final AtomicBoolean loading = new AtomicBoolean();
     private List<NpcRecord> residents = List.of();
     private int cursor;
     private int taskId = -1;
+    private long behaviorTick;
 
     public ResidentBehaviorService(Plugin plugin, NpcRegistry registry,
             NpcEntityManager entities, ResidentScheduleRepository repository,
+            ResidentProfileRepository profileRepository,
             int batchSize, long intervalTicks, double movementStep) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.profileRepository = Objects.requireNonNull(profileRepository, "profileRepository");
         if (batchSize < 1 || intervalTicks < 1) {
             throw new IllegalArgumentException("Batch size and interval must be positive.");
         }
@@ -52,10 +66,10 @@ public final class ResidentBehaviorService {
         this.movement = new ResidentMovementController(movementStep);
     }
 
-    /** Loads behavior data asynchronously once, then starts one shared timer. */
+    /** Loads behavior data and profession profiles in bulk, then starts one shared timer. */
     public void start() {
         if (!loading.compareAndSet(false, true)) return;
-        repository.findAllBehaviorData().whenComplete((snapshots, error) -> {
+        loadAllData().whenComplete((loaded, error) -> {
             if (!plugin.isEnabled()) return;
             try {
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -66,10 +80,7 @@ public final class ResidentBehaviorService {
                         loading.set(false);
                         return;
                     }
-                    cache.clear();
-                    for (ResidentBehaviorData snapshot : snapshots) {
-                        cache.put(snapshot.npcId(), snapshot);
-                    }
+                    applyLoadedData(loaded);
                     residents = registry.all().stream()
                             .filter(record -> record.type() == NpcType.RESIDENT)
                             .toList();
@@ -87,8 +98,21 @@ public final class ResidentBehaviorService {
         });
     }
 
+    private java.util.concurrent.CompletableFuture<LoadedData> loadAllData() {
+        return repository.findAllBehaviorData().thenCombine(
+                profileRepository.findAll(), LoadedData::new);
+    }
+
+    private void applyLoadedData(LoadedData loaded) {
+        cache.clear();
+        loaded.behavior().forEach(snapshot -> cache.put(snapshot.npcId(), snapshot));
+        profileCache.clear();
+        loaded.profiles().forEach(profile -> profileCache.put(profile.npcId(), profile));
+    }
+
     private void tick() {
         if (!Bukkit.isPrimaryThread() || residents.isEmpty()) return;
+        behaviorTick++;
         World clockWorld = Bukkit.getWorlds().stream().findFirst().orElse(null);
         if (clockWorld == null) return;
 
@@ -104,8 +128,12 @@ public final class ResidentBehaviorService {
             ResidentBehaviorData data = cache.get(resident.id());
             if (data == null) continue;
 
+            ResidentSchedule.Entry activeEntry = planner.findCurrent(
+                    data.schedule(), day, minute).orElse(null);
             ResidentDestination.DestinationType destinationType =
-                    planner.destinationFor(data.schedule(), day, minute);
+                    activeEntry == null
+                            ? ResidentDestination.DestinationType.HOME
+                            : activeEntry.destinationType();
             ResidentDestination destination = data.destinations().stream()
                     .filter(point -> point.type() == destinationType)
                     .findFirst().orElse(null);
@@ -121,13 +149,24 @@ public final class ResidentBehaviorService {
             Location target = new Location(targetWorld, destination.x(), destination.y(),
                     destination.z(), destination.yaw(), destination.pitch());
             movement.moveTowards(entity, target);
+
+            if (activeEntry != null
+                    && activeEntry.activity() == ResidentSchedule.Activity.WORK
+                    && activeEntry.destinationType() == ResidentDestination.DestinationType.WORK
+                    && entity.getWorld().equals(targetWorld)
+                    && entity.getLocation().distanceSquared(target) <= 2.25) {
+                ResidentProfile profile = profileCache.get(resident.id());
+                if (profile != null) {
+                    workActions.performIfReady(resident.id(), entity, profile, behaviorTick);
+                }
+            }
         }
     }
 
-    /** Reloads the cache after schedule or destination edits without querying per NPC. */
+    /** Reloads schedules, destinations and profession profiles as one bulk snapshot. */
     public void reload() {
         if (!plugin.isEnabled()) return;
-        repository.findAllBehaviorData().whenComplete((snapshots, error) -> {
+        loadAllData().whenComplete((loaded, error) -> {
             if (!plugin.isEnabled()) return;
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (error != null) {
@@ -135,8 +174,7 @@ public final class ResidentBehaviorService {
                             "Could not refresh resident behavior cache.", error);
                     return;
                 }
-                cache.clear();
-                snapshots.forEach(snapshot -> cache.put(snapshot.npcId(), snapshot));
+                applyLoadedData(loaded);
             });
         });
     }
@@ -147,8 +185,11 @@ public final class ResidentBehaviorService {
             taskId = -1;
         }
         cache.clear();
+        profileCache.clear();
+        workActions.clear();
         residents = List.of();
         cursor = 0;
+        behaviorTick = 0;
         loading.set(false);
     }
 
