@@ -36,6 +36,8 @@ public interface ResidentQuestRepository {
     /** Applies one configured daily consumption pass to all town business stock rows. */
     CompletableFuture<Integer> consumeBusinessStockDaily(int percentage);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
+    CompletableFuture<Optional<ResidentQuestReview>> findReview(
+            UUID playerId, NpcId residentId, String questId);
     /** Resolves a review once; completion credits the stored reward (or the legacy fallback) exactly once. */
     CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId, String questId,
                                              boolean complete, int legacyReward);
