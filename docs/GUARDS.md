@@ -38,7 +38,7 @@ The current movement layer is intentionally simple and does not yet perform full
 - `limits.guards-per-nation` — guard roster cap per nation (default 30).
 - `guards.order-batch-size` — maximum orders advanced per scheduler pass (default 6).
 - `guards.movement-step` — movement step in blocks (default 0.6, maximum 1.5).
-- `guards.combat.max-pursuit-distance` — maximum distance for pursuit of explicitly hostile registered NPCs (default 16, maximum 32; set to 0 to disable).
+- `guards.combat.max-pursuit-distance` — maximum distance for pursuit of explicitly hostile registered NPCs and Towny-resolved players (default 16, maximum 32; set to 0 to disable).
 - `guards.base-hire-cost` and `guards.base-daily-rent` — level-one prices.
 - `guards.maximum-debt-days` — missed rent threshold before dismissal.
 
