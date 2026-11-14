@@ -103,8 +103,10 @@ class NpcRecoveryIntegrationTest {
     void restoresNpcCreatedBeforeEntityWasSpawned() {
         Location savedLocation = new Location(world, 5.5, 72, 9.5, 45, 0);
         NpcRecord record = NpcRecord.create(NpcType.GUARD, "Interrupted guard",
-                null, null, null, null, NpcSpawnLocation.from(savedLocation));
+                null, null, null, null, NpcSpawnLocation.from(savedLocation))
+                .withState(ru.raskolnpc.npc.model.NpcState.ACTIVE);
         assertNull(record.entityUuid());
+        assertEquals(ru.raskolnpc.npc.model.NpcState.ACTIVE, record.state());
         registry.put(record);
 
         Entity restoredEntity = mock(Entity.class);
