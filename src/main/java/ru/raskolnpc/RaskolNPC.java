@@ -205,6 +205,7 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("guards.base-daily-rent", 10.0));
         commandService.setGuardHiringPaymentRepository(hiringPayments);
         commandService.setResidentProfileService(residentProfileService);
+        commandService.setResidentBehaviorService(residentBehaviorService);
         if (townyKingdomGuardAccess != null) {
             commandService.setGuardRosterService(
                     new KingdomGuardRosterService(npcRegistry, townyKingdomGuardAccess));

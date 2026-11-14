@@ -21,6 +21,7 @@ import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
+import ru.raskolnpc.npc.resident.ResidentBehaviorService;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +45,7 @@ public final class NpcCommandService {
     private final double guardBaseDailyRent;
     private volatile GuardHiringPaymentRepository hiringPayments;
     private volatile ResidentProfileService residentProfileService;
+    private volatile ResidentBehaviorService residentBehaviorService;
     private volatile KingdomGuardRosterService guardRosterService;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
@@ -83,6 +85,15 @@ public final class NpcCommandService {
 
     public void setResidentProfileService(ResidentProfileService service) {
         this.residentProfileService = service;
+    }
+
+    public void setResidentBehaviorService(ResidentBehaviorService service) {
+        this.residentBehaviorService = service;
+    }
+
+    private void refreshResidentBehavior() {
+        ResidentBehaviorService behavior = residentBehaviorService;
+        if (behavior != null) behavior.reload();
     }
 
     public void setGuardRosterService(KingdomGuardRosterService service) {
@@ -137,6 +148,10 @@ public final class NpcCommandService {
             }
             return profiles.createIfMissing(record)
                     .thenCompose(ignored -> onMainThread(() -> entities.spawnAsync(record, location)))
+                    .thenApply(ignored -> {
+                        refreshResidentBehavior();
+                        return record;
+                    })
                     .exceptionallyCompose(error -> cleanup(record, error));
         });
     }
@@ -430,6 +445,9 @@ public final class NpcCommandService {
                 return removed ? lifecycle.completeDeletion(id)
                         .thenApply(ignored -> true)
                         : CompletableFuture.completedFuture(true);
+            }).thenApply(deletedEntity -> {
+                refreshResidentBehavior();
+                return deletedEntity;
             });
         });
     }

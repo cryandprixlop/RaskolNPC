@@ -36,6 +36,34 @@ class ResidentBehaviorServiceTest {
     }
 
     @Test
+    void refreshesResidentRosterFromRegistryAfterRuntimeChanges() {
+        NpcRegistry registry = new NpcRegistry();
+        ResidentBehaviorService service = new ResidentBehaviorService(
+                mock(Plugin.class), registry, mock(NpcEntityManager.class),
+                mock(ResidentScheduleRepository.class), mock(ResidentProfileRepository.class),
+                8, 10L, 0.8);
+        ru.raskolnpc.npc.model.NpcRecord first =
+                ru.raskolnpc.npc.model.NpcRecord.create(
+                        ru.raskolnpc.npc.model.NpcType.RESIDENT,
+                        "First", null, "town", "nation", "{}");
+        registry.register(first);
+        service.refreshResidentRoster();
+        assertEquals(1, service.residentCount());
+
+        ru.raskolnpc.npc.model.NpcRecord second =
+                ru.raskolnpc.npc.model.NpcRecord.create(
+                        ru.raskolnpc.npc.model.NpcType.RESIDENT,
+                        "Second", null, "town", "nation", "{}");
+        registry.register(second);
+        service.refreshResidentRoster();
+        assertEquals(2, service.residentCount());
+
+        registry.unregister(first.id());
+        service.refreshResidentRoster();
+        assertEquals(1, service.residentCount());
+    }
+
+    @Test
     void handlesDayZeroAsAValidInitialDay() {
         ResidentBehaviorService service = new ResidentBehaviorService(
                 mock(Plugin.class),

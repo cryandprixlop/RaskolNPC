@@ -255,6 +255,11 @@ public final class ResidentBehaviorService {
                     return;
                 }
                 applyLoadedData(loaded);
+                residents = registry.all().stream()
+                        .filter(record -> record.type() == NpcType.RESIDENT)
+                        .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
+                        .toList();
+                cursor = residents.isEmpty() ? 0 : Math.floorMod(cursor, residents.size());
             });
         });
     }
@@ -274,6 +279,18 @@ public final class ResidentBehaviorService {
         needsQueue = List.of();
         needsCursor = 0;
         loading.set(false);
+    }
+
+    void refreshResidentRoster() {
+        residents = registry.all().stream()
+                .filter(record -> record.type() == NpcType.RESIDENT)
+                .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
+                .toList();
+        cursor = residents.isEmpty() ? 0 : Math.floorMod(cursor, residents.size());
+    }
+
+    int residentCount() {
+        return residents.size();
     }
 
     public int cachedResidentCount() {
