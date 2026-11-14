@@ -12,6 +12,8 @@ import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.CompositeDiplomacy;
+import ru.raskolnpc.integration.towny.TownyDiplomacyAdapter;
 import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
 import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -139,9 +141,10 @@ public final class RaskolNPC extends JavaPlugin {
                 getServer().getPluginManager().getPlugin("WorldGuard");
         worldGuardProtectionAdapter = worldGuardPlugin != null && worldGuardPlugin.isEnabled()
                 ? new WorldGuardProtectionAdapter() : null;
-        relationshipPolicy = new RelationshipPolicy(siegeWarEnabled
-                ? new SiegeWarDiplomacyAdapter()
-                : (firstNationId, secondNationId) -> RelationshipPolicy.DiplomacyRelation.UNKNOWN);
+        java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
+        if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
+        if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
+        relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
         townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
         TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;
