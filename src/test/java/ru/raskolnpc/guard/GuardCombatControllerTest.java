@@ -339,4 +339,57 @@ class GuardCombatControllerTest {
     }
 
 
+
+    @Test
+    void enforcesPerGuardAttackCooldownAcrossTicks() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 10000L);
+
+        controller.tick();
+        controller.tick();
+
+        verify(target, times(1)).damage(2.0, attacker);
+    }
+
+    @Test
+    void processesGuardsInBoundedBatchesWithoutStarvingLaterGuards() {
+        NpcRecord secondGuard = NpcRecord.create(
+                NpcType.GUARD, "Second guard", null, "town-c", "nation-c", "{}");
+        NpcRecord secondEnemy = NpcRecord.create(
+                NpcType.RESIDENT, "Second enemy", null, "town-d", "nation-d", "{}");
+        registry.register(secondGuard);
+        registry.register(secondEnemy);
+
+        LivingEntity secondAttacker = mock(LivingEntity.class);
+        LivingEntity secondTarget = mock(LivingEntity.class);
+        when(secondAttacker.isValid()).thenReturn(true);
+        when(secondAttacker.isDead()).thenReturn(false);
+        when(secondAttacker.getLocation()).thenReturn(new Location(world, 10.5, 64, 0.5));
+        when(secondAttacker.getNearbyEntities(12.0, 12.0, 12.0))
+                .thenReturn(List.of(secondTarget));
+        when(secondTarget.isValid()).thenReturn(true);
+        when(secondTarget.isDead()).thenReturn(false);
+        when(secondTarget.getLocation()).thenReturn(new Location(world, 12.5, 64, 0.5));
+        when(entities.find(secondGuard.id())).thenReturn(Optional.of(secondAttacker));
+        when(entities.getNpcId(secondTarget)).thenReturn(Optional.of(secondEnemy.id()));
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 1, 12.0, 2.0, 10000L);
+
+        controller.tick();
+        verify(target, atMost(1)).damage(anyDouble(), any(Entity.class));
+        verify(secondTarget, atMost(1)).damage(anyDouble(), any(Entity.class));
+
+        controller.tick();
+        controller.tick();
+
+        verify(target, times(1)).damage(2.0, attacker);
+        verify(secondTarget, times(1)).damage(2.0, secondAttacker);
+    }
+
+
 }
