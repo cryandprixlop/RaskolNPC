@@ -27,6 +27,17 @@ class RelationshipPolicyTest {
     }
 
     @Test
+    void missingNationContextDoesNotCallDiplomacyOrInferHostility() {
+        RelationshipPolicy.Diplomacy diplomacy = mock(RelationshipPolicy.Diplomacy.class);
+        RelationshipPolicy policy = new RelationshipPolicy(diplomacy);
+
+        assertEquals(RelationshipPolicy.Relation.NEUTRAL, policy.between(
+                new RelationshipPolicy.Subject(null, "town-a", null),
+                new RelationshipPolicy.Subject(null, "town-b", "nation-b")));
+        verifyNoInteractions(diplomacy);
+    }
+
+    @Test
     void onlyExplicitHostileDiplomacyAllowsTargeting() {
         RelationshipPolicy.Diplomacy diplomacy = (first, second) ->
                 RelationshipPolicy.DiplomacyRelation.HOSTILE;
