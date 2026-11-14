@@ -28,3 +28,45 @@ quests:
     required-amount: 16
     reputation-reward: 3
     stock-target: 64
+
+  fisherman_cod_delivery:
+    profession: FISHERMAN
+    required-material: COD
+    required-amount: 16
+    reputation-reward: 3
+    stock-target: 48
+
+  craftsman_cobblestone_delivery:
+    profession: CRAFTSMAN
+    required-material: COBBLESTONE
+    required-amount: 32
+    reputation-reward: 4
+    stock-target: 96
+
+  merchant_paper_delivery:
+    profession: MERCHANT
+    required-material: PAPER
+    required-amount: 24
+    reputation-reward: 3
+    stock-target: 72
+
+  builder_stone_bricks_delivery:
+    profession: BUILDER
+    required-material: STONE_BRICKS
+    required-amount: 32
+    reputation-reward: 4
+    stock-target: 96
+
+  cook_bread_delivery:
+    profession: COOK
+    required-material: BREAD
+    required-amount: 16
+    reputation-reward: 3
+    stock-target: 48
+
+  teacher_book_delivery:
+    profession: TEACHER
+    required-material: BOOK
+    required-amount: 8
+    reputation-reward: 5
+    stock-target: 24
