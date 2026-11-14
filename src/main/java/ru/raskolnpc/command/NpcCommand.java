@@ -641,10 +641,14 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad <create|list|add|remove|delete> ...");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad <create|list|add|remove|delete|order> ...");
             return;
         }
         String action = args[2].toLowerCase(Locale.ROOT);
+        if (action.equals("order")) {
+            guardSquadOrder(sender, args, squads);
+            return;
+        }
         switch (action) {
             case "create" -> {
                 if (!(sender instanceof Player player) || args.length < 4) {
@@ -722,6 +726,80 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
             default -> messages.sendRaw(sender, "&cНеизвестное действие. Доступно: create, list, add, remove, delete.");
         }
+    }
+
+    private void guardSquadOrder(CommandSender sender, String[] args, GuardSquadService squads) {
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cПриказы отрядам может отдавать только игрок.");
+            return;
+        }
+        if (args.length < 5) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad order <UUID-отряда> <hold|return|defend|escort|patrol|clear>");
+            return;
+        }
+        UUID squadId = parseUuid(args[3]);
+        if (squadId == null) {
+            messages.sendRaw(sender, "&cНекорректный UUID отряда.");
+            return;
+        }
+        String action = args[4].toLowerCase(Locale.ROOT);
+        GuardOrderService orders = guardOrderService;
+        if (orders == null) {
+            messages.sendRaw(sender, "&cСистема приказов стражи недоступна.");
+            return;
+        }
+        if (action.equals("clear")) {
+            squads.clearOrders(squadId, orders).whenComplete((result, error) -> runMain(sender, () -> {
+                if (error != null) {
+                    messages.sendRaw(sender, "&cНе удалось отменить приказы отряда: " + rootMessage(error));
+                } else {
+                    messages.sendRaw(sender, "&aОбработка отмены приказов: &f" + result.succeeded()
+                            + "/" + result.total() + " &aуспешно, ошибок: &f" + result.failed());
+                }
+            }));
+            return;
+        }
+        GuardOrder.Type type;
+        List<GuardOrder.Waypoint> points;
+        try {
+            switch (action) {
+                case "hold" -> { type = GuardOrder.Type.HOLD_POSITION; points = List.of(); }
+                case "return" -> { type = GuardOrder.Type.RETURN_TO_POST; points = List.of(); }
+                case "escort" -> { type = GuardOrder.Type.ESCORT; points = List.of(); }
+                case "defend" -> {
+                    type = GuardOrder.Type.DEFEND;
+                    var location = player.getLocation();
+                    points = List.of(waypoint(player, location.getX(), location.getY(), location.getZ()));
+                }
+                case "patrol" -> {
+                    if (args.length != 11) {
+                        messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad order <UUID> patrol <x1> <y1> <z1> <x2> <y2> <z2>");
+                        return;
+                    }
+                    type = GuardOrder.Type.PATROL;
+                    points = List.of(
+                            waypoint(player, Double.parseDouble(args[5]), Double.parseDouble(args[6]), Double.parseDouble(args[7])),
+                            waypoint(player, Double.parseDouble(args[8]), Double.parseDouble(args[9]), Double.parseDouble(args[10])));
+                }
+                default -> {
+                    messages.sendRaw(sender, "&cНеизвестный приказ. Доступно: hold, return, defend, escort, patrol, clear.");
+                    return;
+                }
+            }
+        } catch (IllegalArgumentException exception) {
+            messages.sendRaw(sender, "&cНекорректные координаты приказа.");
+            return;
+        }
+        squads.issueOrder(squadId, orders, type, points, player.getUniqueId())
+                .whenComplete((result, error) -> runMain(sender, () -> {
+                    if (error != null) {
+                        messages.sendRaw(sender, "&cНе удалось выдать приказ отряду: " + rootMessage(error));
+                    } else {
+                        messages.sendRaw(sender, "&aПриказ &f" + type + " &aобработан: &f"
+                                + result.succeeded() + "/" + result.total() + " &aуспешно, ошибок: &f"
+                                + result.failed() + ".");
+                    }
+                }));
     }
 
     private UUID parseUuid(String value) {
@@ -1227,7 +1305,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("squad"))
-            return startsWith(List.of("create", "list", "add", "remove", "delete"), args[2]);
+            return startsWith(List.of("create", "list", "add", "remove", "delete", "order"), args[2]);
         if (sender.hasPermission(PERMISSION) && args.length == 4
                 && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("squad")
                 && args[2].equalsIgnoreCase("delete")) return List.of();
