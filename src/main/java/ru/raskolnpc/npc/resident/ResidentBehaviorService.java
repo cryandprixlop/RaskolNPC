@@ -14,12 +14,10 @@ import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.storage.ResidentScheduleRepository;
 
 import java.time.DayOfWeek;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
@@ -106,10 +104,10 @@ public final class ResidentBehaviorService {
             ResidentBehaviorData data = cache.get(resident.id());
             if (data == null) continue;
 
-            var activity = planner.findCurrent(data.schedule(), day, minute);
-            if (activity.isEmpty()) continue;
+            ResidentDestination.DestinationType destinationType =
+                    planner.destinationFor(data.schedule(), day, minute);
             ResidentDestination destination = data.destinations().stream()
-                    .filter(point -> point.type() == activity.get().destinationType())
+                    .filter(point -> point.type() == destinationType)
                     .findFirst().orElse(null);
             if (destination == null) continue;
 
