@@ -27,9 +27,9 @@ A nation king or administrator can issue orders to a guard visible in their nati
 - `/raskolnpc guard order <UUID> patrol <x1> <y1> <z1> <x2> <y2> <z2>` — patrol between two waypoints in the issuer's current world.
 - `/raskolnpc guard order <UUID> clear` — remove the persisted order.
 
-Orders and patrol waypoints are stored in SQLite. One shared scheduler processes only a configured number of guards per pass. Movement uses small steps, checks passable feet/head blocks, and never force-loads destination chunks. If the destination world or chunk is unavailable, movement pauses until it is available.
+Orders and patrol waypoints are stored in SQLite. One shared scheduler processes only a configured number of guards per pass. Movement uses small steps, checks passable feet/head blocks, attempts a simple left/right sidestep around a single blocked step, and never force-loads destination chunks. If the destination world or chunk is unavailable, movement pauses until it is available.
 
-The current movement layer is intentionally simple: it does not yet perform full pathfinding around complex terrain, enter protected regions through a provider adapter, or implement combat, squads, rally coordination, morale, equipment, injury, and recovery policies. Those remain later guard-system increments and must not be considered complete merely because orders are persisted.
+The current movement layer is intentionally simple: it does not yet perform full pathfinding around complex terrain, perform full pathfinding around complex terrain, enforce region flags in an active combat loop, or implement combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies. Those remain later guard-system increments and must not be considered complete merely because orders are persisted.
 
 ## Configuration
 
@@ -43,4 +43,4 @@ The current movement layer is intentionally simple: it does not yet perform full
 
 ## Integration diagnostics
 
-Administrators can use `/raskolnpc integrations` to inspect detected providers. A detected plugin is not automatically treated as a supported adapter. In particular, WorldGuard is reported as detected-but-unsupported until a verified adapter is implemented; RaskolNPC does not claim to enforce WorldGuard region flags in this build.
+Administrators can use `/raskolnpc integrations` to inspect detected providers. A detected plugin is not automatically treated as a supported adapter. WorldGuard's API adapter can query the `MOB_DAMAGE` flag, but guard combat enforcement is not yet wired to it; RaskolNPC does not claim that guard attacks are currently blocked by region flags.
