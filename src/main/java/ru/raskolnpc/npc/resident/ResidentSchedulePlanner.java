@@ -1,5 +1,6 @@
 package ru.raskolnpc.npc.resident;
 
+import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 
 import java.time.DayOfWeek;
@@ -22,5 +23,16 @@ public final class ResidentSchedulePlanner {
                 .filter(entry -> minuteOfDay >= entry.startMinute()
                         && minuteOfDay < entry.endMinute())
                 .findFirst();
+    }
+
+    /**
+     * Returns the active destination, or HOME when no schedule entry is active.
+     * A resident therefore has a predictable default routine outside scheduled hours.
+     */
+    public ResidentDestination.DestinationType destinationFor(
+            ResidentSchedule schedule, DayOfWeek day, int minuteOfDay) {
+        return findCurrent(schedule, day, minuteOfDay)
+                .map(ResidentSchedule.Entry::destinationType)
+                .orElse(ResidentDestination.DestinationType.HOME);
     }
 }
