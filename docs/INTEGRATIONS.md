@@ -16,4 +16,6 @@ The adapter currently provides the verified diplomacy input for subsequent guard
 
 ## WorldGuard
 
-WorldGuard detection is diagnostic only at this stage. No region protection behavior is claimed until the adapter can be tested against the target WorldGuard API and the exact NPC actions that must be restricted.
+RaskolNPC optionally compiles against WorldGuard 7.0.19, which supports the project's Paper 26.2 target. The adapter queries `Flags.MOB_DAMAGE` through `RegionQuery` at a supplied location and returns ALLOWED, DENIED, or UNKNOWN. Query failures and missing locations return UNKNOWN. The adapter is initialized only when WorldGuard is installed and enabled; WorldGuard is a soft dependency.
+
+This is a query primitive, not a claim that all guard combat is protected: the guard combat/target execution layer is not yet implemented, so the adapter is not currently used to authorize an attack. When that layer is added, it must treat DENIED as a hard block and UNKNOWN as no permission to attack.
