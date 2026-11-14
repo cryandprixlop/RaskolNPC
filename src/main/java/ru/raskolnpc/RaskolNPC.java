@@ -26,6 +26,9 @@ import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.ResidentBehaviorService;
 import ru.raskolnpc.npc.resident.ResidentDialogueService;
 import ru.raskolnpc.npc.resident.ResidentInteractionListener;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
+import ru.raskolnpc.storage.ResidentQuestRepository;
+import ru.raskolnpc.storage.SqliteResidentQuestRepository;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
@@ -90,9 +93,13 @@ public final class RaskolNPC extends JavaPlugin {
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
         ResidentDialogueService residentDialogues = new ResidentDialogueService(this);
+        ResidentQuestRepository residentQuestRepository =
+                new SqliteResidentQuestRepository(databaseManager);
+        ResidentQuestService residentQuests = new ResidentQuestService(
+                this, residentProfileService, npcRegistry, residentQuestRepository);
         getServer().getPluginManager().registerEvents(
                 new ResidentInteractionListener(this, npcEntityManager, npcRegistry,
-                        residentProfileService, residentDialogues), this);
+                        residentProfileService, residentDialogues, residentQuests), this);
 
         ResidentScheduleRepository residentSchedules =
                 new SqliteResidentScheduleRepository(databaseManager);
@@ -136,6 +143,7 @@ public final class RaskolNPC extends JavaPlugin {
         commandHandler.setResidentScheduleService(new ResidentScheduleCommandService(
                 commandService, residentSchedules, residentBehaviorService));
         commandHandler.setResidentDialogueService(residentDialogues);
+        commandHandler.setResidentQuestService(residentQuests);
         if (townyEnabled) {
             commandHandler.setKingdomGeneralService(new TownyKingdomGeneralService(
                     getConfig().getString("guards.towny-general-rank", "general")));
