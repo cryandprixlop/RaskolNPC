@@ -16,6 +16,7 @@ import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.integration.PlayerSubjectResolver;
 import ru.raskolnpc.integration.towny.TownyPlayerSubjectResolver;
+import ru.raskolnpc.integration.towny.TownyGuardTerritoryAccess;
 import ru.raskolnpc.integration.CompositeDiplomacy;
 import ru.raskolnpc.integration.towny.TownyDiplomacyAdapter;
 import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
@@ -166,6 +167,7 @@ public final class RaskolNPC extends JavaPlugin {
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
         PlayerSubjectResolver playerSubjects = townyEnabled
                 ? new TownyPlayerSubjectResolver() : PlayerSubjectResolver.none();
+        if (townyEnabled) guardOrderController.setTerritoryAccess(new TownyGuardTerritoryAccess());
         guardOrderController.setPursuitPolicy(relationshipPolicy,
                 Math.max(0.0, Math.min(32.0,
                         getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))),

@@ -16,6 +16,7 @@ import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
 import java.util.Map;
+import java.util.function.BiPredicate;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -34,6 +35,7 @@ public final class GuardOrderController {
     private RelationshipPolicy relationships;
     private PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
     private double maxPursuitDistance;
+    private BiPredicate<Location, String> territoryAccess = (location, nationId) -> true;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
     private BukkitTask task;
@@ -109,6 +111,12 @@ public final class GuardOrderController {
         this.playerSubjects = Objects.requireNonNull(playerSubjects, "playerSubjects");
     }
 
+    /** Restricts every guard movement step to the hiring nation territory. */
+    public void setTerritoryAccess(BiPredicate<Location, String> territoryAccess) {
+        requireMainThread();
+        this.territoryAccess = Objects.requireNonNull(territoryAccess, "territoryAccess");
+    }
+
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
     public void tick() {
         requireMainThread();
@@ -143,7 +151,7 @@ public final class GuardOrderController {
 
         Location pursuitTarget = nearestVerifiedHostile(record, livingEntity);
         if (pursuitTarget != null) {
-            moveOneStep(entity, pursuitTarget);
+            moveOneStep(record, entity, pursuitTarget);
             return;
         }
 
@@ -157,7 +165,7 @@ public final class GuardOrderController {
             case ESCORT -> escortTarget(order);
         };
         if (target == null) return;
-        moveOneStep(entity, target);
+        moveOneStep(record, entity, target);
     }
 
     /**
@@ -230,7 +238,7 @@ public final class GuardOrderController {
                 point.z(), point.yaw(), point.pitch());
     }
 
-    private void moveOneStep(Entity entity, Location target) {
+    private void moveOneStep(NpcRecord guard, Entity entity, Location target) {
         Location current = entity.getLocation();
         if (current.getWorld() == null || target.getWorld() == null
                 || !current.getWorld().equals(target.getWorld())) return;
@@ -247,7 +255,7 @@ public final class GuardOrderController {
                 dy / distance * step, dz / distance * step);
         if (!world.isChunkLoaded(next.getBlockX() >> 4, next.getBlockZ() >> 4)) return;
         Location destination = isPassableStep(next) ? next : findSidestep(current, dx, dz, step);
-        if (destination == null) return;
+        if (destination == null || !territoryAccess.test(destination, guard.nationId())) return;
         destination.setYaw(current.getYaw());
         destination.setPitch(current.getPitch());
         entity.teleport(destination);
