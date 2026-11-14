@@ -7,6 +7,7 @@ import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
+import ru.raskolnpc.guard.GuardSquadService;
 import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
@@ -40,6 +41,8 @@ import ru.raskolnpc.storage.SqliteResidentQuestRepository;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardOrderRepository;
+import ru.raskolnpc.storage.GuardSquadRepository;
+import ru.raskolnpc.storage.SqliteGuardSquadRepository;
 import ru.raskolnpc.storage.SqliteGuardOrderRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
@@ -102,6 +105,9 @@ public final class RaskolNPC extends JavaPlugin {
                 tagger, repository, npcRegistry);
         GuardOrderRepository guardOrders = new SqliteGuardOrderRepository(databaseManager);
         GuardOrderService guardOrderService = new GuardOrderService(npcRegistry, guardOrders);
+        GuardSquadRepository guardSquads = new SqliteGuardSquadRepository(databaseManager);
+        GuardSquadService guardSquadService = new GuardSquadService(npcRegistry, guardSquads,
+                Math.max(2, Math.min(10, getConfig().getInt("guards.squad-max-members", 10))));
         guardOrderController = new GuardOrderController(this, npcRegistry, npcEntityManager,
                 guardOrderService,
                 Math.max(1, getConfig().getInt("guards.order-batch-size", 6)),
@@ -182,6 +188,7 @@ public final class RaskolNPC extends JavaPlugin {
                 getServer().getPluginManager(), townyEnabled,
                 worldGuardProtectionAdapter != null));
         commandHandler.setGuardOrderService(guardOrderService);
+        commandHandler.setGuardSquadService(guardSquadService);
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
