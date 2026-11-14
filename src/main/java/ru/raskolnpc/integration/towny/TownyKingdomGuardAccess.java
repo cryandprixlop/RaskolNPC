@@ -14,9 +14,10 @@ import java.util.function.Function;
 /** Towny-backed authorization and placement lookup for kingdom guards. */
 public final class TownyKingdomGuardAccess implements GuardHiringService.HiringAccess {
     private final TownResolver resolver;
+    private final Function<Player, NationContext> nationResolver;
 
     public TownyKingdomGuardAccess() {
-        this((TownResolver) (player, location) -> {
+        this((player, location) -> {
             Town town = TownyAPI.getInstance().getTown(location);
             if (town == null) return null;
             Nation nation = TownyAPI.getInstance().getTownNationOrNull(town);
@@ -24,11 +25,26 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
             if (nation == null) return null;
             return new Placement(town.getUUID().toString(), nation.getUUID().toString(),
                     resident != null && nation.isKing(resident));
+        }, player -> {
+            Resident resident = TownyAPI.getInstance().getResident(player);
+            Nation nation = resident == null ? null : resident.getNationOrNull();
+            return nation == null ? null
+                    : new NationContext(nation.getUUID().toString(), nation.isKing(resident));
         });
     }
 
     TownyKingdomGuardAccess(TownResolver resolver) {
+        this(resolver, player -> {
+            Placement placement = resolver.resolve(player, player.getLocation());
+            return placement == null ? null
+                    : new NationContext(placement.nationId(), placement.king());
+        });
+    }
+
+    TownyKingdomGuardAccess(TownResolver resolver,
+                            Function<Player, NationContext> nationResolver) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
+        this.nationResolver = Objects.requireNonNull(nationResolver, "nationResolver");
     }
 
     /** Backwards-compatible test seam for authorization-only unit tests. */
@@ -39,6 +55,7 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
             return context == null ? null
                     : new Placement("test-town", context.nationId(), context.king());
         };
+        this.nationResolver = resolver;
     }
 
     /** Resolves the Towny town at the placement location and checks its nation king. */
@@ -78,8 +95,13 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
         if (player.hasPermission("raskolnpc.admin") || player.hasPermission("towny.admin")) {
             return true;
         }
-        Placement placement = resolver.resolve(player, player.getLocation());
-        return placement != null && placement.king() && nationId.equals(placement.nationId());
+        try {
+            NationContext membership = nationResolver.apply(player);
+            return membership != null && membership.king()
+                    && nationId.equals(membership.nationId());
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
     }
 
     @FunctionalInterface
