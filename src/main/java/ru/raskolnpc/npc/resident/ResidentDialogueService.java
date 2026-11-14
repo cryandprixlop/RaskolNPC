@@ -62,9 +62,13 @@ public final class ResidentDialogueService {
     }
 
     public List<String> createLines(ResidentProfile profile) {
+        return createLines(profile, 0);
+    }
+
+    public List<String> createLines(ResidentProfile profile, int reputation) {
         Objects.requireNonNull(profile, "profile");
         ResidentDialogueCatalog snapshot = catalog;
-        List<String> selected = snapshot.linesFor(profile);
+        List<String> selected = snapshot.linesFor(profile, reputation);
         if (selected.isEmpty()) selected = FALLBACK_GREETINGS;
         return selected.stream()
                 .map(line -> ChatColor.translateAlternateColorCodes('&', line))
@@ -72,8 +76,13 @@ public final class ResidentDialogueService {
     }
 
     public void speak(org.bukkit.entity.Player player, ResidentProfile profile, String residentName) {
+        speak(player, profile, residentName, 0);
+    }
+
+    public void speak(org.bukkit.entity.Player player, ResidentProfile profile,
+            String residentName, int reputation) {
         String name = residentName == null || residentName.isBlank() ? "Житель" : residentName;
-        for (String line : createLines(profile)) {
+        for (String line : createLines(profile, reputation)) {
             player.sendMessage(ChatColor.GRAY + "[" + ChatColor.GOLD + name
                     + ChatColor.GRAY + "] " + line);
         }
