@@ -29,7 +29,7 @@ A nation king or administrator can issue orders to a guard visible in their nati
 
 Orders and patrol waypoints are stored in SQLite. One shared scheduler processes only a configured number of guards per pass. Movement uses small steps, checks passable feet/head blocks, attempts a simple left/right sidestep around a single blocked step, and never force-loads destination chunks. If the destination world or chunk is unavailable, movement pauses until it is available.
 
-The current movement layer is intentionally simple and does not yet perform full pathfinding around complex terrain. The first combat slice is implemented below; advanced pursuit, retaliation, player-target resolution, coordinated squad combat, morale, equipment, injury, and recovery policies remain later guard-system increments.
+The current movement layer is intentionally simple and does not yet perform full pathfinding around complex terrain. A first bounded pursuit layer is now available: guards check nearby entities in a configured radius and temporarily move toward the nearest registered NPC only when the shared diplomacy policy explicitly confirms hostility. Players, unregistered entities, neutral/unknown relations, and targets outside the configured radius are ignored. When no eligible target remains, the guard resumes its persisted order on the next movement pass. This is not obstacle-aware pathfinding; movement still uses the existing small-step passability checks and never force-loads chunks. Retaliation, player-target resolution, coordinated squad combat, morale, equipment, injury, and recovery policies remain later guard-system increments.
 
 ## Configuration
 
@@ -38,6 +38,7 @@ The current movement layer is intentionally simple and does not yet perform full
 - `limits.guards-per-nation` — guard roster cap per nation (default 30).
 - `guards.order-batch-size` — maximum orders advanced per scheduler pass (default 6).
 - `guards.movement-step` — movement step in blocks (default 0.6, maximum 1.5).
+- `guards.combat.max-pursuit-distance` — maximum distance for pursuit of explicitly hostile registered NPCs (default 16, maximum 32; set to 0 to disable).
 - `guards.base-hire-cost` and `guards.base-daily-rent` — level-one prices.
 - `guards.maximum-debt-days` — missed rent threshold before dismissal.
 
@@ -69,5 +70,5 @@ A shared order is persisted as an individual order for each current squad member
 - A bounded shared task checks only a small batch of registered guards per pass.
 - Guards can attack only registered NPC entities with a verified hostile Towny/SiegeWar relationship; unknown and neutral relations are ignored.
 - If WorldGuard is installed, both the attacker and target locations must explicitly allow `MOB_DAMAGE`. Missing or failed WorldGuard checks deny the attack.
-- Detection radius, damage, batch size, and attack cooldown are configurable under `guards.combat`.
-- This is the first combat slice: target selection and damage are implemented; pursuit, retaliation, player-target resolution, and coordinated squad combat remain future work.
+- Detection radius, damage, batch size, attack cooldown, and maximum pursuit distance are configurable under `guards.combat`.
+- Pursuit only changes the movement target temporarily; it does not replace or rewrite the durable order. If the target disappears, dies, leaves range, or is no longer explicitly hostile, the guard returns to its saved order.
