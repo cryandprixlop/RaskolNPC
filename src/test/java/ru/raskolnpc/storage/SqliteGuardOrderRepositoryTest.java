@@ -69,6 +69,18 @@ class SqliteGuardOrderRepositoryTest {
     }
 
     @Test
+    void savesAndLoadsRallyOrdersAfterSchemaUpgrade() {
+        NpcRecord guard = createNpc(NpcType.GUARD);
+        UUID world = UUID.randomUUID();
+        GuardOrder rally = new GuardOrder(guard.id(), GuardOrder.Type.RALLY,
+                List.of(point(world, 8, 64, -3)), UUID.randomUUID(), 234567L);
+
+        assertTrue(orders.save(rally).join());
+        assertEquals(rally, orders.find(guard.id()).join().orElseThrow());
+        assertEquals(List.of(rally), orders.findAll().join());
+    }
+
+    @Test
     void refusesToAttachAnOrderToANonGuardNpc() {
         NpcRecord resident = createNpc(NpcType.RESIDENT);
         GuardOrder order = new GuardOrder(resident.id(), GuardOrder.Type.HOLD_POSITION,
