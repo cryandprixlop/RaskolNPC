@@ -51,7 +51,7 @@ public final class SqliteGuardSquadRepository implements GuardSquadRepository {
                 }
             }
             try (var insert = connection.prepareStatement("""
-                    INSERT INTO guard_squad_members(squad_id, npc_id)
+                    INSERT OR IGNORE INTO guard_squad_members(squad_id, npc_id)
                     SELECT ?, ? WHERE EXISTS (
                         SELECT 1 FROM guard_squads WHERE squad_id = ?
                     )
