@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.raskolnpc.core.database.DatabaseManager;
+import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.*;
 
 class SqliteGuardSquadRepositoryTest {
     @TempDir Path temporaryDirectory;
+    private JavaPlugin plugin;
     private DatabaseManager database;
     private SqliteNpcRepository npcs;
     private SqliteGuardSquadRepository squads;
@@ -26,15 +28,10 @@ class SqliteGuardSquadRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        JavaPlugin plugin = mock(JavaPlugin.class);
+        plugin = mock(JavaPlugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getLogger("guard-squad-test"));
-        database = new DatabaseManager(plugin, "guard-squads.sqlite", 1);
-        database.initialize().join();
-        npcs = new SqliteNpcRepository(database);
-        squads = new SqliteGuardSquadRepository(database);
-        orders = new SqliteGuardOrderRepository(database);
-        deletions = new SqliteNpcDeletionRepository(database);
+        openDatabase();
     }
 
     @AfterEach
@@ -88,9 +85,9 @@ class SqliteGuardSquadRepositoryTest {
         UUID squadId = UUID.randomUUID();
         squads.create(squadId, "Watch", UUID.randomUUID(), 1234L).join();
         assertTrue(squads.addMember(squadId, guard.id(), 10).join());
-        var order = new ru.raskolnpc.guard.model.GuardOrder(
-                guard.id(), ru.raskolnpc.guard.model.GuardOrder.Type.RALLY,
-                java.util.List.of(new ru.raskolnpc.guard.model.GuardOrder.Waypoint(
+        GuardOrder order = new GuardOrder(
+                guard.id(), GuardOrder.Type.RALLY,
+                java.util.List.of(new GuardOrder.Waypoint(
                         UUID.randomUUID(), 1, 64, 1, 0, 0)),
                 UUID.randomUUID(), 123456L);
         assertTrue(orders.save(order).join());
@@ -101,6 +98,42 @@ class SqliteGuardSquadRepositoryTest {
         var persistedSquad = squads.findAll().join().getFirst();
         assertEquals(squadId, persistedSquad.id());
         assertTrue(persistedSquad.members().isEmpty());
+    }
+
+    @Test
+    void restoresSquadMembershipAndGuardOrdersAfterDatabaseRestart() {
+        NpcRecord guard = createNpc(NpcType.GUARD);
+        UUID squadId = UUID.randomUUID();
+        UUID worldId = UUID.randomUUID();
+        UUID issuer = UUID.randomUUID();
+        GuardOrder rally = new GuardOrder(guard.id(), GuardOrder.Type.RALLY,
+                java.util.List.of(new GuardOrder.Waypoint(
+                        worldId, 24.5, 70.0, -12.5, 90.0f, 0.0f)),
+                issuer, 987654L);
+
+        assertTrue(squads.create(squadId, "East Gate", issuer, 1234L).join());
+        assertTrue(squads.addMember(squadId, guard.id(), 10).join());
+        assertTrue(orders.save(rally).join());
+
+        database.close();
+        openDatabase();
+
+        var restoredSquad = squads.findAll().join().stream()
+                .filter(candidate -> candidate.id().equals(squadId))
+                .findFirst().orElseThrow();
+        assertEquals("East Gate", restoredSquad.name());
+        assertEquals(java.util.List.of(guard.id()), restoredSquad.members());
+        assertEquals(rally, orders.find(guard.id()).join().orElseThrow());
+        assertEquals(java.util.List.of(rally), orders.findAll().join());
+    }
+
+    private void openDatabase() {
+        database = new DatabaseManager(plugin, "guard-squads.sqlite", 1);
+        database.initialize().join();
+        npcs = new SqliteNpcRepository(database);
+        squads = new SqliteGuardSquadRepository(database);
+        orders = new SqliteGuardOrderRepository(database);
+        deletions = new SqliteNpcDeletionRepository(database);
     }
 
     private NpcRecord createNpc(NpcType type) {
