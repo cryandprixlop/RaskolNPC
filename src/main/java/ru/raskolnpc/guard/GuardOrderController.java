@@ -6,6 +6,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import ru.raskolnpc.integration.PlayerSubjectResolver;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.raskolnpc.guard.model.GuardOrder;
@@ -31,6 +32,7 @@ public final class GuardOrderController {
     private final int batchSize;
     private final double movementStep;
     private RelationshipPolicy relationships;
+    private PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
     private double maxPursuitDistance;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
@@ -91,6 +93,12 @@ public final class GuardOrderController {
 
     /** Configures the optional bounded pursuit policy before the controller starts. */
     public void setPursuitPolicy(RelationshipPolicy relationships, double maxPursuitDistance) {
+        setPursuitPolicy(relationships, maxPursuitDistance, PlayerSubjectResolver.none());
+    }
+
+    /** Configures bounded pursuit of verified hostile NPCs and Towny players. */
+    public void setPursuitPolicy(RelationshipPolicy relationships, double maxPursuitDistance,
+                                 PlayerSubjectResolver playerSubjects) {
         requireMainThread();
         if (!Double.isFinite(maxPursuitDistance) || maxPursuitDistance < 0
                 || maxPursuitDistance > 32) {
@@ -98,6 +106,7 @@ public final class GuardOrderController {
         }
         this.relationships = relationships;
         this.maxPursuitDistance = maxPursuitDistance;
+        this.playerSubjects = Objects.requireNonNull(playerSubjects, "playerSubjects");
     }
 
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
@@ -176,14 +185,20 @@ public final class GuardOrderController {
     }
 
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
-        var targetId = entities.getNpcId(candidate).orElse(null);
-        if (targetId == null || targetId.equals(guard.id())) return false;
-        NpcRecord target = registry.get(targetId).orElse(null);
-        if (target == null) return false;
+        RelationshipPolicy.Subject victim;
+        if (candidate instanceof Player player) {
+            victim = playerSubjects.resolve(player).orElse(null);
+            if (victim == null) return false;
+        } else {
+            var targetId = entities.getNpcId(candidate).orElse(null);
+            if (targetId == null || targetId.equals(guard.id())) return false;
+            NpcRecord target = registry.get(targetId).orElse(null);
+            if (target == null) return false;
+            victim = new RelationshipPolicy.Subject(
+                    target.ownerUuid(), target.townId(), target.nationId());
+        }
         RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
                 guard.ownerUuid(), guard.townId(), guard.nationId());
-        RelationshipPolicy.Subject victim = new RelationshipPolicy.Subject(
-                target.ownerUuid(), target.townId(), target.nationId());
         return relationships.mayTarget(actor, victim);
     }
 

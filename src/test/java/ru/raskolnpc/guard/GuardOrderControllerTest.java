@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.Material;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -249,6 +250,35 @@ class GuardOrderControllerTest {
         assertTrue(destination.getValue().getZ() > origin.getZ());
     }
 
+
+    @Test
+    void pursuesPlayerOnlyWhenTownySubjectIsVerifiedHostile() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        Player enemyPlayer = mock(Player.class);
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.isDead()).thenReturn(false);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(enemyPlayer));
+        when(enemyPlayer.isValid()).thenReturn(true);
+        when(enemyPlayer.isDead()).thenReturn(false);
+        when(enemyPlayer.getWorld()).thenReturn(world);
+        when(enemyPlayer.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6);
+        controller.setPursuitPolicy(policy, 8.0, player ->
+                Optional.of(new RelationshipPolicy.Subject(
+                        player.getUniqueId(), "enemy-town", "enemy-nation")));
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > origin.getX());
+    }
 
     @Test
     void resumesDurablePatrolWhenTargetLosesHostileStatus() {

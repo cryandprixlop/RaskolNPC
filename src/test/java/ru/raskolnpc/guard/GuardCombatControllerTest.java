@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,6 +130,45 @@ class GuardCombatControllerTest {
         controller.tick();
 
         verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void damagesPlayerOnlyWhenTownyResolverConfirmsHostileNation() {
+        Player enemyPlayer = mock(Player.class);
+        when(enemyPlayer.isValid()).thenReturn(true);
+        when(enemyPlayer.isDead()).thenReturn(false);
+        when(enemyPlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(enemyPlayer));
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, player -> Optional.of(new RelationshipPolicy.Subject(
+                        player.getUniqueId(), "enemy-town", "nation-b")));
+
+        controller.tick();
+
+        verify(enemyPlayer).damage(2.0, attacker);
+    }
+
+    @Test
+    void ignoresPlayerWhenTownyMembershipCannotBeResolved() {
+        Player unknownPlayer = mock(Player.class);
+        when(unknownPlayer.isValid()).thenReturn(true);
+        when(unknownPlayer.isDead()).thenReturn(false);
+        when(unknownPlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(unknownPlayer));
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, player -> Optional.empty());
+
+        controller.tick();
+
+        verify(unknownPlayer, never()).damage(anyDouble(), any(Entity.class));
     }
 
     @Test

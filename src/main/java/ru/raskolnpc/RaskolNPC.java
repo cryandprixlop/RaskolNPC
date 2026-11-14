@@ -14,6 +14,8 @@ import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.PlayerSubjectResolver;
+import ru.raskolnpc.integration.towny.TownyPlayerSubjectResolver;
 import ru.raskolnpc.integration.CompositeDiplomacy;
 import ru.raskolnpc.integration.towny.TownyDiplomacyAdapter;
 import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
@@ -162,16 +164,20 @@ public final class RaskolNPC extends JavaPlugin {
         if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
         if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
+        PlayerSubjectResolver playerSubjects = townyEnabled
+                ? new TownyPlayerSubjectResolver() : PlayerSubjectResolver.none();
         guardOrderController.setPursuitPolicy(relationshipPolicy,
                 Math.max(0.0, Math.min(32.0,
-                        getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))));
+                        getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))),
+                playerSubjects);
         guardCombatController = new GuardCombatController(
                 this, npcRegistry, npcEntityManager, relationshipPolicy,
                 worldGuardProtectionAdapter,
                 Math.max(1, getConfig().getInt("guards.combat.batch-size", 4)),
                 getConfig().getDouble("guards.combat.detection-radius", 12.0),
                 getConfig().getDouble("guards.combat.damage", 2.0),
-                getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L));
+                getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L),
+                playerSubjects);
         townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
         TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;

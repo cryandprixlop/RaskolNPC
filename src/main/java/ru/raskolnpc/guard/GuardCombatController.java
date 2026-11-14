@@ -3,9 +3,11 @@ package ru.raskolnpc.guard;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.PlayerSubjectResolver;
 import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
@@ -31,6 +33,7 @@ public final class GuardCombatController {
     private final RelationshipPolicy relationships;
     private final WorldGuardProtectionAdapter worldGuard;
     private final boolean worldGuardRequired;
+    private final PlayerSubjectResolver playerSubjects;
     private final int batchSize;
     private final double detectionRadius;
     private final double damage;
@@ -43,6 +46,15 @@ public final class GuardCombatController {
             NpcEntityManager entities, RelationshipPolicy relationships,
             WorldGuardProtectionAdapter worldGuard, int batchSize,
             double detectionRadius, double damage, long attackCooldownMillis) {
+        this(plugin, registry, entities, relationships, worldGuard, batchSize,
+                detectionRadius, damage, attackCooldownMillis, PlayerSubjectResolver.none());
+    }
+
+    public GuardCombatController(Plugin plugin, NpcRegistry registry,
+            NpcEntityManager entities, RelationshipPolicy relationships,
+            WorldGuardProtectionAdapter worldGuard, int batchSize,
+            double detectionRadius, double damage, long attackCooldownMillis,
+            PlayerSubjectResolver playerSubjects) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
@@ -63,6 +75,7 @@ public final class GuardCombatController {
         this.detectionRadius = detectionRadius;
         this.damage = damage;
         this.attackCooldownMillis = attackCooldownMillis;
+        this.playerSubjects = Objects.requireNonNull(playerSubjects, "playerSubjects");
     }
 
     public void start() {
@@ -136,16 +149,20 @@ public final class GuardCombatController {
     }
 
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
-        NpcId targetId = entities.getNpcId(candidate).orElse(null);
-        if (targetId == null || targetId.equals(guard.id())) return false;
-        NpcRecord target = registry.get(targetId).orElse(null);
-        if (target == null || target.type() == NpcType.GUARD && target.id().equals(guard.id())) {
-            return false;
+        RelationshipPolicy.Subject victim;
+        if (candidate instanceof Player player) {
+            victim = playerSubjects.resolve(player).orElse(null);
+            if (victim == null) return false;
+        } else {
+            NpcId targetId = entities.getNpcId(candidate).orElse(null);
+            if (targetId == null || targetId.equals(guard.id())) return false;
+            NpcRecord target = registry.get(targetId).orElse(null);
+            if (target == null) return false;
+            victim = new RelationshipPolicy.Subject(
+                    target.ownerUuid(), target.townId(), target.nationId());
         }
         RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
                 guard.ownerUuid(), guard.townId(), guard.nationId());
-        RelationshipPolicy.Subject victim = new RelationshipPolicy.Subject(
-                target.ownerUuid(), target.townId(), target.nationId());
         return relationships.mayTarget(actor, victim);
     }
 
