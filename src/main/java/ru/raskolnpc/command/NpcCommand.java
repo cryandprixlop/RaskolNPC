@@ -222,43 +222,6 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     }));
             return;
         }
-            if (!(sender instanceof Player player)) {
-                messages.sendRaw(sender, "&cПринять поручение может только игрок.");
-                return;
-            }
-            ResidentQuestService quests = residentQuestService;
-            if (quests == null) {
-                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
-                return;
-            }
-            var residentId = NpcCommandParser.parseId(args[3]);
-            if (residentId.isEmpty()) {
-                messages.sendRaw(sender, "&cНекорректный UUID жителя.");
-                return;
-            }
-            quests.accept(player, residentId.get(), args[4]).whenComplete((result, error) ->
-                    runMain(sender, () -> {
-                        if (error != null) {
-                            messages.sendRaw(sender, "&cНе удалось принять поручение: " + rootMessage(error));
-                            return;
-                        }
-                        switch (result) {
-                            case ACCEPTED -> messages.sendRaw(sender,
-                                    "&aПоручение принято. Оно сохранено и останется активным после перезапуска.");
-                            case ALREADY_ACTIVE -> messages.sendRaw(sender,
-                                    "&eЭто поручение уже активно у вас.");
-                            case RESIDENT_NOT_FOUND -> messages.sendRaw(sender,
-                                    "&cЖитель не найден или больше не доступен.");
-                            case QUEST_NOT_FOUND -> messages.sendRaw(sender,
-                                    "&cТакого поручения нет в каталоге.");
-                            case WRONG_PROFESSION -> messages.sendRaw(sender,
-                                    "&cЭтот житель не выдаёт такое поручение.");
-                            case PROFILE_UNAVAILABLE -> messages.sendRaw(sender,
-                                    "&cПрофиль жителя пока недоступен.");
-                        }
-                    }));
-            return;
-        }
         if (args.length == 2 && args[1].equalsIgnoreCase("reload-dialogues")) {
             ResidentDialogueService dialogues = residentDialogueService;
             if (dialogues == null) {
