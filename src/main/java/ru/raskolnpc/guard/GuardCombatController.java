@@ -58,13 +58,22 @@ public final class GuardCombatController {
             WorldGuardProtectionAdapter worldGuard, int batchSize,
             double detectionRadius, double damage, long attackCooldownMillis,
             PlayerSubjectResolver playerSubjects) {
+        this(plugin, registry, entities, relationships, worldGuard, batchSize,
+                detectionRadius, damage, attackCooldownMillis, playerSubjects,
+                isWorldGuardEnabled(plugin));
+    }
+
+    GuardCombatController(Plugin plugin, NpcRegistry registry,
+            NpcEntityManager entities, RelationshipPolicy relationships,
+            WorldGuardProtectionAdapter worldGuard, int batchSize,
+            double detectionRadius, double damage, long attackCooldownMillis,
+            PlayerSubjectResolver playerSubjects, boolean worldGuardRequired) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.relationships = Objects.requireNonNull(relationships, "relationships");
         this.worldGuard = worldGuard;
-        var wg = plugin.getServer().getPluginManager().getPlugin("WorldGuard");
-        this.worldGuardRequired = wg != null && wg.isEnabled();
+        this.worldGuardRequired = worldGuardRequired;
         this.batchSize = Math.max(1, batchSize);
         if (!Double.isFinite(detectionRadius) || detectionRadius < 2 || detectionRadius > 32) {
             throw new IllegalArgumentException("detectionRadius must be between 2 and 32.");
@@ -79,6 +88,12 @@ public final class GuardCombatController {
         this.damage = damage;
         this.attackCooldownMillis = attackCooldownMillis;
         this.playerSubjects = Objects.requireNonNull(playerSubjects, "playerSubjects");
+    }
+
+    private static boolean isWorldGuardEnabled(Plugin plugin) {
+        Objects.requireNonNull(plugin, "plugin");
+        var worldGuardPlugin = plugin.getServer().getPluginManager().getPlugin("WorldGuard");
+        return worldGuardPlugin != null && worldGuardPlugin.isEnabled();
     }
 
     public void start() {

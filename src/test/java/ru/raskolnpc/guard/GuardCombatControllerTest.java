@@ -255,4 +255,71 @@ class GuardCombatControllerTest {
 
         verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
+
+    @Test
+    void requiresWorldGuardPermissionAtBothAttackLocationsWhenEnabled() {
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenReturn(WorldGuardProtectionAdapter.Decision.ALLOWED);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true);
+
+        controller.tick();
+
+        verify(target).damage(2.0, attacker);
+        verify(worldGuard, times(2)).checkMobDamage(any(Location.class));
+    }
+
+    @Test
+    void blocksCombatWhenWorldGuardDeniesAttackerLocation() {
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenReturn(WorldGuardProtectionAdapter.Decision.DENIED);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+        verify(worldGuard, times(1)).checkMobDamage(any(Location.class));
+    }
+
+    @Test
+    void blocksCombatWhenWorldGuardReturnsUnknownForTargetLocation() {
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenReturn(WorldGuardProtectionAdapter.Decision.ALLOWED)
+                .thenReturn(WorldGuardProtectionAdapter.Decision.UNKNOWN);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+        verify(worldGuard, times(2)).checkMobDamage(any(Location.class));
+    }
+
+    @Test
+    void blocksCombatWhenWorldGuardIsEnabledButAdapterIsMissing() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+
 }
