@@ -113,10 +113,10 @@ public final class ResidentInteractionListener implements Listener {
                                     profileAndAssignments.reputation(),
                                     profileAndAssignments.assignments(), reviews, List.of());
                         })
-                .thenCompose(context -> quests.availableFor(context.profile(), npcId)
-                        .thenApply(available -> new ConversationContext(context.profile(),
-                                context.reputation(), context.activeAssignments(),
-                                context.reviews(), available)));
+                .thenCompose(conversationContext -> quests.availableFor(conversationContext.profile(), npcId)
+                        .thenApply(available -> new ConversationContext(conversationContext.profile(),
+                                conversationContext.reputation(), conversationContext.activeAssignments(),
+                                conversationContext.reviews(), available)));
 
         context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
