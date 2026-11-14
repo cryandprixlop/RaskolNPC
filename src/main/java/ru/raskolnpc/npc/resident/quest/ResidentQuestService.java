@@ -275,13 +275,9 @@ public final class ResidentQuestService {
         Objects.requireNonNull(questId, "questId");
         if (!complete) return repository.resolveReview(playerId, residentId, questId, false, 0);
 
-        return repository.findReviews(100).thenCompose(reviews -> {
-            ResidentQuestReview review = reviews.stream()
-                    .filter(candidate -> candidate.playerId().equals(playerId)
-                            && candidate.residentId().equals(residentId)
-                            && candidate.questId().equalsIgnoreCase(questId))
-                    .findFirst().orElse(null);
-            if (review == null) return CompletableFuture.completedFuture(false);
+        return repository.findReview(playerId, residentId, questId).thenCompose(found -> {
+            if (found.isEmpty()) return CompletableFuture.completedFuture(false);
+            ResidentQuestReview review = found.get();
             int fallbackReward;
             if (review.reputationReward() != null) {
                 fallbackReward = review.reputationReward();
