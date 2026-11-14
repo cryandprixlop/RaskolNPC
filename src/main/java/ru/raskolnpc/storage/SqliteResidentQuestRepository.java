@@ -408,6 +408,26 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Integer> consumeBusinessStockDaily(int percentage) {
+        if (percentage < 0 || percentage > 100) {
+            throw new IllegalArgumentException("Daily stock consumption must be between 0 and 100 percent.");
+        }
+        if (percentage == 0) return CompletableFuture.completedFuture(0);
+        return database.transaction(connection -> {
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET amount = MAX(0, amount - MAX(1, CAST(capacity * ? / 100 AS INTEGER))),
+                        updated_at = ?
+                    WHERE amount > 0 AND capacity > 0
+                    """)) {
+                update.setInt(1, percentage);
+                update.setLong(2, System.currentTimeMillis());
+                return update.executeUpdate();
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Integer> recoverUnfinishedSubmissions() {
         return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
