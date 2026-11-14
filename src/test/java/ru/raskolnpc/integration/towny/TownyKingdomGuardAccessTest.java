@@ -79,6 +79,16 @@ class TownyKingdomGuardAccessTest {
     }
 
     @Test
+    void incompatibleTownyApiRejectsGuardPlacement() {
+        Player player = playerWithoutAdmin();
+        TownyKingdomGuardAccess access = new TownyKingdomGuardAccess(
+                (ignored, location) -> { throw new NoSuchMethodError("Towny API mismatch"); },
+                ignored -> null);
+        assertThrows(TownyIntegrationException.class,
+                () -> access.resolvePlacement(player, mock(org.bukkit.Location.class)));
+    }
+
+    @Test
     void townyMembershipLookupFailureDoesNotGrantRosterAccess() {
         Player player = playerWithoutAdmin();
         TownyKingdomGuardAccess access = new TownyKingdomGuardAccess(

@@ -62,7 +62,14 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
     public Placement resolvePlacement(Player player, Location location) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(location, "location");
-        Placement placement = resolver.resolve(player, location);
+        final Placement placement;
+        try {
+            placement = resolver.resolve(player, location);
+        } catch (RuntimeException | LinkageError unavailable) {
+            throw new TownyIntegrationException(
+                    "Towny недоступен или несовместим; найм стражи временно запрещён.",
+                    unavailable);
+        }
         if (placement == null || placement.townId() == null || placement.nationId() == null) {
             throw new TownyIntegrationException(
                     "Стражу можно размещать только на территории города, входящего в нацию Towny.");
