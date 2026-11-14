@@ -17,7 +17,7 @@ public interface ResidentQuestRepository {
     CompletableFuture<Boolean> complete(UUID playerId, NpcId residentId, String questId);
 
     /** Reserves an accepted assignment before inventory mutation. */
-    CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId);
+    CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId, int reputationReward);
     /** Releases a reservation only when no inventory items have been removed. */
     CompletableFuture<Boolean> releaseSubmission(UUID playerId, NpcId residentId, String questId);
     /** Completes the assignment and credits reputation exactly once in one SQL transaction. */
@@ -27,6 +27,10 @@ public interface ResidentQuestRepository {
     CompletableFuture<Boolean> markSubmissionForReview(
             UUID playerId, NpcId residentId, String questId, String reason);
     CompletableFuture<Integer> getReputation(UUID playerId);
+    CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
+    /** Resolves a review once; completion credits the stored reward (or the legacy fallback) exactly once. */
+    CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId, String questId,
+                                             boolean complete, int legacyReward);
     /** Moves reservations left unfinished by a previous process into manual review. */
     CompletableFuture<Integer> recoverUnfinishedSubmissions();
 }
