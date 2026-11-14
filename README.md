@@ -16,6 +16,7 @@ RaskolNPC is a Paper plugin for persistent NPC systems in a Minecraft RPG server
 - Idempotent submission handling, restart recovery, and administrator review for ambiguous submissions.
 - Town business stock shared by profession, stock-based quest demand, atomic resource deposits/withdrawals, and configurable daily stock consumption.
 - Administrative tools for reputation, active quests, review queue resolution, and business stock inspection.
+- Kingdom guard rosters, Towny general appointments, durable guard orders, patrol waypoints, escort, defend, and return-to-post movement.
 
 The current YAML catalog contains sample delivery tasks for all 10 professions. Currency rewards are intentionally not enabled: resource deliveries award reputation and contribute goods to business stock. A player-money trade provider has not yet been selected.
 
@@ -65,6 +66,7 @@ The CI workflow compiles the plugin, compiles test sources, runs JUnit tests, an
 ## Documentation
 
 - [Resident systems guide](docs/RESIDENTS.md)
+- [Kingdom guards guide](docs/GUARDS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 
