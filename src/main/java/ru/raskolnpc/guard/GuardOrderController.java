@@ -123,7 +123,7 @@ public final class GuardOrderController {
     }
 
     private void execute(NpcRecord record, GuardOrder order) {
-        Entity entity = entities.find(order.npcId()).orElse(null);
+        Entity entity = entities.find(record.id()).orElse(null);
         if (entity == null || !entity.isValid()) return;
 
         Location pursuitTarget = nearestVerifiedHostile(record, entity);
