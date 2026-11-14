@@ -4,12 +4,14 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import ru.raskolnpc.guard.model.GuardOrder;
+import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.model.NpcRecord;
@@ -137,6 +139,77 @@ class GuardOrderControllerTest {
         verify(entity).teleport(destination.capture());
         assertEquals(0.5, destination.getValue().getX(), 0.001);
         assertTrue(destination.getValue().getZ() > 0.5);
+    }
+
+    @Test
+    void pursuesOnlyVerifiedHostileRegisteredNpcWithinConfiguredRadius() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        LivingEntity hostileEntity = mock(LivingEntity.class);
+        NpcRecord hostile = NpcRecord.create(
+                NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(hostile);
+
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(hostileEntity));
+        when(hostileEntity.isValid()).thenReturn(true);
+        when(hostileEntity.isDead()).thenReturn(false);
+        when(hostileEntity.getWorld()).thenReturn(world);
+        when(hostileEntity.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+        when(entities.getNpcId(hostileEntity)).thenReturn(Optional.of(hostile.id()));
+
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder hold = new GuardOrder(guard.id(), GuardOrder.Type.HOLD_POSITION,
+                List.of(), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(hold)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > origin.getX());
+        assertTrue(destination.getValue().getX() <= 1.11);
+    }
+
+    @Test
+    void doesNotPursueUnknownOrUnregisteredTargets() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        LivingEntity unknownEntity = mock(LivingEntity.class);
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(unknownEntity));
+        when(unknownEntity.isValid()).thenReturn(true);
+        when(unknownEntity.isDead()).thenReturn(false);
+        when(unknownEntity.getWorld()).thenReturn(world);
+        when(unknownEntity.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+        when(entities.getNpcId(unknownEntity)).thenReturn(Optional.empty());
+
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder hold = new GuardOrder(guard.id(), GuardOrder.Type.HOLD_POSITION,
+                List.of(), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(hold)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.tick();
+
+        verify(guardEntity, never()).teleport(any(Location.class));
     }
 
     private GuardOrder.Waypoint point(double x) {
