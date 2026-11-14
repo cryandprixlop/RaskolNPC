@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 11;
+    private static final int CURRENT_SCHEMA_VERSION = 12;
 
     private DatabaseMigrations() {
     }
@@ -38,6 +38,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
         if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
         if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
+        if (!isApplied(connection, 12)) applyGuardOrderSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -525,6 +526,52 @@ public final class DatabaseMigrations {
                     CHECK (stock_capacity IS NULL OR stock_capacity >= 0)
                     """);
             statement.execute("INSERT INTO schema_migrations(version) VALUES (11)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyGuardOrderSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_orders (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        order_type TEXT NOT NULL CHECK (order_type IN (
+                            'HOLD_POSITION', 'PATROL', 'DEFEND', 'ESCORT', 'RETURN_TO_POST'
+                        )),
+                        issuer_uuid TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_order_waypoints (
+                        npc_id TEXT NOT NULL REFERENCES guard_orders(npc_id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 15),
+                        world_uuid TEXT NOT NULL,
+                        x REAL NOT NULL,
+                        y REAL NOT NULL,
+                        z REAL NOT NULL,
+                        yaw REAL NOT NULL,
+                        pitch REAL NOT NULL,
+                        PRIMARY KEY (npc_id, sequence)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_orders_type "
+                    + "ON guard_orders(order_type)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (12)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
