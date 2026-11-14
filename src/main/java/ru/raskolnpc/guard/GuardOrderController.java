@@ -4,10 +4,12 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.raskolnpc.guard.model.GuardOrder;
+import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.registry.NpcRegistry;
@@ -28,6 +30,8 @@ public final class GuardOrderController {
     private final GuardOrderService orders;
     private final int batchSize;
     private final double movementStep;
+    private final RelationshipPolicy relationships;
+    private final double maxPursuitDistance;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
     private BukkitTask task;
@@ -36,6 +40,13 @@ public final class GuardOrderController {
     public GuardOrderController(Plugin plugin, NpcRegistry registry,
             NpcEntityManager entities, GuardOrderService orders,
             int batchSize, double movementStep) {
+        this(plugin, registry, entities, orders, batchSize, movementStep, null, 0.0);
+    }
+
+    public GuardOrderController(Plugin plugin, NpcRegistry registry,
+            NpcEntityManager entities, GuardOrderService orders,
+            int batchSize, double movementStep, RelationshipPolicy relationships,
+            double maxPursuitDistance) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
@@ -45,6 +56,12 @@ public final class GuardOrderController {
             throw new IllegalArgumentException("movementStep must be greater than 0 and at most 1.5.");
         }
         this.movementStep = movementStep;
+        if (!Double.isFinite(maxPursuitDistance) || maxPursuitDistance < 0
+                || maxPursuitDistance > 32) {
+            throw new IllegalArgumentException("maxPursuitDistance must be between 0 and 32.");
+        }
+        this.relationships = relationships;
+        this.maxPursuitDistance = maxPursuitDistance;
     }
 
     public void start() {
@@ -94,6 +111,12 @@ public final class GuardOrderController {
         Entity entity = entities.find(order.npcId()).orElse(null);
         if (entity == null || !entity.isValid()) return;
 
+        Location pursuitTarget = nearestVerifiedHostile(record, entity);
+        if (pursuitTarget != null) {
+            moveOneStep(entity, pursuitTarget);
+            return;
+        }
+
         Location target = switch (order.type()) {
             case HOLD_POSITION -> null;
             case RETURN_TO_POST -> record.spawnLocation() == null
@@ -104,6 +127,42 @@ public final class GuardOrderController {
         };
         if (target == null) return;
         moveOneStep(entity, target);
+    }
+
+    /**
+     * Returns a nearby registered NPC only when diplomacy explicitly confirms hostility.
+     * Players, unregistered entities, neutral relations and unknown relations are ignored.
+     */
+    private Location nearestVerifiedHostile(NpcRecord guard, Entity entity) {
+        if (relationships == null || maxPursuitDistance <= 0
+                || !(entity instanceof LivingEntity) || !entity.isValid()) return null;
+        Location origin = entity.getLocation();
+        if (origin.getWorld() == null) return null;
+        double radiusSquared = maxPursuitDistance * maxPursuitDistance;
+        return entity.getNearbyEntities(maxPursuitDistance, maxPursuitDistance,
+                        maxPursuitDistance).stream()
+                .filter(candidate -> candidate instanceof LivingEntity)
+                .filter(candidate -> candidate.isValid() && !candidate.isDead())
+                .filter(candidate -> candidate.getWorld().equals(origin.getWorld()))
+                .filter(candidate -> candidate.getLocation().distanceSquared(origin) <= radiusSquared)
+                .filter(candidate -> isVerifiedHostile(guard, candidate))
+                .min(java.util.Comparator.comparingDouble(candidate ->
+                        candidate.getLocation().distanceSquared(origin)))
+                .map(Entity::getLocation)
+                .map(Location::clone)
+                .orElse(null);
+    }
+
+    private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
+        var targetId = entities.getNpcId(candidate).orElse(null);
+        if (targetId == null || targetId.equals(guard.id())) return false;
+        NpcRecord target = registry.get(targetId).orElse(null);
+        if (target == null) return false;
+        RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
+                guard.ownerUuid(), guard.townId(), guard.nationId());
+        RelationshipPolicy.Subject victim = new RelationshipPolicy.Subject(
+                target.ownerUuid(), target.townId(), target.nationId());
+        return relationships.mayTarget(actor, victim);
     }
 
     private Location escortTarget(GuardOrder order) {
