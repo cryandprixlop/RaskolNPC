@@ -566,6 +566,52 @@ class GuardOrderControllerTest {
         verify(entity, never()).teleport(any(Location.class));
     }
 
+    @Test
+    void resumesPersistedPatrolWhenVerifiedHostilePlayerLeavesTownyRoster() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        Player hostilePlayer = mock(Player.class);
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.isDead()).thenReturn(false);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(hostilePlayer));
+        when(hostilePlayer.isValid()).thenReturn(true);
+        when(hostilePlayer.isDead()).thenReturn(false);
+        when(hostilePlayer.getWorld()).thenReturn(world);
+        when(hostilePlayer.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder patrol = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(new GuardOrder.Waypoint(world.getUID(), 0.5, 64, 5.5, 0, 0),
+                        new GuardOrder.Waypoint(world.getUID(), 0.5, 64, 10.5, 0, 0)),
+                UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(patrol)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        java.util.concurrent.atomic.AtomicReference<Optional<RelationshipPolicy.Subject>> subject =
+                new java.util.concurrent.atomic.AtomicReference<>(Optional.of(
+                        new RelationshipPolicy.Subject(UUID.randomUUID(), "enemy-town", "enemy-nation")));
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.setPursuitPolicy(policy, 8.0, player -> subject.get());
+
+        controller.tick();
+        subject.set(Optional.empty());
+        controller.tick();
+
+        ArgumentCaptor<Location> destinations = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity, times(2)).teleport(destinations.capture());
+        assertTrue(destinations.getAllValues().get(0).getX() > origin.getX(),
+                "first movement should pursue the verified hostile player");
+        assertTrue(destinations.getAllValues().get(1).getZ() > origin.getZ(),
+                "second movement should resume the persisted patrol after roster resolution is lost");
+    }
+
     private GuardOrder.Waypoint point(double x) {
         return new GuardOrder.Waypoint(world.getUID(), x, 64, 0.5, 0, 0);
     }
