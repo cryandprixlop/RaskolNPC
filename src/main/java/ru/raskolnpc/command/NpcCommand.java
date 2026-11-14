@@ -161,7 +161,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private void resident(CommandSender sender, String[] args) {
         if (args.length == 5 && args[1].equalsIgnoreCase("quest")
-                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit"))) {
+                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit")
+                        || args[2].equalsIgnoreCase("abandon"))) {
             if (!(sender instanceof Player player)) {
                 messages.sendRaw(sender, "&cЭту операцию может выполнить только игрок.");
                 return;
