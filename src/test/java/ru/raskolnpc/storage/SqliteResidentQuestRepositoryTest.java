@@ -121,6 +121,7 @@ class SqliteResidentQuestRepositoryTest {
 
         assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(0, quests.getReputation(player).join());
     }
@@ -165,18 +166,6 @@ class SqliteResidentQuestRepositoryTest {
 
         assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
         assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
-    }
-
-    @Test
-    void releasingReservationAllowsRetryWithoutCreditingReputationAfterRepeatedCalls() {
-        NpcRecord resident = createResident();
-        UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertEquals(0, quests.getReputation(player).join());
     }
 
     private NpcRecord createResident() {
