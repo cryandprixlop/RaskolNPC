@@ -20,6 +20,16 @@ The resource-side supply/demand loop is implemented. Player-currency rewards and
 
 The resident milestone is still undergoing final validation. A full in-server acceptance test and load test at the global NPC cap of 150 are release-preparation tasks. The current work is on the open draft pull request; it has not been merged into `main`.
 
+## Current implementation status — stages 2–4 in progress
+
+The resident milestone and its automated validation are present on the active pull-request branch. The following work extends the same branch:
+
+- **Stage 2:** SQLite migrations 1–12, versioned schema checks, NPC lifecycle capacity reservations, entity binding persistence, deletion recovery, and restart reconciliation. A newer unsupported schema version is rejected before application startup.
+- **Stage 3:** Towny authority/placement and Town-bank operations use existing verified Towny APIs. A provider-neutral relationship policy treats missing diplomacy as neutral. Administrator diagnostics report Towny, Town-bank economy, WorldGuard, and SiegeWar capability without claiming unsupported adapters.
+- **Stage 4:** Towny guard hiring, rent, nation roster, general appointments, payment review, durable guard orders, patrol waypoints, escort, defend, hold, and return-to-post movement are implemented incrementally. Orders are processed by one bounded scheduler; unloaded chunks are not force-loaded.
+
+**Not yet complete:** no verified WorldGuard region-protection adapter or SiegeWar diplomacy adapter is available in this branch. Guard pathfinding around complex terrain, combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies still require implementation and in-server acceptance testing. These features must not be considered complete based only on the current order persistence and movement layer.
+
 ## Phase 0 — Product and technical validation
 
 - Review the agreed NPC systems and resolve ambiguous rules.
