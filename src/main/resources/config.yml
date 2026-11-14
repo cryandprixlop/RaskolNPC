@@ -13,6 +13,8 @@ guards:
   base-daily-rent: 10.0
   # A guard is dismissed after this many consecutive missed daily payments.
   maximum-debt-days: 3
+  # Must match a nation rank already configured in Towny; RaskolNPC never creates ranks.
+  towny-general-rank: general
 
 integrations:
   towny:
