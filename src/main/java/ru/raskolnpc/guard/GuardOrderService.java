@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.UUID;
@@ -77,6 +78,9 @@ public final class GuardOrderService {
         return repository.save(order).thenApply(saved -> {
             if (!saved) throw new IllegalStateException(
                     "Guard order could not be saved; the NPC may have been deleted.");
+            if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
+                throw new IllegalStateException("The guard was deleted while its order was being saved.");
+            }
             activeOrders.put(guardId, order);
             return order;
         });
@@ -85,10 +89,14 @@ public final class GuardOrderService {
     public CompletableFuture<Optional<GuardOrder>> find(NpcId guardId) {
         Objects.requireNonNull(guardId, "guardId");
         if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
+            activeOrders.remove(guardId);
             return CompletableFuture.completedFuture(Optional.empty());
         }
         GuardOrder cached = activeOrders.get(guardId);
         return cached == null ? repository.find(guardId).thenApply(found -> {
+            if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
+                return Optional.<GuardOrder>empty();
+            }
             found.ifPresent(order -> activeOrders.put(guardId, order));
             return found;
         }) : CompletableFuture.completedFuture(Optional.of(cached));
@@ -108,6 +116,15 @@ public final class GuardOrderService {
         });
     }
 
+    /** Drops cached orders for deleted or retyped NPCs without touching durable history. */
+    public void retainRegisteredGuards() {
+        Set<NpcId> activeIds = registry.all().stream()
+                .filter(record -> record.type() == NpcType.GUARD)
+                .map(record -> record.id())
+                .collect(java.util.stream.Collectors.toSet());
+        activeOrders.keySet().retainAll(activeIds);
+    }
+
     public List<GuardOrder> snapshot() {
         return activeOrders.values().stream()
                 .sorted(java.util.Comparator.comparing(order -> order.npcId().toString()))
@@ -117,6 +134,7 @@ public final class GuardOrderService {
     public CompletableFuture<Boolean> clear(NpcId guardId) {
         Objects.requireNonNull(guardId, "guardId");
         if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
+            activeOrders.remove(guardId);
             return CompletableFuture.completedFuture(false);
         }
         return repository.delete(guardId).thenApply(deleted -> {

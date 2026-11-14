@@ -80,6 +80,26 @@ class GuardOrderServiceTest {
         verifyNoInteractions(repository);
     }
 
+    @Test
+    void removesCachedOrdersWhenGuardIsDeletedOrRetyped() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord guard = create(NpcType.GUARD);
+        registry.register(guard);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.HOLD_POSITION,
+                List.of(), UUID.randomUUID(), 1L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        GuardOrderService service = new GuardOrderService(registry, repository);
+
+        assertEquals(1, service.loadAll().join());
+        assertEquals(1, service.snapshot().size());
+        registry.unregister(guard.id());
+
+        service.retainRegisteredGuards();
+
+        assertTrue(service.snapshot().isEmpty());
+    }
+
     private static NpcRecord create(NpcType type) {
         return NpcRecord.create(type, type.name(), null, "town", "nation", "{}");
     }

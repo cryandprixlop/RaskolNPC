@@ -120,6 +120,7 @@ public final class GuardOrderController {
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
     public void tick() {
         requireMainThread();
+        orders.retainRegisteredGuards();
         var guards = registry.all().stream()
                 .filter(record -> record.type() == ru.raskolnpc.npc.model.NpcType.GUARD)
                 .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
