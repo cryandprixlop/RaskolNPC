@@ -174,7 +174,15 @@ public final class RaskolNPC extends JavaPlugin {
             }
         }
         java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
-        if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
+        if (townyEnabled) {
+            try {
+                diplomacyProviders.add(new TownyDiplomacyAdapter());
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny diplomacy adapter could not initialize; Towny relations remain unknown.",
+                        adapterError);
+            }
+        }
         if (siegeWarEnabled) {
             try {
                 diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
@@ -186,10 +194,19 @@ public final class RaskolNPC extends JavaPlugin {
             }
         }
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
-        PlayerSubjectResolver playerSubjects = townyEnabled
-                ? new TownyPlayerSubjectResolver() : PlayerSubjectResolver.none();
-        TownyGuardTerritoryAccess territoryAccess = townyEnabled
-                ? new TownyGuardTerritoryAccess() : null;
+        PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
+        TownyGuardTerritoryAccess territoryAccess = null;
+        if (townyEnabled) {
+            try {
+                playerSubjects = new TownyPlayerSubjectResolver();
+                territoryAccess = new TownyGuardTerritoryAccess();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny player or territory adapter could not initialize. "
+                                + "Player hostility and guard territory movement remain disabled.",
+                        adapterError);
+            }
+        }
         if (territoryAccess != null) {
             guardOrderController.setTerritoryAccess(territoryAccess::apply);
         }
@@ -208,9 +225,21 @@ public final class RaskolNPC extends JavaPlugin {
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
         }
-        townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
-        TownyResidentService townyResidents = townyEnabled
-                ? townyIntegration.residents() : null;
+        townyKingdomGuardAccess = null;
+        TownyResidentService townyResidents = null;
+        if (townyEnabled) {
+            try {
+                townyKingdomGuardAccess = new TownyKingdomGuardAccess();
+                townyResidents = townyIntegration.residents();
+            } catch (RuntimeException | LinkageError adapterError) {
+                townyKingdomGuardAccess = null;
+                townyResidents = null;
+                getLogger().log(Level.WARNING,
+                        "Towny authorization adapters could not initialize. "
+                                + "Towny-backed NPC management is disabled.",
+                        adapterError);
+            }
+        }
         int residentsPerTown = Math.max(1,
                 getConfig().getInt("limits.residents-per-town", 15));
         int guardsPerNation = Math.max(1,
