@@ -107,9 +107,9 @@ public final class GuardSquadService {
     }
 
     private CompletableFuture<Boolean> safely(
-            java.util.function.Supplier<CompletableFuture<Boolean>> operation) {
+            java.util.function.Supplier<CompletableFuture<?>> operation) {
         try {
-            return operation.get().handle((success, error) -> error == null && Boolean.TRUE.equals(success));
+            return operation.get().handle((success, error) -> error == null && success != null && !Boolean.FALSE.equals(success));
         } catch (RuntimeException exception) {
             return CompletableFuture.completedFuture(false);
         }
