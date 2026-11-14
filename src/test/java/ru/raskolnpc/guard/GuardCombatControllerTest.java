@@ -216,6 +216,34 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void failsClosedWhenDiplomacyLookupThrowsDuringCombat() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> { throw new IllegalStateException("Diplomacy unavailable"); });
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        assertDoesNotThrow(controller::tick);
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void failsClosedWhenPlayerMembershipResolverThrowsDuringCombat() {
+        Player hostilePlayer = mock(Player.class);
+        when(hostilePlayer.isValid()).thenReturn(true);
+        when(hostilePlayer.isDead()).thenReturn(false);
+        when(hostilePlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(hostilePlayer));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, player -> { throw new IllegalStateException("Towny unavailable"); });
+
+        assertDoesNotThrow(controller::tick);
+        verify(hostilePlayer, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
     void ignoresEntitiesWithoutRaskolNpcIdentity() {
         when(entities.getNpcId(target)).thenReturn(Optional.empty());
         RelationshipPolicy relationships = new RelationshipPolicy(

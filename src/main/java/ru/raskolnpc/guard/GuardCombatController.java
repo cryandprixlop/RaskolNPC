@@ -152,22 +152,28 @@ public final class GuardCombatController {
     }
 
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
-        RelationshipPolicy.Subject victim;
-        if (candidate instanceof Player player) {
-            victim = playerSubjects.resolve(player).orElse(null);
-            if (victim == null) return false;
-        } else {
-            NpcId targetId = entities.getNpcId(candidate).orElse(null);
-            if (targetId == null || targetId.equals(guard.id())) return false;
-            NpcRecord target = registry.get(targetId).orElse(null);
-            if (target == null) return false;
-            victim = new RelationshipPolicy.Subject(
-                    target.ownerUuid(), target.townId(), target.nationId());
+        try {
+            RelationshipPolicy.Subject victim;
+            if (candidate instanceof Player player) {
+                victim = playerSubjects.resolve(player).orElse(null);
+                if (victim == null) return false;
+            } else {
+                NpcId targetId = entities.getNpcId(candidate).orElse(null);
+                if (targetId == null || targetId.equals(guard.id())) return false;
+                NpcRecord target = registry.get(targetId).orElse(null);
+                if (target == null) return false;
+                victim = new RelationshipPolicy.Subject(
+                        target.ownerUuid(), target.townId(), target.nationId());
+            }
+            RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
+                    guard.ownerUuid(), guard.townId(), guard.nationId());
+            return relationships.mayTarget(actor, victim);
+        } catch (RuntimeException unavailable) {
+            // Fail closed when Towny/SiegeWar diplomacy cannot be queried.
+            return false;
         }
-        RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
-                guard.ownerUuid(), guard.townId(), guard.nationId());
-        return relationships.mayTarget(actor, victim);
     }
+
 
     /** Restricts combat actions to the hiring nation when a territory provider is configured. */
     public void setTerritoryAccess(BiPredicate<Location, String> territoryAccess) {

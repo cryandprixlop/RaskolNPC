@@ -193,21 +193,26 @@ public final class GuardOrderController {
     }
 
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
-        RelationshipPolicy.Subject victim;
-        if (candidate instanceof Player player) {
-            victim = playerSubjects.resolve(player).orElse(null);
-            if (victim == null) return false;
-        } else {
-            var targetId = entities.getNpcId(candidate).orElse(null);
-            if (targetId == null || targetId.equals(guard.id())) return false;
-            NpcRecord target = registry.get(targetId).orElse(null);
-            if (target == null) return false;
-            victim = new RelationshipPolicy.Subject(
-                    target.ownerUuid(), target.townId(), target.nationId());
+        try {
+            RelationshipPolicy.Subject victim;
+            if (candidate instanceof Player player) {
+                victim = playerSubjects.resolve(player).orElse(null);
+                if (victim == null) return false;
+            } else {
+                var targetId = entities.getNpcId(candidate).orElse(null);
+                if (targetId == null || targetId.equals(guard.id())) return false;
+                NpcRecord target = registry.get(targetId).orElse(null);
+                if (target == null) return false;
+                victim = new RelationshipPolicy.Subject(
+                        target.ownerUuid(), target.townId(), target.nationId());
+            }
+            RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
+                    guard.ownerUuid(), guard.townId(), guard.nationId());
+            return relationships.mayTarget(actor, victim);
+        } catch (RuntimeException unavailable) {
+            // Unknown diplomacy or player membership must never become hostility.
+            return false;
         }
-        RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
-                guard.ownerUuid(), guard.townId(), guard.nationId());
-        return relationships.mayTarget(actor, victim);
     }
 
     private Location escortTarget(GuardOrder order) {

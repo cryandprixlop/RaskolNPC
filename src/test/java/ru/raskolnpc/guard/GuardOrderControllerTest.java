@@ -483,6 +483,46 @@ class GuardOrderControllerTest {
         verify(entity, never()).teleport(any(Location.class));
     }
 
+    @Test
+    void failsClosedWhenDiplomacyLookupThrowsDuringPursuit() {
+        LivingEntity hostileEntity = mock(LivingEntity.class);
+        NpcRecord hostile = NpcRecord.create(
+                NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(hostile);
+        when(hostileEntity.isValid()).thenReturn(true);
+        when(hostileEntity.isDead()).thenReturn(false);
+        when(hostileEntity.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostileEntity));
+        when(entities.getNpcId(hostileEntity)).thenReturn(Optional.of(hostile.id()));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> { throw new IllegalStateException("Diplomacy unavailable"); });
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
+    void failsClosedWhenPlayerMembershipResolverThrowsDuringPursuit() {
+        Player hostilePlayer = mock(Player.class);
+        when(hostilePlayer.isValid()).thenReturn(true);
+        when(hostilePlayer.isDead()).thenReturn(false);
+        when(hostilePlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostilePlayer));
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.setPursuitPolicy(policy, 8.0, player -> {
+            throw new IllegalStateException("Towny membership unavailable");
+        });
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
     private GuardOrder.Waypoint point(double x) {
         return new GuardOrder.Waypoint(world.getUID(), x, 64, 0.5, 0, 0);
     }
