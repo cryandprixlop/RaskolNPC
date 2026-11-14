@@ -1,7 +1,7 @@
 package ru.raskolnpc.npc.resident.quest;
 
 import ru.raskolnpc.npc.model.NpcId;
-import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -11,7 +11,7 @@ import java.util.UUID;
 /** Immutable definition and persisted assignment data for a resident delivery quest. */
 public record ResidentQuest(
         String id,
-        ResidentProfile.ResidentProfession profession,
+        ResidentProfession profession,
         String requiredMaterial,
         int requiredAmount,
         int reputationReward
