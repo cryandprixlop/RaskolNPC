@@ -2,7 +2,7 @@ package ru.raskolnpc.npc.resident.quest;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,8 +43,8 @@ public final class ResidentQuestCatalog {
             if (questSection == null) continue;
             try {
                 String professionKey = questSection.getString("profession", "");
-                ResidentProfile.ResidentProfession profession =
-                        ResidentProfile.ResidentProfession.valueOf(
+                ResidentProfession profession =
+                        ResidentProfession.valueOf(
                                 professionKey.trim().toUpperCase(Locale.ROOT));
                 ResidentQuest quest = new ResidentQuest(
                         key,
@@ -69,7 +69,7 @@ public final class ResidentQuestCatalog {
         return Optional.ofNullable(quests.get(normalizeId(id)));
     }
 
-    public List<ResidentQuest> forProfession(ResidentProfile.ResidentProfession profession) {
+    public List<ResidentQuest> forProfession(ResidentProfession profession) {
         Objects.requireNonNull(profession, "profession");
         List<ResidentQuest> result = new ArrayList<>();
         for (ResidentQuest quest : quests.values()) {
