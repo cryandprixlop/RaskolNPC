@@ -29,7 +29,7 @@ A nation king or administrator can issue orders to a guard visible in their nati
 
 Orders and patrol waypoints are stored in SQLite. One shared scheduler processes only a configured number of guards per pass. Movement uses small steps, checks passable feet/head blocks, attempts a simple left/right sidestep around a single blocked step, and never force-loads destination chunks. If the destination world or chunk is unavailable, movement pauses until it is available.
 
-The current movement layer is intentionally simple: it does not yet perform full pathfinding around complex terrain, enforce region flags in an active combat loop, or implement combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies. Those remain later guard-system increments and must not be considered complete merely because orders are persisted.
+The current movement layer is intentionally simple and does not yet perform full pathfinding around complex terrain. The first combat slice is implemented below; advanced pursuit, retaliation, player-target resolution, coordinated squad combat, morale, equipment, injury, and recovery policies remain later guard-system increments.
 
 ## Configuration
 
@@ -43,7 +43,7 @@ The current movement layer is intentionally simple: it does not yet perform full
 
 ## Integration diagnostics
 
-Administrators can use `/raskolnpc integrations` to inspect detected providers. A detected plugin is not automatically treated as a supported adapter. WorldGuard's API adapter can query the `MOB_DAMAGE` flag, but guard combat enforcement is not yet wired to it; RaskolNPC does not claim that guard attacks are currently blocked by region flags.
+Administrators can use `/raskolnpc integrations` to inspect detected providers. A detected plugin is not automatically treated as a supported adapter. In the active basic guard combat loop, WorldGuard's `MOB_DAMAGE` flag must explicitly allow both the attacker and target locations; missing adapters and failed/unknown queries deny the attack.
 
 
 ## Guard squads (initial management layer)
