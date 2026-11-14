@@ -19,6 +19,8 @@ guards:
   order-batch-size: 6
   # Horizontal/vertical movement step used by the shared guard order controller.
   movement-step: 0.6
+  # Hard cap for administrator-managed persistent guard squads.
+  squad-max-members: 10
 
 integrations:
   towny:
