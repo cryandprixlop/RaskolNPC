@@ -30,7 +30,7 @@ class DatabaseMigrationsTest {
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(11, schemaVersion(connection));
-            assertEquals(12, migrationCount(connection));
+            assertEquals(13, migrationCount(connection));
         }
     }
 
