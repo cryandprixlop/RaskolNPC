@@ -47,6 +47,33 @@ class SiegeWarDiplomacyAdapterTest {
     }
 
     @Test
+    void nullActiveSiegeCollectionRemainsUnknown() {
+        var adapter = new SiegeWarDiplomacyAdapter(() -> null);
+
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                adapter.relation(ATTACKER.toString(), DEFENDER.toString()));
+    }
+
+    @Test
+    void ignoresNullAndIncompleteSiegeEntries() {
+        Siege incomplete = mock(Siege.class);
+        when(incomplete.getAttackingNationIfPossibleElseTown()).thenReturn(null);
+        when(incomplete.getDefendingNationIfPossibleElseTown()).thenReturn(null);
+        var adapter = new SiegeWarDiplomacyAdapter(() -> java.util.Arrays.asList(null, incomplete));
+
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                adapter.relation(ATTACKER.toString(), DEFENDER.toString()));
+    }
+
+    @Test
+    void sameNationIsNeverReportedAsSiegeHostility() {
+        var adapter = new SiegeWarDiplomacyAdapter(() -> List.of(siege(ATTACKER, DEFENDER)));
+
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                adapter.relation(ATTACKER.toString(), ATTACKER.toString()));
+    }
+
+    @Test
     void apiFailureFailsClosedToUnknown() {
         var adapter = new SiegeWarDiplomacyAdapter(() -> {
             throw new IllegalStateException("SiegeWar is stopping");
