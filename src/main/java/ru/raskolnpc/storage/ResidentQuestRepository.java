@@ -31,6 +31,8 @@ public interface ResidentQuestRepository {
             UUID playerId, NpcId residentId, String questId, String reason);
     CompletableFuture<Integer> getReputation(UUID playerId);
     CompletableFuture<Integer> getBusinessStock(NpcId residentId, String material);
+    /** Atomically removes stock for a business purchase or production use. */
+    CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
     /** Resolves a review once; completion credits the stored reward (or the legacy fallback) exactly once. */
     CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId, String questId,
