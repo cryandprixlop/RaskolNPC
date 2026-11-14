@@ -98,7 +98,7 @@ public final class GuardOrderController {
             case HOLD_POSITION -> null;
             case RETURN_TO_POST -> record.spawnLocation() == null
                     ? null : record.spawnLocation().resolve();
-            case DEFEND -> waypoint(order, 0);
+            case DEFEND, RALLY -> waypoint(order, 0);
             case PATROL -> nextPatrolTarget(order, entity.getLocation());
             case ESCORT -> escortTarget(order);
         };
