@@ -354,6 +354,31 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void visitsEveryGuardOnceAcrossThirtySingleGuardBatches() {
+        java.util.List<NpcRecord> guards = new java.util.ArrayList<>();
+        guards.add(guard);
+        guards.add(enemy);
+        for (int i = 0; i < 28; i++) {
+            NpcRecord additional = NpcRecord.create(
+                    NpcType.GUARD, "Guard " + i, null, "town-" + i, "nation-" + i, "{}");
+            registry.register(additional);
+            guards.add(additional);
+        }
+
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities,
+                new RelationshipPolicy((first, second) ->
+                        RelationshipPolicy.DiplomacyRelation.NEUTRAL),
+                null, 1, 12.0, 2.0, 1000L);
+
+        for (int i = 0; i < guards.size(); i++) controller.tick();
+
+        for (NpcRecord record : guards) {
+            verify(entities, times(1)).find(record.id());
+        }
+    }
+
+    @Test
     void processesGuardsInBoundedBatchesWithoutStarvingLaterGuards() {
         NpcRecord secondGuard = NpcRecord.create(
                 NpcType.GUARD, "Second guard", null, "town-c", "nation-c", "{}");

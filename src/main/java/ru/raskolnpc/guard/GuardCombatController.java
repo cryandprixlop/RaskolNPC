@@ -115,6 +115,9 @@ public final class GuardCombatController {
         requireMainThread();
         var guards = registry.all().stream()
                 .filter(record -> record.type() == NpcType.GUARD)
+                // ConcurrentHashMap iteration order is unspecified; a stable order is
+                // required so the round-robin cursor cannot repeatedly skip guards.
+                .sorted(Comparator.comparing(record -> record.id().toString()))
                 .toList();
         if (guards.isEmpty()) {
             cursor = 0;
