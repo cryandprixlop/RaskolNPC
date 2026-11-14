@@ -197,9 +197,11 @@ class GuardOrderControllerTest {
         when(entities.getNpcId(unknownEntity)).thenReturn(Optional.empty());
 
         GuardOrderRepository repository = mock(GuardOrderRepository.class);
-        GuardOrder hold = new GuardOrder(guard.id(), GuardOrder.Type.HOLD_POSITION,
-                List.of(), UUID.randomUUID(), 100L);
-        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(hold)));
+        GuardOrder patrol = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(new GuardOrder.Waypoint(world.getUID(), 0.5, 64, 5.5, 0, 0),
+                        new GuardOrder.Waypoint(world.getUID(), 0.5, 64, 10.5, 0, 0)),
+                UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(patrol)));
         orders = new GuardOrderService(registry, repository);
         orders.loadAll().join();
 
@@ -209,7 +211,10 @@ class GuardOrderControllerTest {
                 plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
         controller.tick();
 
-        verify(guardEntity, never()).teleport(any(Location.class));
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertEquals(origin.getX(), destination.getValue().getX(), 0.001);
+        assertTrue(destination.getValue().getZ() > origin.getZ());
     }
 
     private GuardOrder.Waypoint point(double x) {
