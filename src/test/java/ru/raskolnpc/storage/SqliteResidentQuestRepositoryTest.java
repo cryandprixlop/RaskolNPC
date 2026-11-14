@@ -273,6 +273,23 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(16, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
     }
 
+    @Test
+    void dailyBusinessConsumptionReopensDemandWithoutNegativeStock() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 96).join());
+        assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+
+        assertEquals(1, quests.consumeBusinessStockDaily(10).join());
+        assertEquals(23, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(0, quests.consumeBusinessStockDaily(0).join());
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> quests.consumeBusinessStockDaily(101).join());
+    }
+
     private NpcRecord createResident() {
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
                 null, "town", "nation", "{}");
