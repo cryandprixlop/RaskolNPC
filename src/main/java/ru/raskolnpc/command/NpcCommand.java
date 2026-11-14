@@ -10,6 +10,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.resident.ResidentDialogueService;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
+import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
@@ -32,6 +34,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private volatile GuardRentService guardRentService;
     private volatile ResidentScheduleCommandService residentScheduleService;
     private volatile ResidentDialogueService residentDialogueService;
+    private volatile ResidentQuestService residentQuestService;
     private volatile TownyKingdomGeneralService kingdomGeneralService;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
@@ -51,6 +54,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setResidentDialogueService(ResidentDialogueService service) {
         this.residentDialogueService = service;
+    }
+
+    public void setResidentQuestService(ResidentQuestService service) {
+        this.residentQuestService = service;
     }
 
     public void setKingdomGeneralService(TownyKingdomGeneralService service) {
@@ -76,13 +83,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("hire")
                 && sender instanceof Player
                 && service.isGuardHiringEnabled();
+        boolean residentQuestAccept = args.length == 5
+                && args[0].equalsIgnoreCase("resident")
+                && args[1].equalsIgnoreCase("quest")
+                && args[2].equalsIgnoreCase("accept")
+                && sender instanceof Player;
         boolean guardGeneralManagement = args.length >= 2
                 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("general")
                 && sender instanceof Player;
 
         if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing
-                && !guardGeneralManagement) {
+                && !guardGeneralManagement && !residentQuestAccept) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -141,6 +153,45 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
 
     private void resident(CommandSender sender, String[] args) {
+        if (args.length == 5 && args[1].equalsIgnoreCase("quest")
+                && args[2].equalsIgnoreCase("accept")) {
+            if (!(sender instanceof Player player)) {
+                messages.sendRaw(sender, "&cПринять поручение может только игрок.");
+                return;
+            }
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
+                return;
+            }
+            var residentId = NpcCommandParser.parseId(args[3]);
+            if (residentId.isEmpty()) {
+                messages.sendRaw(sender, "&cНекорректный UUID жителя.");
+                return;
+            }
+            quests.accept(player, residentId.get(), args[4]).whenComplete((result, error) ->
+                    runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось принять поручение: " + rootMessage(error));
+                            return;
+                        }
+                        switch (result) {
+                            case ACCEPTED -> messages.sendRaw(sender,
+                                    "&aПоручение принято. Оно сохранено и останется активным после перезапуска.");
+                            case ALREADY_ACTIVE -> messages.sendRaw(sender,
+                                    "&eЭто поручение уже активно у вас.");
+                            case RESIDENT_NOT_FOUND -> messages.sendRaw(sender,
+                                    "&cЖитель не найден или больше не доступен.");
+                            case QUEST_NOT_FOUND -> messages.sendRaw(sender,
+                                    "&cТакого поручения нет в каталоге.");
+                            case WRONG_PROFESSION -> messages.sendRaw(sender,
+                                    "&cЭтот житель не выдаёт такое поручение.");
+                            case PROFILE_UNAVAILABLE -> messages.sendRaw(sender,
+                                    "&cПрофиль жителя пока недоступен.");
+                        }
+                    }));
+            return;
+        }
         if (args.length == 2 && args[1].equalsIgnoreCase("reload-dialogues")) {
             ResidentDialogueService dialogues = residentDialogueService;
             if (dialogues == null) {
@@ -241,6 +292,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             } catch (IllegalArgumentException exception) { messages.sendRaw(sender, "&c" + exception.getMessage()); }
             return;
         }
+        messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest accept <UUID> <ID>");
         messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule list|add ...");
         messages.sendRaw(sender, "&eИспользование: /raskolnpc resident setpoint|delpoint ...");
     }
@@ -599,6 +651,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private void help(CommandSender sender, String label) {
         messages.sendRaw(sender, "&6Команды RaskolNPC:");
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
+        messages.sendRaw(sender, "&e/" + label + " resident quest accept <UUID> <ID> &7— принять поручение жителя");
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
@@ -627,13 +680,15 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         boolean canCreateTownResident = sender instanceof Player
                 && service.isTownyIntegrationEnabled();
         boolean canHireGuard = sender instanceof Player && service.isGuardHiringEnabled();
-        if (!sender.hasPermission(PERMISSION) && !canCreateTownResident && !canHireGuard) {
+        boolean canAcceptResidentQuest = sender instanceof Player && residentQuestService != null;
+        if (!sender.hasPermission(PERMISSION) && !canCreateTownResident && !canHireGuard
+                && !canAcceptResidentQuest) {
             return List.of();
         }
         if (args.length == 1) {
             java.util.ArrayList<String> values = new java.util.ArrayList<>();
             if (sender.hasPermission(PERMISSION)) values.addAll(List.of("create", "list", "info", "delete"));
-            if (sender.hasPermission(PERMISSION)) values.add("resident");
+            if (sender.hasPermission(PERMISSION) || canAcceptResidentQuest) values.add("resident");
             if (canHireGuard || sender.hasPermission(PERMISSION)) values.add("guard");
             if (canCreateTownResident && !values.contains("create")) values.add("create");
             return startsWith(values, args[0]);
@@ -642,8 +697,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("resident"), args[1]);
         }
 
-        if (sender.hasPermission(PERMISSION) && args.length == 2 && args[0].equalsIgnoreCase("resident"))
-            return startsWith(List.of("schedule", "setpoint", "delpoint", "reload-dialogues"), args[1]);
+        if (args.length == 2 && args[0].equalsIgnoreCase("resident")) {
+            java.util.ArrayList<String> residentActions = new java.util.ArrayList<>();
+            if (sender.hasPermission(PERMISSION)) {
+                residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues"));
+            }
+            if (canAcceptResidentQuest) residentActions.add("quest");
+            return startsWith(residentActions, args[1]);
+        }
+        if (canAcceptResidentQuest && args.length == 3
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
+            return startsWith(List.of("accept"), args[2]);
+        }
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
             return startsWith(List.of("list", "add"), args[2]);
