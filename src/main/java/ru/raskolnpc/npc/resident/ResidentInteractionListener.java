@@ -115,6 +115,10 @@ public final class ResidentInteractionListener implements Listener {
                             .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest accept "
                                     + residentId + " " + quest.id())));
             player.sendMessage(Component.text("[" + residentName + "] ").append(offer));
+            Component submit = Component.text("  » Сдать ресурсы по поручению")
+                    .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest submit "
+                            + residentId + " " + quest.id()));
+            player.sendMessage(Component.text("[" + residentName + "] ").append(submit));
         }
     }
 }
