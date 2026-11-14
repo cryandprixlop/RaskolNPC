@@ -442,6 +442,47 @@ class GuardOrderControllerTest {
         verify(entity, never()).teleport(any(Location.class));
     }
 
+    @Test
+    void returnOrderMovesGuardTowardItsPersistedSpawnPost() {
+        when(entity.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.RETURN_TO_POST,
+                List.of(), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(entity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() < 2.5);
+        assertTrue(destination.getValue().getX() >= 1.89);
+        assertEquals(world.getUID(), destination.getValue().getWorld().getUID());
+    }
+
+    @Test
+    void doesNotUseSidestepWhenItWouldCrossTheHiringNationBoundary() {
+        world.getBlockAt(1, 64, 0).setType(Material.STONE);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(point(5.5), point(10.5)), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.setTerritoryAccess((location, nationId) ->
+                "nation".equals(nationId) && Math.abs(location.getZ() - 0.5) < 0.05);
+
+        controller.tick();
+
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
     private GuardOrder.Waypoint point(double x) {
         return new GuardOrder.Waypoint(world.getUID(), x, 64, 0.5, 0, 0);
     }
