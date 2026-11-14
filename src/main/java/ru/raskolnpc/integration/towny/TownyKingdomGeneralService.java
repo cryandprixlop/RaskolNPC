@@ -34,15 +34,15 @@ public final class TownyKingdomGeneralService {
     }
 
     public void appoint(Player actor, String targetName) {
-        Nation nation = requireKingNation(actor);
+        NationRef nation = requireKingNation(actor);
         String rank = requireConfiguredRank();
-        Resident target = requireTarget(targetName);
+        ResidentRef target = requireTarget(targetName);
         requireSameNation(nation, target);
         if (access.hasRank(target, rank)) {
-            throw new IllegalStateException(target.getName() + " уже является генералом этой нации.");
+            throw new IllegalStateException(target.name() + " уже является генералом этой нации.");
         }
         if (!access.addRank(target, rank)) {
-            throw new IllegalStateException("Towny не смог назначить ранг генерала игроку " + target.getName() + ".");
+            throw new IllegalStateException("Towny не смог назначить ранг генерала игроку " + target.name() + ".");
         }
         try {
             access.save(target);
@@ -58,15 +58,15 @@ public final class TownyKingdomGeneralService {
     }
 
     public void dismiss(Player actor, String targetName) {
-        Nation nation = requireKingNation(actor);
+        NationRef nation = requireKingNation(actor);
         String rank = requireConfiguredRank();
-        Resident target = requireTarget(targetName);
+        ResidentRef target = requireTarget(targetName);
         requireSameNation(nation, target);
         if (!access.hasRank(target, rank)) {
-            throw new IllegalStateException(target.getName() + " не является генералом этой нации.");
+            throw new IllegalStateException(target.name() + " не является генералом этой нации.");
         }
         if (!access.removeRank(target, rank)) {
-            throw new IllegalStateException("Towny не смог снять ранг генерала с игрока " + target.getName() + ".");
+            throw new IllegalStateException("Towny не смог снять ранг генерала с игрока " + target.name() + ".");
         }
         try {
             access.save(target);
@@ -88,7 +88,7 @@ public final class TownyKingdomGeneralService {
     public List<GeneralEntry> list(CommandSender sender) {
         Objects.requireNonNull(sender, "sender");
         String rank = requireConfiguredRank();
-        List<Nation> nations;
+        List<NationRef> nations;
         if (sender.hasPermission("raskolnpc.admin")) {
             nations = access.nations();
         } else if (sender instanceof Player player) {
@@ -98,10 +98,10 @@ public final class TownyKingdomGeneralService {
         }
 
         List<GeneralEntry> result = new ArrayList<>();
-        for (Nation nation : nations) {
-            for (Resident resident : access.residents(nation)) {
+        for (NationRef nation : nations) {
+            for (ResidentRef resident : access.residents(nation)) {
                 if (access.hasRank(resident, rank)) {
-                    result.add(new GeneralEntry(resident.getName(), nation.getName()));
+                    result.add(new GeneralEntry(resident.name(), nation.name()));
                 }
             }
         }
@@ -110,13 +110,13 @@ public final class TownyKingdomGeneralService {
         return List.copyOf(result);
     }
 
-    private Nation requireKingNation(Player actor) {
+    private NationRef requireKingNation(Player actor) {
         Objects.requireNonNull(actor, "actor");
-        Resident resident = access.resident(actor.getUniqueId());
+        ResidentRef resident = access.resident(actor.getUniqueId());
         if (resident == null) {
             throw new IllegalStateException("Ваш персонаж не зарегистрирован в Towny.");
         }
-        Nation nation = access.nationOf(resident);
+        NationRef nation = access.nationOf(resident);
         if (nation == null) {
             throw new IllegalStateException("Вы не состоите в нации Towny.");
         }
@@ -126,20 +126,20 @@ public final class TownyKingdomGeneralService {
         return nation;
     }
 
-    private Resident requireTarget(String targetName) {
+    private ResidentRef requireTarget(String targetName) {
         if (targetName == null || targetName.isBlank()) {
             throw new IllegalArgumentException("Укажите имя игрока.");
         }
-        Resident target = access.resident(targetName);
+        ResidentRef target = access.resident(targetName);
         if (target == null) {
             throw new IllegalStateException("Игрок " + targetName + " не найден среди жителей Towny.");
         }
         return target;
     }
 
-    private void requireSameNation(Nation nation, Resident target) {
-        Nation targetNation = access.nationOf(target);
-        if (targetNation == null || !nation.getUUID().equals(targetNation.getUUID())) {
+    private void requireSameNation(NationRef nation, ResidentRef target) {
+        NationRef targetNation = access.nationOf(target);
+        if (targetNation == null || !nation.id().equals(targetNation.id())) {
             throw new IllegalStateException("Назначать генералом можно только жителя своей нации.");
         }
     }
@@ -155,53 +155,108 @@ public final class TownyKingdomGeneralService {
 
     public record GeneralEntry(String residentName, String nationName) { }
 
+    /**
+     * Small service-owned views keep unit tests independent from Towny's concrete model classes.
+     */
+    interface NationRef {
+        UUID id();
+        String name();
+    }
+
+    interface ResidentRef {
+        String name();
+    }
+
     interface Access {
         String matchNationRank(String rank);
-        Resident resident(UUID uuid);
-        Resident resident(String name);
-        Nation nationOf(Resident resident);
-        boolean isKing(Nation nation, Resident resident);
-        List<Nation> nations();
-        List<Resident> residents(Nation nation);
-        boolean hasRank(Resident resident, String rank);
-        boolean addRank(Resident resident, String rank);
-        boolean removeRank(Resident resident, String rank);
-        void save(Resident resident);
+        ResidentRef resident(UUID uuid);
+        ResidentRef resident(String name);
+        NationRef nationOf(ResidentRef resident);
+        boolean isKing(NationRef nation, ResidentRef resident);
+        List<NationRef> nations();
+        List<ResidentRef> residents(NationRef nation);
+        boolean hasRank(ResidentRef resident, String rank);
+        boolean addRank(ResidentRef resident, String rank);
+        boolean removeRank(ResidentRef resident, String rank);
+        void save(ResidentRef resident);
     }
 
     private static final class TownyAccess implements Access {
         @Override public String matchNationRank(String rank) {
             return TownyPerms.matchNationRank(rank);
         }
-        @Override public Resident resident(UUID uuid) {
-            return TownyAPI.getInstance().getResident(uuid);
+
+        @Override public ResidentRef resident(UUID uuid) {
+            Resident resident = TownyAPI.getInstance().getResident(uuid);
+            return resident == null ? null : new TownyResidentRef(resident);
         }
-        @Override public Resident resident(String name) {
-            return TownyAPI.getInstance().getResident(name);
+
+        @Override public ResidentRef resident(String name) {
+            Resident resident = TownyAPI.getInstance().getResident(name);
+            return resident == null ? null : new TownyResidentRef(resident);
         }
-        @Override public Nation nationOf(Resident resident) {
-            return resident.getNationOrNull();
+
+        @Override public NationRef nationOf(ResidentRef resident) {
+            Nation nation = unwrap(resident).getNationOrNull();
+            return nation == null ? null : new TownyNationRef(nation);
         }
-        @Override public boolean isKing(Nation nation, Resident resident) {
-            return nation.isKing(resident);
+
+        @Override public boolean isKing(NationRef nation, ResidentRef resident) {
+            return unwrap(nation).isKing(unwrap(resident));
         }
-        @Override public List<Nation> nations() {
-            return TownyAPI.getInstance().getNations();
+
+        @Override public List<NationRef> nations() {
+            return TownyAPI.getInstance().getNations().stream()
+                    .map(TownyNationRef::new)
+                    .map(NationRef.class::cast)
+                    .toList();
         }
-        @Override public List<Resident> residents(Nation nation) {
-            return nation.getResidents();
+
+        @Override public List<ResidentRef> residents(NationRef nation) {
+            return unwrap(nation).getResidents().stream()
+                    .map(TownyResidentRef::new)
+                    .map(ResidentRef.class::cast)
+                    .toList();
         }
-        @Override public boolean hasRank(Resident resident, String rank) {
-            return resident.hasNationRank(rank);
+
+        @Override public boolean hasRank(ResidentRef resident, String rank) {
+            return unwrap(resident).hasNationRank(rank);
         }
-        @Override public boolean addRank(Resident resident, String rank) {
-            return resident.addNationRank(rank);
+
+        @Override public boolean addRank(ResidentRef resident, String rank) {
+            return unwrap(resident).addNationRank(rank);
         }
-        @Override public boolean removeRank(Resident resident, String rank) {
-            return resident.removeNationRank(rank);
+
+        @Override public boolean removeRank(ResidentRef resident, String rank) {
+            return unwrap(resident).removeNationRank(rank);
         }
-        @Override public void save(Resident resident) {
-            resident.save();
+
+        @Override public void save(ResidentRef resident) {
+            unwrap(resident).save();
+        }
+
+        private static Resident unwrap(ResidentRef resident) {
+            return ((TownyResidentRef) resident).resident();
+        }
+
+        private static Nation unwrap(NationRef nation) {
+            return ((TownyNationRef) nation).nation();
+        }
+    }
+
+    private record TownyResidentRef(Resident resident) implements ResidentRef {
+        @Override public String name() {
+            return resident.getName();
+        }
+    }
+
+    private record TownyNationRef(Nation nation) implements NationRef {
+        @Override public UUID id() {
+            return nation.getUUID();
+        }
+
+        @Override public String name() {
+            return nation.getName();
         }
     }
 }
