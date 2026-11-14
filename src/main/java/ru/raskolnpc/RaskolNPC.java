@@ -144,11 +144,11 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getInt("resident-business-stock.daily-consumption-percent", 10))));
 
         TownyIntegration townyIntegration = null;
-        boolean townyEnabled = false;
+        boolean townyDetected = false;
         if (getConfig().getBoolean("integrations.towny.enabled", true)) {
             try {
                 townyIntegration = new TownyIntegration(this);
-                townyEnabled = townyIntegration.isAvailable();
+                townyDetected = townyIntegration.isAvailable();
             } catch (RuntimeException | LinkageError adapterError) {
                 getLogger().log(Level.WARNING,
                         "Towny was detected but its API is incompatible or unavailable. "
@@ -156,6 +156,7 @@ public final class RaskolNPC extends JavaPlugin {
                         adapterError);
             }
         }
+        final boolean townyEnabled = townyDetected;
         org.bukkit.plugin.Plugin siegeWarPlugin =
                 getServer().getPluginManager().getPlugin("SiegeWar");
         boolean siegeWarEnabled = siegeWarPlugin != null && siegeWarPlugin.isEnabled();
