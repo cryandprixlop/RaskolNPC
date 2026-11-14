@@ -326,6 +326,27 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void blocksCombatIfWorldGuardIsDisabledAfterControllerStartup() {
+        java.util.concurrent.atomic.AtomicBoolean worldGuardEnabled =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenReturn(WorldGuardProtectionAdapter.Decision.ALLOWED);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true,
+                worldGuardEnabled::get);
+
+        worldGuardEnabled.set(false);
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+        verifyNoInteractions(worldGuard);
+    }
+
+    @Test
     void blocksCombatWhenWorldGuardIsEnabledButAdapterIsMissing() {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);

@@ -35,6 +35,7 @@ public final class GuardCombatController {
     private final RelationshipPolicy relationships;
     private final WorldGuardProtectionAdapter worldGuard;
     private final boolean worldGuardRequired;
+    private final java.util.function.BooleanSupplier worldGuardEnabled;
     private final PlayerSubjectResolver playerSubjects;
     private BiPredicate<Location, String> territoryAccess = (location, nationId) -> true;
     private final int batchSize;
@@ -60,7 +61,7 @@ public final class GuardCombatController {
             PlayerSubjectResolver playerSubjects) {
         this(plugin, registry, entities, relationships, worldGuard, batchSize,
                 detectionRadius, damage, attackCooldownMillis, playerSubjects,
-                isWorldGuardEnabled(plugin));
+                isWorldGuardEnabled(plugin), () -> isWorldGuardEnabled(plugin));
     }
 
     GuardCombatController(Plugin plugin, NpcRegistry registry,
@@ -68,12 +69,24 @@ public final class GuardCombatController {
             WorldGuardProtectionAdapter worldGuard, int batchSize,
             double detectionRadius, double damage, long attackCooldownMillis,
             PlayerSubjectResolver playerSubjects, boolean worldGuardRequired) {
+        this(plugin, registry, entities, relationships, worldGuard, batchSize,
+                detectionRadius, damage, attackCooldownMillis, playerSubjects,
+                worldGuardRequired, () -> worldGuardRequired);
+    }
+
+    GuardCombatController(Plugin plugin, NpcRegistry registry,
+            NpcEntityManager entities, RelationshipPolicy relationships,
+            WorldGuardProtectionAdapter worldGuard, int batchSize,
+            double detectionRadius, double damage, long attackCooldownMillis,
+            PlayerSubjectResolver playerSubjects, boolean worldGuardRequired,
+            java.util.function.BooleanSupplier worldGuardEnabled) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.relationships = Objects.requireNonNull(relationships, "relationships");
         this.worldGuard = worldGuard;
         this.worldGuardRequired = worldGuardRequired;
+        this.worldGuardEnabled = Objects.requireNonNull(worldGuardEnabled, "worldGuardEnabled");
         this.batchSize = Math.max(1, batchSize);
         if (!Double.isFinite(detectionRadius) || detectionRadius < 2 || detectionRadius > 32) {
             throw new IllegalArgumentException("detectionRadius must be between 2 and 32.");
@@ -206,6 +219,13 @@ public final class GuardCombatController {
         if (!hasTerritoryAccess(attackerLocation, guard.nationId())
                 || !hasTerritoryAccess(targetLocation, guard.nationId())) return false;
         if (!worldGuardRequired) return true;
+        try {
+            // WorldGuard may be disabled after RaskolNPC starts. A stale RegionQuery
+            // must never keep granting combat permission after its provider is offline.
+            if (!worldGuardEnabled.getAsBoolean()) return false;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
         if (worldGuard == null) return false;
         return worldGuard.checkMobDamage(attackerLocation)
                         == WorldGuardProtectionAdapter.Decision.ALLOWED
