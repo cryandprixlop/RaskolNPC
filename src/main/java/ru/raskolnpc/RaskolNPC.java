@@ -150,7 +150,13 @@ public final class RaskolNPC extends JavaPlugin {
         }
 
         databaseManager.initialize()
-                .thenCompose(ignored -> npcLifecycleService.loadAll())
+                .thenCompose(ignored -> residentQuestRepository.recoverUnfinishedSubmissions())
+                .thenCompose(reviewCount -> {
+                    if (reviewCount > 0) {
+                        getLogger().warning("Resident quest submissions requiring review: " + reviewCount);
+                    }
+                    return npcLifecycleService.loadAll();
+                })
                 .thenCompose(records -> residentProfileService.ensureProfiles(records)
                         .thenApply(ignored -> records))
                 .whenComplete((records, error) -> {
