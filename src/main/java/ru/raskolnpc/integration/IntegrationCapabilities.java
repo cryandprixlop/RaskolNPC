@@ -36,7 +36,7 @@ public final class IntegrationCapabilities {
                         townyAvailable ? "Town/Nation authority and guard bank adapter enabled."
                                 : "Towny adapter is unavailable or disabled in config."),
                 new Capability("Towny town-bank economy", townyAvailable ? Status.AVAILABLE
-                        : Status.NOT_INSTALLED,
+                        : townyPresent(towny) ? Status.DISABLED : Status.NOT_INSTALLED,
                         towny == null ? null : towny.getDescription().getVersion(),
                         townyAvailable ? "Guard hiring and daily rent use Towny town accounts."
                                 : "No supported town-bank economy provider is active."),
@@ -47,11 +47,12 @@ public final class IntegrationCapabilities {
                                 ? "WorldGuard is installed, but this build has no verified adapter; no protection is claimed."
                                 : "No region-protection adapter is configured."),
                 new Capability("SiegeWar diplomacy",
-                        siegeWarPresent ? Status.DETECTED_UNSUPPORTED : Status.NOT_CONFIGURED,
+                        siegeWarPresent ? Status.AVAILABLE
+                                : siegeWar != null ? Status.DISABLED : Status.NOT_CONFIGURED,
                         siegeWar == null ? null : siegeWar.getDescription().getVersion(),
                         siegeWarPresent
-                                ? "SiegeWar is installed, but no verified war-state adapter is available; unknown relations remain neutral."
-                                : "No SiegeWar diplomacy adapter is configured.")
+                                ? "Verified SiegeWar API adapter can identify active attacker/defender nation pairs."
+                                : "SiegeWar is not enabled; unknown relations remain neutral.")
         );
     }
 
