@@ -29,8 +29,8 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_order_waypoints");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(11, schemaVersion(connection));
-            assertEquals(13, migrationCount(connection));
+            assertEquals(12, schemaVersion(connection));
+            assertEquals(12, migrationCount(connection));
         }
     }
 
@@ -47,7 +47,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(12, migrationCount(connection));
+            assertEquals(13, migrationCount(connection));
         }
     }
 
