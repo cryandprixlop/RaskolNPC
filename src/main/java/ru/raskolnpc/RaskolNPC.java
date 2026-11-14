@@ -5,6 +5,7 @@ import ru.raskolnpc.command.NpcCommand;
 import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.GuardCombatController;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
 import ru.raskolnpc.guard.GuardSquadService;
@@ -67,6 +68,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcRecoveryService npcRecoveryService;
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
+    private GuardCombatController guardCombatController;
     private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
@@ -160,6 +162,13 @@ public final class RaskolNPC extends JavaPlugin {
         if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
         if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
+        guardCombatController = new GuardCombatController(
+                this, npcRegistry, npcEntityManager, relationshipPolicy,
+                worldGuardProtectionAdapter,
+                Math.max(1, getConfig().getInt("guards.combat.batch-size", 4)),
+                getConfig().getDouble("guards.combat.detection-radius", 12.0),
+                getConfig().getDouble("guards.combat.damage", 2.0),
+                getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L));
         townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
         TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;
@@ -263,6 +272,7 @@ public final class RaskolNPC extends JavaPlugin {
                                         npcLifecycleService.markReady();
                                         residentBehaviorService.start();
                                         guardOrderController.start();
+                                        guardCombatController.start();
                                         if (guardRentService != null) {
                                             try {
                                                 guardRentService.start();
@@ -332,6 +342,7 @@ public final class RaskolNPC extends JavaPlugin {
     public void onDisable() {
         if (residentBehaviorService != null) residentBehaviorService.stop();
         if (guardOrderController != null) guardOrderController.stop();
+        if (guardCombatController != null) guardCombatController.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();
