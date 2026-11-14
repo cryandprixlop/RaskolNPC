@@ -6,9 +6,13 @@ import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Objects;
+import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /** Immutable dialogue text catalog loaded from resident-dialogues.yml. */
@@ -16,16 +20,31 @@ public final class ResidentDialogueCatalog {
     private final List<String> greetings;
     private final Map<ResidentProfession, List<String>> professions;
     private final Map<ResidentProfile.ResidentTrait, List<String>> traits;
+    private final NavigableMap<Integer, List<String>> reputationLines;
 
     public ResidentDialogueCatalog(List<String> greetings,
             Map<ResidentProfession, List<String>> professions,
             Map<ResidentProfile.ResidentTrait, List<String>> traits) {
+        this(greetings, professions, traits, Map.of());
+    }
+
+    public ResidentDialogueCatalog(List<String> greetings,
+            Map<ResidentProfession, List<String>> professions,
+            Map<ResidentProfile.ResidentTrait, List<String>> traits,
+            Map<Integer, List<String>> reputationLines) {
         this.greetings = immutableLines(greetings);
         this.professions = immutableMap(professions);
         this.traits = immutableMap(traits);
+        NavigableMap<Integer, List<String>> reputationCopy = new TreeMap<>();
+        Objects.requireNonNull(reputationLines, "reputationLines").forEach(
+                (threshold, lines) -> reputationCopy.put(
+                        Objects.requireNonNull(threshold, "reputation threshold"),
+                        immutableLines(lines)));
+        this.reputationLines = Collections.unmodifiableNavigableMap(reputationCopy);
     }
 
     public static ResidentDialogueCatalog from(YamlConfiguration yaml) {
+        Objects.requireNonNull(yaml, "yaml");
         List<String> greetings = yaml.getStringList("greetings");
         Map<ResidentProfession, List<String>> professions = new EnumMap<>(ResidentProfession.class);
         ConfigurationSection professionSection = yaml.getConfigurationSection("professions");
@@ -52,11 +71,30 @@ public final class ResidentDialogueCatalog {
                 }
             }
         }
-        return new ResidentDialogueCatalog(greetings, professions, traits);
+        Map<Integer, List<String>> reputation = new TreeMap<>();
+        ConfigurationSection reputationSection = yaml.getConfigurationSection("reputation");
+        if (reputationSection != null) {
+            for (String key : reputationSection.getKeys(false)) {
+                try {
+                    int threshold = Integer.parseInt(key);
+                    if (threshold < 0) continue;
+                    reputation.put(threshold, reputationSection.getStringList(key));
+                } catch (NumberFormatException ignored) {
+                    // Invalid thresholds are ignored; valid tiers remain available.
+                }
+            }
+        }
+        return new ResidentDialogueCatalog(greetings, professions, traits, reputation);
     }
 
     public List<String> linesFor(ResidentProfile profile) {
-        List<String> result = new ArrayList<>(3);
+        return linesFor(profile, 0);
+    }
+
+    /** Adds the highest reputation tier whose threshold the player has reached. */
+    public List<String> linesFor(ResidentProfile profile, int reputation) {
+        Objects.requireNonNull(profile, "profile");
+        List<String> result = new ArrayList<>(4);
         choose(greetings).ifPresent(result::add);
         for (ResidentProfile.ResidentTrait trait : profile.traits()) {
             List<String> lines = traits.get(trait);
@@ -65,6 +103,9 @@ public final class ResidentDialogueCatalog {
                 break;
             }
         }
+        Map.Entry<Integer, List<String>> reputationTier = reputationLines.floorEntry(
+                Math.max(0, reputation));
+        if (reputationTier != null) choose(reputationTier.getValue()).ifPresent(result::add);
         choose(professions.get(profile.profession())).ifPresent(result::add);
         return List.copyOf(result);
     }
@@ -81,7 +122,8 @@ public final class ResidentDialogueCatalog {
 
     private static <K> Map<K, List<String>> immutableMap(Map<K, List<String>> source) {
         Map<K, List<String>> result = new java.util.HashMap<>();
-        source.forEach((key, value) -> result.put(key, immutableLines(value)));
+        Objects.requireNonNull(source, "source").forEach((key, value) ->
+                result.put(key, immutableLines(value)));
         return Map.copyOf(result);
     }
 }
