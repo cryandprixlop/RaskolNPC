@@ -12,8 +12,10 @@ import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -96,6 +98,22 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void onlyOneConcurrentSubmissionCanReserveAnActiveAssignment() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+
+        CompletableFuture<Boolean> first =
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery");
+        CompletableFuture<Boolean> second =
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery");
+        CompletableFuture.allOf(first, second).join();
+
+        assertEquals(1, List.of(first.join(), second.join()).stream()
+                .filter(Boolean::booleanValue).count());
+    }
+
+    @Test
     void releasingReservationAllowsRetryWithoutCreditingReputation() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
@@ -108,7 +126,7 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
-    void uncertainSubmissionCanBeMarkedForReview() {
+    void uncertainSubmissionCanBeMarkedForReviewAndCannotBeRetried() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
@@ -117,6 +135,47 @@ class SqliteResidentQuestRepositoryTest {
         assertTrue(quests.markSubmissionForReview(player, resident.id(),
                 "miner_iron_delivery", "test failure").join());
         assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertEquals(0, quests.getReputation(player).join());
+    }
+
+    @Test
+    void startupRecoveryMovesInProgressSubmissionToReviewAndPreventsReplay() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+
+        assertEquals(1, quests.recoverUnfinishedSubmissions().join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertEquals(0, quests.getReputation(player).join());
+        assertEquals(1, quests.recoverUnfinishedSubmissions().join());
+    }
+
+    @Test
+    void startupRecoveryDoesNotChangeCompletedSubmissions() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+
+        assertEquals(0, quests.recoverUnfinishedSubmissions().join());
+        assertEquals(5, quests.getReputation(player).join());
+
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+    }
+
+    @Test
+    void releasingReservationAllowsRetryWithoutCreditingReputationAfterRepeatedCalls() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(0, quests.getReputation(player).join());
     }
 
