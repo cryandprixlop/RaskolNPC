@@ -1,7 +1,6 @@
 package ru.raskolnpc.integration;
 
 import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.Test;
 
@@ -55,9 +54,9 @@ class IntegrationCapabilitiesTest {
 
     private static Plugin plugin(String version, boolean enabled) {
         Plugin plugin = mock(Plugin.class);
-        PluginDescriptionFile description = mock(PluginDescriptionFile.class);
-        when(plugin.getDescription()).thenReturn(description);
-        when(description.getVersion()).thenReturn(version);
+        when(plugin.getDescription()).thenReturn(
+                new org.bukkit.plugin.PluginDescriptionFile(
+                        "TestPlugin", version, "test.Plugin"));
         when(plugin.isEnabled()).thenReturn(enabled);
         return plugin;
     }
