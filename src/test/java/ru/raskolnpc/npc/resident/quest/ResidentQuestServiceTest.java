@@ -105,7 +105,7 @@ class ResidentQuestServiceTest {
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(
                         new ResidentQuest.Assignment(playerId, resident.id(), "miner_iron_delivery",
                                 ResidentQuest.AssignmentStatus.ACCEPTED, Instant.now(), null))));
-        when(repository.reserveSubmission(playerId, resident.id(), "miner_iron_delivery"))
+        when(repository.reserveSubmission(playerId, resident.id(), "miner_iron_delivery", 5))
                 .thenReturn(CompletableFuture.completedFuture(true));
         when(repository.releaseSubmission(playerId, resident.id(), "miner_iron_delivery"))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("database unavailable")));
