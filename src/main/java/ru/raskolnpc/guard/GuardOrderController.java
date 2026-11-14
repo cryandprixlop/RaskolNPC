@@ -254,6 +254,9 @@ public final class GuardOrderController {
         Location next = current.clone().add(dx / distance * step,
                 dy / distance * step, dz / distance * step);
         if (!world.isChunkLoaded(next.getBlockX() >> 4, next.getBlockZ() >> 4)) return;
+        // Check the intended step before querying blocks: territory lookup failures must
+        // stop movement immediately, without attempting a fallback step.
+        if (!hasTerritoryAccess(next, guard.nationId())) return;
         Location destination = isPassableStep(next) ? next : findSidestep(current, dx, dz, step);
         if (destination == null || !hasTerritoryAccess(destination, guard.nationId())) return;
         destination.setYaw(current.getYaw());
