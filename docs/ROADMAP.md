@@ -1,8 +1,24 @@
 # RaskolNPC Roadmap
 
-> **Status:** Proposed sequence. No milestone in this document should be interpreted as implemented or released.
+> **Status:** Long-term product roadmap. Resident implementation status is summarized below; completed development work is not yet a merged or released milestone.
 
 The project will be developed in small, reviewable stages. Each stage should have an agreed scope, implementation plan, tests, and acceptance criteria before code is added.
+
+## Current implementation status — resident milestone
+
+The active development branch contains the resident work that precedes the guard/companion milestones:
+
+- Resident profiles and all 10 professions.
+- Weekly schedules, destinations, shared batched behavior scheduling, and chunk-safe movement with simple obstacle sidesteps.
+- Daily needs progression and asynchronous profile persistence.
+- YAML dialogue with greeting, trait, profession, and reputation tiers.
+- Repeatable delivery quests, reputation, replay protection, restart recovery, and administrator review resolution.
+- Town business stock, delivery-demand gating, atomic deposits/withdrawals, and configurable daily consumption.
+- Administrative commands and an operator guide.
+
+The resource-side supply/demand loop is implemented. Player-currency rewards and a player-money marketplace remain intentionally disabled until the server's economy provider and transaction policy are selected. No economy provider is assumed.
+
+The resident milestone is still undergoing final validation. A full in-server acceptance test and load test at the global NPC cap of 150 are release-preparation tasks. The current work is on the open draft pull request; it has not been merged into `main`.
 
 ## Phase 0 — Product and technical validation
 
