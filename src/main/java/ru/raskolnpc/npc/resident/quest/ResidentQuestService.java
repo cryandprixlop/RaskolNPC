@@ -13,6 +13,7 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.storage.ResidentQuestRepository;
+import ru.raskolnpc.storage.ResidentQuestReview;
 
 import java.io.File;
 import java.io.IOException;
@@ -112,7 +113,7 @@ public final class ResidentQuestService {
 
         return repository.findActive(playerId, residentId, quest.id()).thenCompose(active -> {
             if (active.isEmpty()) return CompletableFuture.completedFuture(SubmitResult.NO_ACTIVE_QUEST);
-            return repository.reserveSubmission(playerId, residentId, quest.id()).thenCompose(reserved -> {
+            return repository.reserveSubmission(playerId, residentId, quest.id(), quest.reputationReward()).thenCompose(reserved -> {
                 if (!reserved) return CompletableFuture.completedFuture(SubmitResult.SUBMISSION_PENDING);
                 CompletableFuture<SubmitResult> result = new CompletableFuture<>();
                 try {
@@ -216,6 +217,40 @@ public final class ResidentQuestService {
                     }
                     result.complete(SubmitResult.REVIEW_REQUIRED);
                 });
+    }
+
+    public CompletableFuture<List<ResidentQuest.Assignment>> activeAssignments(UUID playerId) {
+        return repository.findActiveForPlayer(Objects.requireNonNull(playerId, "playerId"));
+    }
+
+    public CompletableFuture<List<ResidentQuestReview>> reviewRequired(int limit) {
+        return repository.findReviews(limit);
+    }
+
+    public CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId,
+            String questId, boolean complete) {
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(questId, "questId");
+        if (!complete) return repository.resolveReview(playerId, residentId, questId, false, 0);
+
+        return repository.findReviews(100).thenCompose(reviews -> {
+            ResidentQuestReview review = reviews.stream()
+                    .filter(candidate -> candidate.playerId().equals(playerId)
+                            && candidate.residentId().equals(residentId)
+                            && candidate.questId().equalsIgnoreCase(questId))
+                    .findFirst().orElse(null);
+            if (review == null) return CompletableFuture.completedFuture(false);
+            int fallbackReward;
+            if (review.reputationReward() != null) {
+                fallbackReward = review.reputationReward();
+            } else {
+                ResidentQuest definition = catalog.find(questId).orElseThrow(() ->
+                        new IllegalStateException("Quest definition is missing; legacy review cannot be safely rewarded."));
+                fallbackReward = definition.reputationReward();
+            }
+            return repository.resolveReview(playerId, residentId, questId, true, fallbackReward);
+        });
     }
 
     public CompletableFuture<Integer> reputation(UUID playerId) {
