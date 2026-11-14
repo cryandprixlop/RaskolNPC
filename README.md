@@ -1,50 +1,76 @@
 # RaskolNPC
 
-RaskolNPC is an extensible NPC framework for a Minecraft RPG server built around Paper. Its planned systems include kingdom guards, simulated town citizens, player companions, tactical combat, dialogue, quests, and integrations with Towny and RaskolClasses.
+RaskolNPC is a Paper plugin for persistent NPC systems in a Minecraft RPG server. The current development branch contains the resident foundation and the first playable resident systems: professions, schedules, dialogue, delivery quests, reputation, needs, and town business stock.
 
-> **Project status:** Early planning and architecture. The repository currently documents the intended design; gameplay systems and integrations are not yet implemented.
+> **Project status:** Active development. The resident milestone is being implemented and tested on the `feature/resident-behavior-movement` branch. The pull request is still a draft and has not been merged into `main`.
 
-## Planned capabilities
+## Implemented resident features
 
-- **Kingdom guards** — nation-wide forces, town deployments, squads, patrols, tactical orders, morale, equipment, and configurable upkeep.
-- **Town citizens** — professions, schedules, needs, relationships, businesses, and an offline-capable town-economy simulation.
-- **Player companions** — class-based combat followers, progression, equipment, configurable recovery, and coordinated party behavior.
-- **Dialogue and quests** — authored dialogue trees, conditions and actions, narrative quest chains, and context-driven dynamic tasks.
-- **Administration** — tools for managing NPCs, inspecting system state, configuring behavior, and diagnosing integrations and performance.
+- Persistent resident profiles with all 10 professions and personality traits.
+- Weekly schedules with HOME, WORK, MARKET, and COMMUNITY destinations.
+- One shared, batched behavior scheduler; no per-NPC repeating tasks.
+- Collision-checked movement with small obstacle sidesteps; unloaded chunks are never force-loaded.
+- Daily needs progression for hunger, energy, rest, social need, and mood.
+- Profile-, profession-, trait-, and reputation-aware YAML dialogue.
+- Repeatable resource-delivery quests with persistent assignments and reputation.
+- Idempotent submission handling, restart recovery, and administrator review for ambiguous submissions.
+- Town business stock shared by profession, stock-based quest demand, atomic resource deposits/withdrawals, and configurable daily stock consumption.
+- Administrative tools for reputation, active quests, review queue resolution, and business stock inspection.
+- Kingdom guard rosters, Towny general appointments, durable guard orders, patrol waypoints, escort, defend, and return-to-post movement.
 
-## Planned integrations
+The current YAML catalog contains sample delivery tasks for all 10 professions. Currency rewards are intentionally not enabled: resource deliveries award reputation and contribute goods to business stock. A player-money trade provider has not yet been selected.
 
-RaskolNPC is designed around adapters so that its core domain logic does not depend directly on optional plugins.
+## Current project constraints
 
-- **Towny** — towns, nations, territorial context, relationships, and treasury integration through supported public APIs.
-- **RaskolClasses** — class and combat capabilities through the actual public API exposed by that project.
-- **Citizens** — optional physical NPC representation and navigation for town citizens.
-- **Vault or another economy provider** — optional economy bridge.
+- Global NPC limit: **150**.
+- Resident limit: **15 per Town** when Towny is enabled.
+- Guard limit: **30 per Nation**.
+- Companion limit: **3 per player** (companion gameplay remains a separate milestone).
+- Paper API: **26.2**.
+- Java: **25**.
+- Storage: SQLite with versioned schema migrations.
 
-The exact capabilities and compatibility of each integration must be verified against the corresponding plugin version and API before implementation. RaskolNPC will not assume undocumented APIs or modify another plugin's internal data.
+## Optional integrations
 
-## Target platform
+- **Towny** — resident creation authority, Town/Nation context, and existing guard systems. Towny is optional.
+- **RaskolClasses** — planned companion class integration; the companion milestone is not part of the current resident work.
+- **Economy provider** — a provider-neutral trade integration remains a future decision. No player-money rewards are issued by the resident quest system.
 
-- Paper: **26.2** (target; compatibility to be verified during implementation)
-- Java: **25**
+## Resident configuration
 
-## Design principles
+Main configuration is in `plugins/RaskolNPC/config.yml`:
 
-1. Keep domain logic separate from plugin integrations.
-2. Make optional integrations replaceable and safely disableable.
-3. Persist NPC identity and state across unloads and server restarts.
-4. Perform Bukkit/Paper entity and world operations on the appropriate server thread.
-5. Use event-driven and scheduled work rather than expensive per-NPC logic every tick.
-6. Make gameplay limits, costs, behavior, and recovery rules configurable.
-7. Preserve player-facing and administrative actions behind explicit permission and policy checks.
+- `limits.residents-per-town` — maximum residents per Town (default 15).
+- `resident-behavior.interval-ticks` — shared behavior timer interval.
+- `resident-behavior.batch-size` — residents processed per timer pass.
+- `resident-behavior.movement-step` — maximum movement step.
+- `resident-business-stock.daily-consumption-percent` — percentage of stock capacity consumed at each in-game day boundary; set to 0 to disable.
+
+Resident content is configured in:
+
+- `resident-dialogues.yml` — greetings, profession and trait lines, reputation tiers.
+- `resident-quests.yml` — delivery requirements, reputation rewards, and business stock targets.
+
+See [Resident systems guide](docs/RESIDENTS.md) for commands and configuration details.
+
+## Build and tests
+
+Use Java 25:
+
+```bash
+./gradlew clean build
+```
+
+The CI workflow compiles the plugin, compiles test sources, runs JUnit tests, and packages the plugin JAR.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — planned modules, boundaries, adapters, persistence, and runtime principles.
-- [Roadmap](docs/ROADMAP.md) — proposed implementation phases and validation gates.
+- [Resident systems guide](docs/RESIDENTS.md)
+- [Kingdom guards guide](docs/GUARDS.md)
+- [Paper acceptance and load-test plan](docs/PAPER-ACCEPTANCE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
 
-## Project status and contributions
-
-The design is being developed incrementally. Architectural decisions and integration contracts will be validated before implementation. Contributions and proposals should respect the project's staged design process.
+## License
 
 No license has been selected yet. Unless and until a license is added, the repository should not be treated as granting permission to reuse, modify, or redistribute its contents.

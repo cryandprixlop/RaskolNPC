@@ -1,0 +1,72 @@
+# Resident delivery quests. These are definitions only; gameplay activation is added separately.
+# required-material uses a Bukkit Material key.
+quests:
+  miner_iron_delivery:
+    profession: MINER
+    required-material: IRON_INGOT
+    required-amount: 32
+    reputation-reward: 5
+    stock-target: 96
+
+  lumberjack_oak_delivery:
+    profession: LUMBERJACK
+    required-material: OAK_LOG
+    required-amount: 24
+    reputation-reward: 4
+    stock-target: 96
+
+  farmer_wheat_delivery:
+    profession: FARMER
+    required-material: WHEAT
+    required-amount: 32
+    reputation-reward: 4
+    stock-target: 96
+
+  blacksmith_coal_delivery:
+    profession: BLACKSMITH
+    required-material: COAL
+    required-amount: 16
+    reputation-reward: 3
+    stock-target: 64
+
+  fisherman_cod_delivery:
+    profession: FISHERMAN
+    required-material: COD
+    required-amount: 16
+    reputation-reward: 3
+    stock-target: 48
+
+  craftsman_cobblestone_delivery:
+    profession: CRAFTSMAN
+    required-material: COBBLESTONE
+    required-amount: 32
+    reputation-reward: 4
+    stock-target: 96
+
+  merchant_paper_delivery:
+    profession: MERCHANT
+    required-material: PAPER
+    required-amount: 24
+    reputation-reward: 3
+    stock-target: 72
+
+  builder_stone_bricks_delivery:
+    profession: BUILDER
+    required-material: STONE_BRICKS
+    required-amount: 32
+    reputation-reward: 4
+    stock-target: 96
+
+  cook_bread_delivery:
+    profession: COOK
+    required-material: BREAD
+    required-amount: 16
+    reputation-reward: 3
+    stock-target: 48
+
+  teacher_book_delivery:
+    profession: TEACHER
+    required-material: BOOK
+    required-amount: 8
+    reputation-reward: 5
+    stock-target: 24

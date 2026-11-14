@@ -58,6 +58,17 @@ class TownyResidentServiceTest {
     }
 
     @Test
+    void rejectsCreationWhenTownyApiIsIncompatible() {
+        Player player = mock(Player.class);
+        Location location = mock(Location.class);
+        TownyResidentService.TownyAccess api = (p, l) -> {
+            throw new NoSuchMethodError("Towny API mismatch");
+        };
+        assertThrows(TownyIntegrationException.class,
+                () -> new TownyResidentService(api).resolveAndAuthorize(player, location));
+    }
+
+    @Test
     void allowsRaskolNpcAdministratorWithoutTownRank() {
         Player player = mock(Player.class);
         Location location = mock(Location.class);

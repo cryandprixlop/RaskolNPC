@@ -1,8 +1,34 @@
 # RaskolNPC Roadmap
 
-> **Status:** Proposed sequence. No milestone in this document should be interpreted as implemented or released.
+> **Status:** Long-term product roadmap. Resident and initial guard implementation is present on the active draft pull request; it is not yet a merged or released milestone.
 
-The project will be developed in small, reviewable stages. Each stage should have an agreed scope, implementation plan, tests, and acceptance criteria before code is added.
+The project is developed in small, reviewable stages. Each stage has an implementation scope, tests, and acceptance criteria. Automated tests do not replace live-server acceptance and load testing.
+
+## Current implementation status — resident milestone
+
+The active development branch contains the resident work:
+
+- Resident profiles and all 10 professions.
+- Weekly schedules, destinations, shared batched behavior scheduling, and chunk-safe movement with simple obstacle sidesteps.
+- Daily needs progression and asynchronous profile persistence.
+- YAML dialogue with greeting, trait, profession, and reputation tiers.
+- Repeatable delivery quests, reputation, replay protection, restart recovery, and administrator review resolution.
+- Town business stock, delivery-demand gating, atomic deposits/withdrawals, and configurable daily consumption.
+- Administrative commands and an operator guide.
+
+The resource-side supply/demand loop is implemented. Player-currency rewards and a player-money marketplace remain intentionally disabled until the server's economy provider and transaction policy are selected. No economy provider is assumed.
+
+The resident milestone still needs full in-server acceptance and load testing at the global NPC cap of 150. The work remains on the open draft pull request and has not been merged into `main`.
+
+## Current implementation status — stages 2–4 in progress
+
+The resident milestone and its automated validation are present on the active pull-request branch. The following work extends the same branch:
+
+- **Stage 2:** SQLite migrations 1–13, versioned schema checks, NPC lifecycle capacity reservations, entity binding persistence, deletion recovery, and restart reconciliation. A newer unsupported schema version is rejected before application startup.
+- **Stage 3:** Towny authority/placement and Town-bank operations use existing verified Towny APIs. A provider-neutral relationship policy combines Towny declared alliances/enemies with active SiegeWar attacker/defender pairs; incomplete or unavailable diplomacy remains unknown and cannot authorize hostility. The WorldGuard 7.0.19 adapter is wired into the first guard combat layer and requires explicit `MOB_DAMAGE` permission at both attacker and target locations. Administrator diagnostics report adapter availability.
+- **Stage 4:** Towny guard hiring, rent, nation roster, general appointments, payment review, durable guard orders, patrol waypoints, escort, defend, hold, return-to-post movement, persistent squad membership, shared squad order assignment, and basic rally-point spreading are implemented. A squad order is saved per member and reports partial failures; members still move independently through one bounded scheduler, and unloaded chunks are not force-loaded. Guard combat uses bounded batches, configurable damage/cooldown, verified hostile relationships, territory checks, and optional WorldGuard authorization.
+
+**Remaining guard work:** Current pursuit selects the nearest verified hostile registered NPC or Towny-resolved player within the configured radius (default 16 blocks) and temporarily moves toward it without replacing the durable order. If the target becomes invalid, leaves range, or is no longer verified hostile, the guard resumes its saved order. Unknown/unregistered entities, unresolved players, neutral relations, and incomplete diplomacy responses are ignored. Movement is deliberately simple: it checks passability and can sidestep a single blocked step, but it is not full pathfinding around complex terrain. Synchronized squad movement/formation, coordinated squad combat, retaliation policy beyond bounded nearby-target selection, morale, equipment, injury, and recovery policies remain future increments. The guard milestone also still requires live Paper/Towny/SiegeWar/WorldGuard acceptance tests, including failure cases and the 150-NPC load test.
 
 ## Phase 0 — Product and technical validation
 

@@ -13,6 +13,26 @@ guards:
   base-daily-rent: 10.0
   # A guard is dismissed after this many consecutive missed daily payments.
   maximum-debt-days: 3
+  # Must match a nation rank already configured in Towny; RaskolNPC never creates ranks.
+  towny-general-rank: general
+  # Maximum number of guard orders advanced in one scheduler pass.
+  order-batch-size: 6
+  # Horizontal/vertical movement step used by the shared guard order controller.
+  movement-step: 0.6
+  # Hard cap for administrator-managed persistent guard squads.
+  squad-max-members: 10
+
+  # Basic combat only targets registered NPCs whose diplomacy is explicitly hostile.
+  # Unknown relationships are ignored; WorldGuard checks fail closed when installed.
+  combat:
+    batch-size: 4
+    detection-radius: 12.0
+    damage: 2.0
+    attack-cooldown-ms: 1000
+    # Guards pursue explicitly hostile registered NPCs and Towny-resolved players.
+    # Unregistered entities and players without verified Towny membership are ignored.
+    # Set to 0 to disable pursuit.
+    max-pursuit-distance: 16.0
 
 integrations:
   towny:
@@ -28,3 +48,16 @@ entities:
   # Physical entities are persistent and tagged with their RaskolNPC UUID.
   # AI is disabled until the relevant NPC behavior module is enabled.
   track-loaded-chunks: true
+
+resident-behavior:
+  # One shared timer handles all residents; never create a task per NPC.
+  interval-ticks: 10
+  # Maximum residents advanced in one timer invocation.
+  batch-size: 8
+  # Maximum horizontal movement distance per processed resident, in blocks.
+  movement-step: 0.8
+
+resident-business-stock:
+  # Percentage of each business stock capacity consumed at every in-game day boundary.
+  # Set to 0 to disable automatic consumption.
+  daily-consumption-percent: 10

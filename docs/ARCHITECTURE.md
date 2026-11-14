@@ -1,6 +1,6 @@
 # RaskolNPC Architecture
 
-> **Status:** Proposed architecture. This document records the agreed product direction and a technical structure to validate before implementation. It is not a claim that these modules or integrations already exist.
+> **Status:** Conceptual architecture with implementation notes. Some resident foundations described below now exist in code; this document does not claim that all planned domains or integrations are complete.
 
 ## 1. Goals and constraints
 
@@ -29,6 +29,20 @@ These are project targets. Build tooling, API availability, and runtime compatib
 - Avoid expensive decision-making for every NPC every tick.
 - Make limits, economy rules, combat policies, recovery, and behavior configurable.
 - Never silently discard NPCs, inventories, progression, or financial state.
+
+## 1.1 Current implementation notes
+
+The current development branch has concrete implementations for:
+
+- Paper plugin lifecycle, SQLite persistence, versioned migrations, NPC identity and lifecycle.
+- Towny-backed resident creation authorization and town-level resident limits.
+- Resident profiles, professions, schedules, destinations, batched movement, daily needs, and dialogue.
+- Resident delivery quests, reputation, submission recovery, administrator review, and business stock/demand.
+- Existing guard hiring/rent foundations.
+
+The following remain separate or incomplete: full tactical guard behavior and SiegeWar integration, player companions and RaskolClasses integration, resident relationship/family simulation, and a player-money marketplace. The latter is intentionally not enabled until the server's economy provider and transaction policy are selected.
+
+Resident business stock currently uses a Town + Profession + Material key (or a resident-specific key in standalone mode). Delivery completion, reputation credit, and stock deposit are committed in one SQLite transaction. A provider-neutral stock withdrawal operation is available for later market integration.
 
 ## 2. High-level layers
 

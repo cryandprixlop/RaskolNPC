@@ -8,6 +8,7 @@ import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class NpcRecoveryService {
@@ -22,6 +24,7 @@ public final class NpcRecoveryService {
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
     private final NpcDeletionRepository deletions;
+    private final Set<NpcId> deathRecoveries = ConcurrentHashMap.newKeySet();
     private volatile boolean started;
 
     public NpcRecoveryService(Plugin plugin, NpcRegistry registry,
@@ -80,6 +83,59 @@ public final class NpcRecoveryService {
         });
     }
 
+    /**
+     * Recovers an NPC after an unexpected entity death. A durable deletion request
+     * always wins; only the exact currently-bound entity of an active record qualifies.
+     */
+    public void onEntityDeath(Entity deadEntity) {
+        if (!Bukkit.isPrimaryThread() || !plugin.isEnabled()) return;
+        var taggedId = entities.getNpcId(deadEntity);
+        if (taggedId.isEmpty()) return;
+        NpcId id = taggedId.get();
+        entities.untrack(deadEntity);
+        NpcRecord record = registry.get(id).orElse(null);
+        if (record == null || record.state() != NpcState.ACTIVE
+                || !deadEntity.getUniqueId().equals(record.entityUuid())
+                || !deathRecoveries.add(id)) {
+            return;
+        }
+
+        deletions.findPending().whenComplete((pendingIds, error) -> {
+            if (error != null) {
+                deathRecoveries.remove(id);
+                if (plugin.isEnabled()) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not check deletion state after NPC death: " + id, error);
+                }
+                return;
+            }
+            runOnMainThread(() -> {
+                NpcRecord current = registry.get(id).orElse(null);
+                if (pendingIds.contains(id) || current == null
+                        || current.state() != NpcState.ACTIVE
+                        || !deadEntity.getUniqueId().equals(current.entityUuid())) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                Location location = current.spawnLocation() == null
+                        ? null : current.spawnLocation().resolve();
+                if (location == null || location.getWorld() == null
+                        || !location.getWorld().isChunkLoaded(
+                                location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+                    // A later chunk-load event will perform normal reconciliation.
+                    return CompletableFuture.completedFuture(null);
+                }
+                return entities.spawnAsync(current, location).thenApply(restored -> null);
+            }).whenComplete((ignored, recoveryError) -> {
+                deathRecoveries.remove(id);
+                if (recoveryError != null && plugin.isEnabled()) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not restore NPC after entity death: " + id, recoveryError);
+                }
+            });
+        });
+    }
+
     public void onEntitiesUnload(List<Entity> unloadingEntities) {
         if (!Bukkit.isPrimaryThread()) return;
         unloadingEntities.forEach(entities::untrack);
@@ -95,7 +151,8 @@ public final class NpcRecoveryService {
                     NpcId id = taggedId.get();
                     if (!pending.contains(id)) {
                         var record = registry.get(id).orElse(null);
-                        if (record == null || (record.entityUuid() != null
+                        if (record == null || record.state() != NpcState.ACTIVE
+                                || (record.entityUuid() != null
                                 && !record.entityUuid().equals(entity.getUniqueId()))) {
                             entities.removeEntity(entity);
                             return CompletableFuture.completedFuture(null);
@@ -131,7 +188,9 @@ public final class NpcRecoveryService {
 
     private CompletableFuture<?> recoverRecordIfChunkLoaded(
             NpcRecord record, Chunk onlyChunk, Set<NpcId> pending) {
-        if (pending.contains(record.id()) || !isSpawnedInChunk(record, onlyChunk)) {
+        if (pending.contains(record.id()) || record.state() != NpcState.ACTIVE
+                || deathRecoveries.contains(record.id())
+                || !isSpawnedInChunk(record, onlyChunk)) {
             return CompletableFuture.completedFuture(null);
         }
         Location location = record.spawnLocation().resolve();

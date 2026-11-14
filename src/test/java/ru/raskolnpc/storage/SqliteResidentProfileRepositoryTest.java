@@ -74,6 +74,35 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void bulkLoadsProfilesWithTraitsAndSkills() {
+        NpcRecord firstNpc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        NpcRecord secondNpc = NpcRecord.create(NpcType.RESIDENT, "Oren", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(firstNpc).join();
+        npcRepository.insert(secondNpc).join();
+
+        ResidentProfile first = new ResidentProfile(firstNpc.id(), 24,
+                ResidentProfession.FARMER,
+                EnumSet.of(ResidentProfile.ResidentTrait.FRIENDLY),
+                70, 80, 90, 50, 85, 75,
+                java.util.Map.of(ResidentProfession.FARMER, ResidentSkillLevel.EXPERT));
+        ResidentProfile second = new ResidentProfile(secondNpc.id(), 41,
+                ResidentProfession.BLACKSMITH,
+                EnumSet.of(ResidentProfile.ResidentTrait.HARD_WORKING),
+                55, 60, 65, 45, 80, 70,
+                java.util.Map.of(ResidentProfession.BLACKSMITH, ResidentSkillLevel.MASTER));
+        repository.save(first).join();
+        repository.save(second).join();
+
+        var loaded = repository.findAll().join();
+
+        assertEquals(2, loaded.size());
+        assertTrue(loaded.contains(first));
+        assertTrue(loaded.contains(second));
+    }
+
+    @Test
     void refusesToSaveProfileForNonResidentNpc() {
         NpcRecord npc = NpcRecord.create(NpcType.GUARD, "Guard", null,
                 "town-1", "nation-1", "{}");

@@ -1,6 +1,7 @@
 package ru.raskolnpc.storage;
 
 import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.resident.model.ResidentBehaviorData;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 
@@ -20,4 +21,7 @@ public interface ResidentScheduleRepository {
 
     CompletableFuture<Boolean> deleteDestination(
             NpcId npcId, ResidentDestination.DestinationType type);
+
+    /** Loads every configured resident schedule and destination using bounded SQL queries. */
+    CompletableFuture<List<ResidentBehaviorData>> findAllBehaviorData();
 }

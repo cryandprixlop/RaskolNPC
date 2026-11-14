@@ -66,6 +66,38 @@ class TownyKingdomGuardAccessTest {
         assertFalse(access.mayHire(player, " "));
     }
 
+    @Test
+    void kingCanViewOwnNationGuardsWhileStandingOutsideTheNation() {
+        Player king = playerWithoutAdmin();
+        TownyKingdomGuardAccess access = new TownyKingdomGuardAccess(
+                (player, location) -> new TownyKingdomGuardAccess.Placement(
+                        "foreign-town", "another-nation", false),
+                ignored -> new TownyKingdomGuardAccess.NationContext(NATION_ID, true));
+
+        assertTrue(access.mayViewNation(king, NATION_ID));
+        assertFalse(access.mayViewNation(king, "another-nation"));
+    }
+
+    @Test
+    void incompatibleTownyApiRejectsGuardPlacement() {
+        Player player = playerWithoutAdmin();
+        TownyKingdomGuardAccess access = new TownyKingdomGuardAccess(
+                (ignored, location) -> { throw new NoSuchMethodError("Towny API mismatch"); },
+                ignored -> null);
+        assertThrows(TownyIntegrationException.class,
+                () -> access.resolvePlacement(player, mock(org.bukkit.Location.class)));
+    }
+
+    @Test
+    void townyMembershipLookupFailureDoesNotGrantRosterAccess() {
+        Player player = playerWithoutAdmin();
+        TownyKingdomGuardAccess access = new TownyKingdomGuardAccess(
+                (ignored, location) -> null,
+                ignored -> { throw new IllegalStateException("Towny unavailable"); });
+
+        assertFalse(access.mayViewNation(player, NATION_ID));
+    }
+
     private Player playerWithoutAdmin() {
         Player player = mock(Player.class);
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);

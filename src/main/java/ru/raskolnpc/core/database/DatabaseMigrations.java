@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
+    private static final int CURRENT_SCHEMA_VERSION = 14;
 
     private DatabaseMigrations() {
     }
@@ -19,6 +20,13 @@ public final class DatabaseMigrations {
                     """);
         }
 
+        int installedVersion = installedVersion(connection);
+        if (installedVersion > CURRENT_SCHEMA_VERSION) {
+            throw new SQLException("Database schema version " + installedVersion
+                    + " is newer than this RaskolNPC build supports ("
+                    + CURRENT_SCHEMA_VERSION + "). Refusing to start to prevent data loss.");
+        }
+
         if (!isApplied(connection, 1)) applyInitialSchema(connection);
         if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
         if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
@@ -26,6 +34,20 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 5)) applyGuardHiringPaymentSchema(connection);
         if (!isApplied(connection, 6)) applyResidentProfileSchema(connection);
         if (!isApplied(connection, 7)) applyResidentScheduleSchema(connection);
+        if (!isApplied(connection, 8)) applyResidentQuestSchema(connection);
+        if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
+        if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
+        if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
+        if (!isApplied(connection, 12)) applyGuardOrderSchema(connection);
+        if (!isApplied(connection, 13)) applyGuardSquadSchema(connection);
+        if (!isApplied(connection, 14)) applyGuardRallyOrderSchema(connection);
+    }
+
+    private static int installedVersion(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")) {
+            return result.next() ? result.getInt(1) : 0;
+        }
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -339,4 +361,339 @@ public final class DatabaseMigrations {
             }
         }
     }
+
+    private static void applyResidentQuestSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_quest_assignments (
+                        assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        player_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        quest_id TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN ('ACCEPTED', 'COMPLETED')),
+                        accepted_at INTEGER NOT NULL CHECK (accepted_at > 0),
+                        completed_at INTEGER,
+                        CHECK (
+                            (status = 'ACCEPTED' AND completed_at IS NULL)
+                            OR (status = 'COMPLETED' AND completed_at IS NOT NULL)
+                        )
+                    )
+                    """);
+            statement.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_resident_quest_active_unique
+                    ON resident_quest_assignments(player_uuid, resident_npc_id, quest_id)
+                    WHERE status = 'ACCEPTED'
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_quest_player_status
+                    ON resident_quest_assignments(player_uuid, status, accepted_at)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (8)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackException) {
+                exception.addSuppressed(rollbackException);
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    private static void applyResidentQuestSubmissionSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_quest_submissions (
+                        player_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        quest_id TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN (
+                            'IN_PROGRESS', 'COMPLETED', 'REVIEW_REQUIRED'
+                        )),
+                        reason TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY (player_uuid, resident_npc_id, quest_id)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_reputation (
+                        player_uuid TEXT PRIMARY KEY,
+                        points INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0),
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_quest_submissions_status
+                    ON resident_quest_submissions(status, updated_at)
+                    """);
+            statement.execute("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'REVIEW_REQUIRED',
+                        reason = 'Server restarted before submission was finalized.',
+                        updated_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+                    WHERE status = 'IN_PROGRESS'
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (9)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentQuestReviewRewardSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN reputation_reward INTEGER
+                    CHECK (reputation_reward IS NULL OR reputation_reward >= 0)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (10)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentBusinessStockSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_business_stock (
+                        business_id TEXT NOT NULL,
+                        profession TEXT NOT NULL,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount >= 0),
+                        capacity INTEGER NOT NULL CHECK (capacity >= 0),
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY (business_id, profession, material)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_business_stock_business
+                    ON resident_business_stock(business_id, profession)
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_material TEXT
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_amount INTEGER
+                    CHECK (stock_amount IS NULL OR stock_amount >= 0)
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_capacity INTEGER
+                    CHECK (stock_capacity IS NULL OR stock_capacity >= 0)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (11)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyGuardOrderSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_orders (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        order_type TEXT NOT NULL CHECK (order_type IN (
+                            'HOLD_POSITION', 'PATROL', 'DEFEND', 'ESCORT', 'RETURN_TO_POST'
+                        )),
+                        issuer_uuid TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_order_waypoints (
+                        npc_id TEXT NOT NULL REFERENCES guard_orders(npc_id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 15),
+                        world_uuid TEXT NOT NULL,
+                        x REAL NOT NULL,
+                        y REAL NOT NULL,
+                        z REAL NOT NULL,
+                        yaw REAL NOT NULL,
+                        pitch REAL NOT NULL,
+                        PRIMARY KEY (npc_id, sequence)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_orders_type "
+                    + "ON guard_orders(order_type)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (12)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyGuardSquadSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_squads (
+                        squad_id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 32),
+                        created_by TEXT NOT NULL,
+                        created_at INTEGER NOT NULL CHECK (created_at > 0)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_squad_members (
+                        squad_id TEXT NOT NULL REFERENCES guard_squads(squad_id) ON DELETE CASCADE,
+                        npc_id TEXT NOT NULL UNIQUE REFERENCES npcs(id) ON DELETE CASCADE,
+                        PRIMARY KEY (squad_id, npc_id)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_squad_members_squad "
+                    + "ON guard_squad_members(squad_id)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (13)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    /**
+     * Adds the RALLY order type while preserving all persisted orders and waypoints.
+     * SQLite cannot alter a CHECK constraint in place, so both related tables are
+     * copied to replacement tables and swapped within one migration transaction.
+     */
+    private static void applyGuardRallyOrderSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE guard_orders_new (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        order_type TEXT NOT NULL CHECK (order_type IN (
+                            'HOLD_POSITION', 'PATROL', 'DEFEND', 'RALLY',
+                            'ESCORT', 'RETURN_TO_POST'
+                        )),
+                        issuer_uuid TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE guard_order_waypoints_new (
+                        npc_id TEXT NOT NULL REFERENCES guard_orders_new(npc_id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 15),
+                        world_uuid TEXT NOT NULL,
+                        x REAL NOT NULL,
+                        y REAL NOT NULL,
+                        z REAL NOT NULL,
+                        yaw REAL NOT NULL,
+                        pitch REAL NOT NULL,
+                        PRIMARY KEY (npc_id, sequence)
+                    )
+                    """);
+            statement.execute("""
+                    INSERT INTO guard_orders_new(npc_id, order_type, issuer_uuid, updated_at)
+                    SELECT npc_id, order_type, issuer_uuid, updated_at FROM guard_orders
+                    """);
+            statement.execute("""
+                    INSERT INTO guard_order_waypoints_new(
+                        npc_id, sequence, world_uuid, x, y, z, yaw, pitch
+                    )
+                    SELECT npc_id, sequence, world_uuid, x, y, z, yaw, pitch
+                    FROM guard_order_waypoints
+                    """);
+            statement.execute("DROP TABLE guard_order_waypoints");
+            statement.execute("DROP TABLE guard_orders");
+            statement.execute("ALTER TABLE guard_orders_new RENAME TO guard_orders");
+            statement.execute("ALTER TABLE guard_order_waypoints_new RENAME TO guard_order_waypoints");
+            statement.execute("CREATE INDEX idx_guard_orders_type ON guard_orders(order_type)");
+            statement.execute("CREATE INDEX idx_guard_order_waypoints_world "
+                    + "ON guard_order_waypoints(world_uuid)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (14)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
 }
