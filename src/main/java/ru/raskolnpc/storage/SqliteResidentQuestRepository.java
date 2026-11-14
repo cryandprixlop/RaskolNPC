@@ -121,6 +121,31 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> abandon(UUID playerId, NpcId residentId, String questId) {
+        String id = normalizeQuestId(questId);
+        return database.transaction(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    DELETE FROM resident_quest_assignments
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'ACCEPTED'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM resident_quest_submissions
+                          WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                            AND status IN ('IN_PROGRESS', 'REVIEW_REQUIRED')
+                      )
+                    """)) {
+                statement.setString(1, requirePlayer(playerId).toString());
+                statement.setString(2, residentId.toString());
+                statement.setString(3, id);
+                statement.setString(4, playerId.toString());
+                statement.setString(5, residentId.toString());
+                statement.setString(6, id);
+                return statement.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId,
             String stockMaterial, int reputationReward, int stockAmount, int stockCapacity) {
         String id = normalizeQuestId(questId);
