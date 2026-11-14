@@ -31,7 +31,7 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_squad_members");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(12, schemaVersion(connection));
+            assertEquals(13, schemaVersion(connection));
             assertEquals(13, migrationCount(connection));
         }
     }
