@@ -1106,6 +1106,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     ? List.of("hire", "rent", "list", "info", "general", "order")
                     : List.of("hire", "list", "info", "general", "order"), args[1]);
         }
+        if (args.length == 4 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("order")) {
+            return startsWith(List.of("hold", "return", "defend", "escort", "patrol", "clear"), args[3]);
+        }
         if (args.length == 3 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("general")) {
             return startsWith(List.of("appoint", "dismiss", "list"), args[2]);
