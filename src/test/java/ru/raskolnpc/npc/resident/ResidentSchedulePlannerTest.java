@@ -33,8 +33,32 @@ class ResidentSchedulePlannerTest {
     }
 
     @Test
+    void returnsHomeWhenNoActivityIsScheduled() {
+        var schedule = new ResidentSchedule(List.of(new ResidentSchedule.Entry(
+                DayOfWeek.MONDAY, 480, 600, ResidentSchedule.Activity.WORK,
+                ResidentDestination.DestinationType.WORK)));
+
+        assertEquals(ResidentDestination.DestinationType.HOME,
+                planner.destinationFor(schedule, DayOfWeek.MONDAY, 600));
+        assertEquals(ResidentDestination.DestinationType.HOME,
+                planner.destinationFor(schedule, DayOfWeek.TUESDAY, 500));
+    }
+
+    @Test
+    void usesScheduledDestinationDuringActivity() {
+        var schedule = new ResidentSchedule(List.of(new ResidentSchedule.Entry(
+                DayOfWeek.MONDAY, 480, 600, ResidentSchedule.Activity.WORK,
+                ResidentDestination.DestinationType.WORK)));
+
+        assertEquals(ResidentDestination.DestinationType.WORK,
+                planner.destinationFor(schedule, DayOfWeek.MONDAY, 500));
+    }
+
+    @Test
     void rejectsInvalidMinute() {
         assertThrows(IllegalArgumentException.class, () -> planner.findCurrent(
+                new ResidentSchedule(List.of()), DayOfWeek.MONDAY, 1440));
+        assertThrows(IllegalArgumentException.class, () -> planner.destinationFor(
                 new ResidentSchedule(List.of()), DayOfWeek.MONDAY, 1440));
     }
 }
