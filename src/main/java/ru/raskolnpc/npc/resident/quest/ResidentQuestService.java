@@ -25,6 +25,10 @@ import java.util.logging.Level;
 
 /** Coordinates resident quest offers, acceptance and safe resource submissions. */
 public final class ResidentQuestService {
+    public record BusinessStockEntry(
+            String questId, String material, int amount, int target,
+            int deliveryAmount, boolean deliveryAvailable) { }
+
     public enum AcceptResult {
         ACCEPTED, ALREADY_ACTIVE, RESIDENT_NOT_FOUND, QUEST_NOT_FOUND,
         WRONG_PROFESSION, PROFILE_UNAVAILABLE, NO_BUSINESS_DEMAND
@@ -287,6 +291,36 @@ public final class ResidentQuestService {
                 fallbackReward = definition.reputationReward();
             }
             return repository.resolveReview(playerId, residentId, questId, true, fallbackReward);
+        });
+    }
+
+    public CompletableFuture<List<BusinessStockEntry>> stockReport(NpcId residentId) {
+        Objects.requireNonNull(residentId, "residentId");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Resident not found."));
+        }
+        return profiles.find(residentId).thenCompose(profile -> {
+            if (profile.isEmpty()) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Resident profile is unavailable."));
+            }
+            List<ResidentQuest> definitions = catalog.forProfession(profile.get().profession());
+            List<CompletableFuture<Integer>> stocks = definitions.stream()
+                    .map(quest -> repository.getBusinessStock(residentId, quest.requiredMaterial()))
+                    .toList();
+            return CompletableFuture.allOf(stocks.toArray(CompletableFuture[]::new))
+                    .thenApply(ignored -> {
+                        List<BusinessStockEntry> report = new java.util.ArrayList<>();
+                        for (int index = 0; index < definitions.size(); index++) {
+                            ResidentQuest quest = definitions.get(index);
+                            int amount = stocks.get(index).join();
+                            boolean available = quest.stockTarget() == 0
+                                    || (long) amount + quest.requiredAmount() <= quest.stockTarget();
+                            report.add(new BusinessStockEntry(quest.id(), quest.requiredMaterial(),
+                                    amount, quest.stockTarget(), quest.requiredAmount(), available));
+                        }
+                        return List.copyOf(report);
+                    });
         });
     }
 
