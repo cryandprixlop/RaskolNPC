@@ -14,6 +14,7 @@ import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.storage.ResidentProfileRepository;
+import ru.raskolnpc.storage.ResidentQuestRepository;
 import ru.raskolnpc.storage.ResidentScheduleRepository;
 
 import java.time.DayOfWeek;
@@ -36,6 +37,8 @@ public final class ResidentBehaviorService {
     private final NpcEntityManager entities;
     private final ResidentScheduleRepository repository;
     private final ResidentProfileRepository profileRepository;
+    private volatile ResidentQuestRepository questRepository;
+    private volatile int dailyStockConsumptionPercent = 10;
     private final ResidentSchedulePlanner planner = new ResidentSchedulePlanner();
     private final ResidentNeedsController needsController = new ResidentNeedsController();
     private final ResidentMovementController movement;
@@ -68,6 +71,17 @@ public final class ResidentBehaviorService {
         this.batchSize = batchSize;
         this.intervalTicks = intervalTicks;
         this.movement = new ResidentMovementController(movementStep);
+    }
+
+    public void setBusinessStockRepository(ResidentQuestRepository repository) {
+        this.questRepository = Objects.requireNonNull(repository, "repository");
+    }
+
+    public void setDailyStockConsumptionPercent(int percentage) {
+        if (percentage < 0 || percentage > 100) {
+            throw new IllegalArgumentException("Daily stock consumption must be between 0 and 100.");
+        }
+        this.dailyStockConsumptionPercent = percentage;
     }
 
     /** Loads behavior data and profession profiles in bulk, then starts one shared timer. */
@@ -127,6 +141,19 @@ public final class ResidentBehaviorService {
             lastNeedsDay = dayNumber;
             needsQueue = residents;
             needsCursor = 0;
+            ResidentQuestRepository stocks = questRepository;
+            int consumption = dailyStockConsumptionPercent;
+            if (stocks != null && consumption > 0) {
+                stocks.consumeBusinessStockDaily(consumption).whenComplete((changed, error) -> {
+                    if (error != null) {
+                        plugin.getLogger().log(Level.WARNING,
+                                "Could not apply daily resident business stock consumption.", error);
+                    } else if (changed > 0) {
+                        plugin.getLogger().fine("Applied daily consumption to " + changed
+                                + " resident business stock row(s).");
+                    }
+                });
+            }
         }
         DayOfWeek day = DayOfWeek.of((int) Math.floorMod(dayNumber, 7L) + 1);
         int minute = (int) (clockWorld.getTime() * 1440L / 24000L);
