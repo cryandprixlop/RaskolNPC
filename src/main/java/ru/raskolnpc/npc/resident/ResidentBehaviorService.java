@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.plugin.Plugin;
+import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
@@ -19,9 +20,11 @@ import ru.raskolnpc.storage.ResidentScheduleRepository;
 
 import java.time.DayOfWeek;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
@@ -45,8 +48,8 @@ public final class ResidentBehaviorService {
     private final ResidentWorkActionController workActions = new ResidentWorkActionController();
     private final int batchSize;
     private final long intervalTicks;
-    private final Map<ru.raskolnpc.npc.model.NpcId, ResidentBehaviorData> cache = new HashMap<>();
-    private final Map<ru.raskolnpc.npc.model.NpcId, ResidentProfile> profileCache = new HashMap<>();
+    private final Map<NpcId, ResidentBehaviorData> cache = new HashMap<>();
+    private final Map<NpcId, ResidentProfile> profileCache = new HashMap<>();
     private final AtomicBoolean loading = new AtomicBoolean();
     private List<NpcRecord> residents = List.of();
     private int cursor;
@@ -54,7 +57,9 @@ public final class ResidentBehaviorService {
     private long behaviorTick;
     private long lastNeedsDay = Long.MIN_VALUE;
     private List<NpcRecord> needsQueue = List.of();
+    private final Set<NpcId> needsProcessed = new HashSet<>();
     private int needsCursor;
+    private boolean needsCycleActive;
 
     public ResidentBehaviorService(Plugin plugin, NpcRegistry registry,
             NpcEntityManager entities, ResidentScheduleRepository repository,
@@ -207,8 +212,10 @@ public final class ResidentBehaviorService {
         boolean firstCycle = lastNeedsDay == Long.MIN_VALUE;
         if (firstCycle || dayNumber != lastNeedsDay) {
             lastNeedsDay = dayNumber;
+            needsProcessed.clear();
             needsQueue = residents;
             needsCursor = 0;
+            needsCycleActive = !needsQueue.isEmpty();
             return !firstCycle;
         }
         return false;
@@ -220,6 +227,7 @@ public final class ResidentBehaviorService {
         while (processed < batchSize && needsCursor < needsQueue.size()) {
             NpcRecord resident = needsQueue.get(needsCursor++);
             processed++;
+            needsProcessed.add(resident.id());
             ResidentProfile current = profileCache.get(resident.id());
             if (current == null) continue;
             ResidentBehaviorData data = cache.get(resident.id());
@@ -237,6 +245,7 @@ public final class ResidentBehaviorService {
         if (needsCursor >= needsQueue.size()) {
             needsQueue = List.of();
             needsCursor = 0;
+            needsCycleActive = false;
         }
     }
 
@@ -270,7 +279,9 @@ public final class ResidentBehaviorService {
         behaviorTick = 0;
         lastNeedsDay = Long.MIN_VALUE;
         needsQueue = List.of();
+        needsProcessed.clear();
         needsCursor = 0;
+        needsCycleActive = false;
         loading.set(false);
     }
 
@@ -280,10 +291,21 @@ public final class ResidentBehaviorService {
                 .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
                 .toList();
         cursor = residents.isEmpty() ? 0 : Math.floorMod(cursor, residents.size());
+        if (needsCycleActive) {
+            needsQueue = residents.stream()
+                    .filter(record -> !needsProcessed.contains(record.id()))
+                    .toList();
+            needsCursor = 0;
+            if (needsQueue.isEmpty()) needsCycleActive = false;
+        }
     }
 
     int residentCount() {
         return residents.size();
+    }
+
+    int pendingNeedsCount() {
+        return Math.max(0, needsQueue.size() - needsCursor);
     }
 
     public int cachedResidentCount() {
