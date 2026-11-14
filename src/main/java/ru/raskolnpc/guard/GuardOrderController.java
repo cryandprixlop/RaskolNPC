@@ -150,11 +150,31 @@ public final class GuardOrderController {
         Location next = current.clone().add(dx / distance * step,
                 dy / distance * step, dz / distance * step);
         if (!world.isChunkLoaded(next.getBlockX() >> 4, next.getBlockZ() >> 4)) return;
-        if (!next.getBlock().isPassable()
-                || !next.clone().add(0, 1, 0).getBlock().isPassable()) return;
-        next.setYaw(current.getYaw());
-        next.setPitch(current.getPitch());
-        entity.teleport(next);
+        Location destination = isPassableStep(next) ? next : findSidestep(current, dx, dz, step);
+        if (destination == null) return;
+        destination.setYaw(current.getYaw());
+        destination.setPitch(current.getPitch());
+        entity.teleport(destination);
+    }
+
+    private Location findSidestep(Location current, double dx, double dz, double step) {
+        double horizontalLength = Math.sqrt(dx * dx + dz * dz);
+        if (horizontalLength < 0.001) return null;
+        double sideX = -dz / horizontalLength;
+        double sideZ = dx / horizontalLength;
+        Location first = current.clone().add(sideX * step, 0, sideZ * step);
+        if (first.getWorld().isChunkLoaded(first.getBlockX() >> 4, first.getBlockZ() >> 4)
+                && isPassableStep(first)) return first;
+        Location second = current.clone().add(-sideX * step, 0, -sideZ * step);
+        if (second.getWorld().isChunkLoaded(second.getBlockX() >> 4, second.getBlockZ() >> 4)
+                && isPassableStep(second)) return second;
+        return null;
+    }
+
+    private boolean isPassableStep(Location location) {
+        return location.getBlock().isPassable()
+                && location.clone().add(0, 1, 0).getBlock().isPassable();
+
     }
 
     private void requireMainThread() {
