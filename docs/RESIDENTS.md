@@ -21,10 +21,11 @@ All commands use `/raskolnpc` (alias: `/rnpc`).
 |---|---|
 | `resident quest accept <residentUUID> <questID>` | Accept a delivery quest |
 | `resident quest submit <residentUUID> <questID>` | Deliver the required items |
+| `resident quest abandon <residentUUID> <questID>` | Cancel an accepted quest before starting a submission |
 | `resident quest reputation` | View your reputation |
 | `resident quest active` | View your active resident quests |
 
-Quest accept/submit and own reputation/active-quest queries do not require the administrative permission.
+Quest accept/submit/abandon and own reputation/active-quest queries do not require the administrative permission. An assignment cannot be abandoned once its submission is in progress or awaiting review.
 
 ### Administrative commands
 
