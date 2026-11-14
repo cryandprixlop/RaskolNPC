@@ -87,7 +87,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         boolean residentQuestAccept = args.length == 5
                 && args[0].equalsIgnoreCase("resident")
                 && args[1].equalsIgnoreCase("quest")
-                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit"))
+                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit")
+                        || args[2].equalsIgnoreCase("abandon"))
                 && sender instanceof Player;
         boolean residentQuestReadOwn = args.length == 3
                 && args[0].equalsIgnoreCase("resident")
@@ -173,6 +174,21 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             var residentId = NpcCommandParser.parseId(args[3]);
             if (residentId.isEmpty()) {
                 messages.sendRaw(sender, "&cНекорректный UUID жителя.");
+                return;
+            }
+            if (args[2].equalsIgnoreCase("abandon")) {
+                quests.abandon(player, residentId.get(), args[4]).whenComplete((abandoned, error) ->
+                        runMain(sender, () -> {
+                            if (error != null) {
+                                messages.sendRaw(sender, "&cНе удалось отменить поручение: "
+                                        + rootMessage(error));
+                            } else if (Boolean.TRUE.equals(abandoned)) {
+                                messages.sendRaw(sender, "&eПоручение отменено. Его потребность снова доступна другим игрокам.");
+                            } else {
+                                messages.sendRaw(sender, "&cПоручение не найдено, уже завершено "
+                                        + "или его сдача требует проверки.");
+                            }
+                        }));
                 return;
             }
             if (args[2].equalsIgnoreCase("submit")) {
@@ -854,6 +870,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest accept <UUID> <ID> &7— принять поручение жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest submit <UUID> <ID> &7— сдать ресурсы жителю");
+        messages.sendRaw(sender, "&e/" + label + " resident quest abandon <UUID> <ID> &7— отменить принятое поручение");
         messages.sendRaw(sender, "&e/" + label + " resident quest reputation [UUID] &7— репутация игрока");
         messages.sendRaw(sender, "&e/" + label + " resident quest active [UUID] &7— активные поручения");
         if (sender.hasPermission(PERMISSION)) {
@@ -917,8 +934,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (canAcceptResidentQuest && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("accept", "submit", "reputation", "active", "review", "resolve")
-                    : List.of("accept", "submit", "reputation", "active"), args[2]);
+                    ? List.of("accept", "submit", "abandon", "reputation", "active", "review", "resolve")
+                    : List.of("accept", "submit", "abandon", "reputation", "active"), args[2]);
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
