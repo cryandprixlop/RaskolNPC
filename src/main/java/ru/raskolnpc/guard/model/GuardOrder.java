@@ -29,6 +29,7 @@ public record GuardOrder(
         HOLD_POSITION,
         PATROL,
         DEFEND,
+        RALLY,
         ESCORT,
         RETURN_TO_POST
     }
