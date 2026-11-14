@@ -47,10 +47,13 @@ public final class GuardOrderService {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("A patrol route must contain at least two waypoints."));
         }
-        if ((type == GuardOrder.Type.DEFEND || type == GuardOrder.Type.ESCORT)
-                && route.size() != 1) {
+        if (type == GuardOrder.Type.DEFEND && route.size() != 1) {
             return CompletableFuture.failedFuture(
-                    new IllegalArgumentException(type + " requires exactly one target waypoint."));
+                    new IllegalArgumentException("DEFEND requires exactly one target waypoint."));
+        }
+        if (type == GuardOrder.Type.ESCORT && !route.isEmpty()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("ESCORT follows the player who issued the order; no waypoint is used."));
         }
         if ((type == GuardOrder.Type.HOLD_POSITION || type == GuardOrder.Type.RETURN_TO_POST)
                 && !route.isEmpty()) {
