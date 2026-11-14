@@ -135,24 +135,27 @@ public final class ResidentBehaviorService {
         if (clockWorld == null) return;
 
         long dayNumber = Math.floorDiv(clockWorld.getFullTime(), 24000L);
-        if (lastNeedsDay == Long.MIN_VALUE) {
-            lastNeedsDay = dayNumber;
-        } else if (dayNumber != lastNeedsDay) {
+        if (lastNeedsDay == Long.MIN_VALUE || dayNumber != lastNeedsDay) {
+            // Run the first daily needs cycle after startup as well as at each
+            // subsequent in-game day boundary. Without this initialization,
+            // residents would keep their initial needs unchanged for day one.
             lastNeedsDay = dayNumber;
             needsQueue = residents;
             needsCursor = 0;
-            ResidentQuestRepository stocks = questRepository;
-            int consumption = dailyStockConsumptionPercent;
-            if (stocks != null && consumption > 0) {
-                stocks.consumeBusinessStockDaily(consumption).whenComplete((changed, error) -> {
-                    if (error != null) {
-                        plugin.getLogger().log(Level.WARNING,
-                                "Could not apply daily resident business stock consumption.", error);
-                    } else if (changed > 0) {
-                        plugin.getLogger().fine("Applied daily consumption to " + changed
-                                + " resident business stock row(s).");
-                    }
-                });
+            if (dayNumber != Long.MIN_VALUE) {
+                ResidentQuestRepository stocks = questRepository;
+                int consumption = dailyStockConsumptionPercent;
+                if (stocks != null && consumption > 0) {
+                    stocks.consumeBusinessStockDaily(consumption).whenComplete((changed, error) -> {
+                        if (error != null) {
+                            plugin.getLogger().log(Level.WARNING,
+                                    "Could not apply daily resident business stock consumption.", error);
+                        } else if (changed > 0) {
+                            plugin.getLogger().fine("Applied daily consumption to " + changed
+                                    + " resident business stock row(s).");
+                        }
+                    });
+                }
             }
         }
         DayOfWeek day = DayOfWeek.of((int) Math.floorMod(dayNumber, 7L) + 1);
