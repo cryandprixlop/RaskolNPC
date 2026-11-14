@@ -255,7 +255,7 @@ public final class GuardOrderController {
                 dy / distance * step, dz / distance * step);
         if (!world.isChunkLoaded(next.getBlockX() >> 4, next.getBlockZ() >> 4)) return;
         Location destination = isPassableStep(next) ? next : findSidestep(current, dx, dz, step);
-        if (destination == null || !territoryAccess.test(destination, guard.nationId())) return;
+        if (destination == null || !hasTerritoryAccess(destination, guard.nationId())) return;
         destination.setYaw(current.getYaw());
         destination.setPitch(current.getPitch());
         entity.teleport(destination);
@@ -273,6 +273,14 @@ public final class GuardOrderController {
         if (second.getWorld().isChunkLoaded(second.getBlockX() >> 4, second.getBlockZ() >> 4)
                 && isPassableStep(second)) return second;
         return null;
+    }
+
+    private boolean hasTerritoryAccess(Location location, String nationId) {
+        try {
+            return territoryAccess.test(location, nationId);
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
     }
 
     private boolean isPassableStep(Location location) {

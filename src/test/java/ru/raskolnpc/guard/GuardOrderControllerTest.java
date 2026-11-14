@@ -359,6 +359,25 @@ class GuardOrderControllerTest {
 
 
     @Test
+    void failsClosedWhenTerritoryLookupThrowsDuringMovement() {
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(point(5.5), point(10.5)), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.setTerritoryAccess((location, nationId) -> {
+            throw new IllegalStateException("Towny lookup unavailable");
+        });
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
     void deadGuardDoesNotMoveOrPursue() {
         when(entity.isDead()).thenReturn(true);
         GuardOrderRepository repository = mock(GuardOrderRepository.class);
