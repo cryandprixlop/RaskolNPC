@@ -46,11 +46,11 @@ public final class TownyKingdomGeneralService {
         }
         try {
             access.save(target);
-        } catch (RuntimeException saveError) {
+        } catch (RuntimeException | LinkageError saveError) {
             try {
                 access.removeRank(target, rank);
                 access.save(target);
-            } catch (RuntimeException rollbackError) {
+            } catch (RuntimeException | LinkageError rollbackError) {
                 saveError.addSuppressed(rollbackError);
             }
             throw new IllegalStateException("Не удалось сохранить назначение генерала в Towny.", saveError);
@@ -70,11 +70,11 @@ public final class TownyKingdomGeneralService {
         }
         try {
             access.save(target);
-        } catch (RuntimeException saveError) {
+        } catch (RuntimeException | LinkageError saveError) {
             try {
                 access.addRank(target, rank);
                 access.save(target);
-            } catch (RuntimeException rollbackError) {
+            } catch (RuntimeException | LinkageError rollbackError) {
                 saveError.addSuppressed(rollbackError);
             }
             throw new IllegalStateException("Не удалось сохранить снятие полномочий в Towny.", saveError);

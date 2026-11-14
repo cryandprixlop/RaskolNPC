@@ -99,6 +99,19 @@ class TownyKingdomGeneralServiceTest {
     }
 
     @Test
+    void failedSaveDueToTownyApiLinkageAttemptsToRestorePreviousRankState() {
+        when(access.addRank(target, "General")).thenReturn(true);
+        doAnswer(invocation -> {
+            throw new NoSuchMethodError("Towny API mismatch");
+        }).when(access).save(target);
+
+        assertThrows(IllegalStateException.class, () -> service.appoint(king, "Target"));
+
+        verify(access).removeRank(target, "General");
+        verify(access, times(2)).save(target);
+    }
+
+    @Test
     void administratorCanInspectAllNations() {
         CommandSender admin = mock(CommandSender.class);
         when(admin.hasPermission("raskolnpc.admin")).thenReturn(true);
