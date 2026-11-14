@@ -5,6 +5,8 @@ import ru.raskolnpc.command.NpcCommand;
 import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.GuardOrderService;
+import ru.raskolnpc.guard.GuardOrderController;
 import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
@@ -32,6 +34,8 @@ import ru.raskolnpc.storage.ResidentQuestRepository;
 import ru.raskolnpc.storage.SqliteResidentQuestRepository;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
+import ru.raskolnpc.storage.GuardOrderRepository;
+import ru.raskolnpc.storage.SqliteGuardOrderRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
@@ -55,6 +59,7 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcRecoveryService npcRecoveryService;
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
+    private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
 
@@ -88,6 +93,13 @@ public final class RaskolNPC extends JavaPlugin {
         npcEntityManager = new NpcEntityManager(this,
                 new PaperNpcEntityProvider(this, tagger),
                 tagger, repository, npcRegistry);
+        GuardOrderRepository guardOrders = new SqliteGuardOrderRepository(databaseManager);
+        GuardOrderService guardOrderService = new GuardOrderService(npcRegistry, guardOrders);
+        guardOrderController = new GuardOrderController(this, npcRegistry, npcEntityManager,
+                guardOrderService,
+                Math.max(1, getConfig().getInt("guards.order-batch-size", 6)),
+                Math.min(1.5, Math.max(0.1,
+                        getConfig().getDouble("guards.movement-step", 0.6))));
         npcRecoveryService = new NpcRecoveryService(
                 this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
@@ -142,6 +154,7 @@ public final class RaskolNPC extends JavaPlugin {
                 this, commandService, new NpcCommandMessages(this));
         commandHandler.setIntegrationCapabilities(new IntegrationCapabilities(
                 getServer().getPluginManager(), townyEnabled));
+        commandHandler.setGuardOrderService(guardOrderService);
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
@@ -215,6 +228,7 @@ public final class RaskolNPC extends JavaPlugin {
                                         }
                                         npcLifecycleService.markReady();
                                         residentBehaviorService.start();
+                                        guardOrderController.start();
                                         if (guardRentService != null) {
                                             try {
                                                 guardRentService.start();
@@ -273,6 +287,7 @@ public final class RaskolNPC extends JavaPlugin {
     @Override
     public void onDisable() {
         if (residentBehaviorService != null) residentBehaviorService.stop();
+        if (guardOrderController != null) guardOrderController.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();
