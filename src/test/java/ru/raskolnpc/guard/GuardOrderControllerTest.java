@@ -36,7 +36,7 @@ class GuardOrderControllerTest {
     private World world;
     private NpcRegistry registry;
     private NpcEntityManager entities;
-    private Entity entity;
+    private LivingEntity entity;
     private GuardOrderService orders;
     private NpcRecord guard;
 
@@ -52,8 +52,9 @@ class GuardOrderControllerTest {
                         NpcSpawnLocation.from(new Location(world, 0.5, 64, 0.5)));
         registry.put(guard);
 
-        entity = mock(Entity.class);
+        entity = mock(LivingEntity.class);
         when(entity.isValid()).thenReturn(true);
+        when(entity.isDead()).thenReturn(false);
         when(entity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
         entities = mock(NpcEntityManager.class);
         when(entities.find(guard.id())).thenReturn(Optional.of(entity));
