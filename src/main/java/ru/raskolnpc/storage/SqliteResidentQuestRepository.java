@@ -40,7 +40,10 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
             if (stockTarget > 0) {
                 BusinessIdentity business = businessIdentity(connection, residentId);
                 int currentStock = readBusinessStock(connection, business, material);
-                if ((long) currentStock + requiredAmount > stockTarget) return false;
+                int reservedDeliveries = countActiveBusinessAssignments(
+                        connection, business, normalizedQuestId);
+                if ((long) currentStock + (long) (reservedDeliveries + 1) * requiredAmount
+                        > stockTarget) return false;
             }
             try (var statement = connection.prepareStatement("""
                     INSERT OR IGNORE INTO resident_quest_assignments (
@@ -560,6 +563,29 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 String businessId = townId == null || townId.isBlank()
                         ? "resident:" + residentId : "town:" + townId;
                 return new BusinessIdentity(businessId, result.getString("profession"));
+            }
+        }
+    }
+
+    private static int countActiveBusinessAssignments(Connection connection,
+            BusinessIdentity business, String questId) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT COUNT(*)
+                FROM resident_quest_assignments a
+                JOIN npcs n ON n.id = a.resident_npc_id
+                JOIN resident_profiles rp ON rp.npc_id = n.id
+                WHERE a.quest_id = ? AND a.status = 'ACCEPTED'
+                  AND rp.profession = ?
+                  AND (CASE
+                        WHEN n.town_id IS NULL OR n.town_id = '' THEN 'resident:' || n.id
+                        ELSE 'town:' || n.town_id
+                       END) = ?
+                """)) {
+            statement.setString(1, questId);
+            statement.setString(2, business.profession());
+            statement.setString(3, business.businessId());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
             }
         }
     }
