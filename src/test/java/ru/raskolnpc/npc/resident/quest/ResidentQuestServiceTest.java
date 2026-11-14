@@ -39,6 +39,11 @@ class ResidentQuestServiceTest {
                     required-material: IRON_INGOT
                     required-amount: 32
                     reputation-reward: 5
+                  farmer_wheat_delivery:
+                    profession: FARMER
+                    required-material: WHEAT
+                    required-amount: 16
+                    reputation-reward: 3
                 """);
 
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
