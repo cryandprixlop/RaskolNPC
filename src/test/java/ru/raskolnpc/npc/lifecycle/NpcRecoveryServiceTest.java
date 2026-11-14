@@ -216,6 +216,7 @@ class NpcRecoveryServiceTest {
 
     @Test
     void restoresActiveNpcAfterItsBoundEntityDies() {
+        world.loadChunk(0, 0);
         Location savedLocation = new Location(world, 6.5, 70, 6.5);
         Entity deadEntity = mock(Entity.class);
         UUID deadEntityId = UUID.randomUUID();
