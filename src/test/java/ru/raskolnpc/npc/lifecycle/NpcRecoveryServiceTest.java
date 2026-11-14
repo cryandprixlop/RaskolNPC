@@ -297,6 +297,53 @@ class NpcRecoveryServiceTest {
         verify(deletions, never()).complete(record.id());
     }
 
+    @Test
+    void ignoresDeathEventFromAnEntityThatIsNoLongerBoundToTheNpc() {
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        UUID currentEntityId = UUID.randomUUID();
+        UUID staleEntityId = UUID.randomUUID();
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                currentEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+
+        Entity staleEntity = mock(Entity.class);
+        when(staleEntity.getUniqueId()).thenReturn(staleEntityId);
+        when(tagger.read(staleEntity)).thenReturn(Optional.of(record.id()));
+
+        recovery.onEntityDeath(staleEntity);
+
+        verify(deletions, never()).findPending();
+        verifyNoInteractions(provider);
+        assertEquals(currentEntityId, registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
+    @Test
+    void restoresNpcOnlyOnceWhenDeathEventIsDeliveredMoreThanOnce() {
+        world.loadChunk(0, 0);
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        UUID deadEntityId = UUID.randomUUID();
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+
+        Entity deadEntity = mock(Entity.class);
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+
+        Entity restoredEntity = mock(Entity.class);
+        when(restoredEntity.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        recovery.onEntityDeath(deadEntity);
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(4);
+
+        verify(deletions, times(1)).findPending();
+        verify(provider, times(1)).spawn(eq(record), any(Location.class));
+        assertEquals(restoredEntity.getUniqueId(),
+                registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
     private Entity createTrackedEntity() {
         world.loadChunk(0, 0);
         Entity entity = world.createEntity(new Location(world, 2, 65, 2), Entity.class);
