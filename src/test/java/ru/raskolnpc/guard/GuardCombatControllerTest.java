@@ -171,6 +171,50 @@ class GuardCombatControllerTest {
         verify(unknownPlayer, never()).damage(anyDouble(), any(Entity.class));
     }
 
+
+    @Test
+    void doesNotDamageTargetOutsideHiringNationTerritory() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setTerritoryAccess((location, nationId) ->
+                location.getX() < 1.0 && "nation-a".equals(nationId));
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void damagesTargetWhenBothGuardAndTargetAreInsideHiringNationTerritory() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setTerritoryAccess((location, nationId) ->
+                "nation-a".equals(nationId));
+
+        controller.tick();
+
+        verify(target).damage(2.0, attacker);
+    }
+
+    @Test
+    void failsClosedWhenTerritoryLookupThrows() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setTerritoryAccess((location, nationId) -> {
+            throw new IllegalStateException("Towny lookup unavailable");
+        });
+
+        assertDoesNotThrow(controller::tick);
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
     @Test
     void ignoresEntitiesWithoutRaskolNpcIdentity() {
         when(entities.getNpcId(target)).thenReturn(Optional.empty());

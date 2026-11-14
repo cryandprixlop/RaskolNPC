@@ -178,14 +178,22 @@ public final class GuardCombatController {
     private boolean mayDamage(NpcRecord guard, LivingEntity attacker, LivingEntity target) {
         Location attackerLocation = attacker.getLocation();
         Location targetLocation = target.getLocation();
-        if (!territoryAccess.test(attackerLocation, guard.nationId())
-                || !territoryAccess.test(targetLocation, guard.nationId())) return false;
+        if (!hasTerritoryAccess(attackerLocation, guard.nationId())
+                || !hasTerritoryAccess(targetLocation, guard.nationId())) return false;
         if (!worldGuardRequired) return true;
         if (worldGuard == null) return false;
         return worldGuard.checkMobDamage(attackerLocation)
                         == WorldGuardProtectionAdapter.Decision.ALLOWED
                 && worldGuard.checkMobDamage(targetLocation)
                         == WorldGuardProtectionAdapter.Decision.ALLOWED;
+    }
+
+    private boolean hasTerritoryAccess(Location location, String nationId) {
+        try {
+            return territoryAccess.test(location, nationId);
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
     }
 
     private void requireMainThread() {
