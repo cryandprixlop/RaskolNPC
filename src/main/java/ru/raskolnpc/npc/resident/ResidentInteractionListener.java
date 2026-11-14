@@ -1,5 +1,7 @@
 package ru.raskolnpc.npc.resident;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -7,27 +9,36 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.ClickEvent;
-import ru.raskolnpc.npc.resident.quest.ResidentQuest;
-import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.quest.ResidentQuest;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
+import ru.raskolnpc.storage.ResidentQuestReview;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /** Handles right-click conversations with resident NPCs. */
 public final class ResidentInteractionListener implements Listener {
     private static final long DEFAULT_COOLDOWN_MILLIS = 1_500L;
     private static final int MAX_COOLDOWN_ENTRIES = 4_096;
+    private static final int REVIEW_LOOKUP_LIMIT = 100;
 
     private record InteractionKey(UUID playerId, NpcId npcId) {}
+    private record ConversationContext(
+            ResidentProfile profile,
+            int reputation,
+            List<ResidentQuest.Assignment> activeAssignments,
+            List<ResidentQuestReview> reviews
+    ) {}
 
     private final Plugin plugin;
     private final NpcEntityManager entities;
@@ -68,8 +79,9 @@ public final class ResidentInteractionListener implements Listener {
         event.setCancelled(true);
 
         Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
         long now = System.currentTimeMillis();
-        InteractionKey key = new InteractionKey(player.getUniqueId(), npcId);
+        InteractionKey key = new InteractionKey(playerId, npcId);
         Long previous = lastInteractions.get(key);
         if (previous != null && now - previous < cooldownMillis) return;
         lastInteractions.put(key, now);
@@ -80,23 +92,36 @@ public final class ResidentInteractionListener implements Listener {
         }
 
         String residentName = record.name();
-        profiles.find(npcId).whenComplete((profile, error) -> {
+        CompletableFuture<ConversationContext> context = profiles.find(npcId)
+                .thenCombine(quests.reputation(playerId), (profile, reputation) ->
+                        new Object[]{profile, reputation})
+                .thenCombine(quests.activeAssignments(playerId), (pair, assignments) ->
+                        new Object[]{pair[0], pair[1], assignments})
+                .thenCombine(quests.reviewRequired(REVIEW_LOOKUP_LIMIT), (triple, reviews) -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.Optional<ResidentProfile> profile =
+                            (java.util.Optional<ResidentProfile>) triple[0];
+                    if (profile == null || profile.isEmpty()) {
+                        throw new IllegalStateException("Resident profile is unavailable.");
+                    }
+                    return new ConversationContext(profile.get(), (Integer) triple[1],
+                            castAssignments(triple[2]), reviews);
+                });
+
+        context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
             try {
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) return;
+                    if (!plugin.isEnabled() || !player.isOnline()) return;
                     if (error != null) {
-                        plugin.getLogger().warning("Could not load resident dialogue profile for "
-                                + npcId + ": " + error.getMessage());
+                        plugin.getLogger().warning("Could not load resident conversation context for "
+                                + npcId + ": " + rootMessage(error));
                         player.sendMessage("§7Житель сейчас занят и не может поговорить.");
                         return;
                     }
-                    if (profile == null || profile.isEmpty()) {
-                        player.sendMessage("§7Житель пока не готов к разговору.");
-                        return;
-                    }
-                    dialogues.speak(player, profile.get(), residentName);
-                    sendQuestOffers(player, npcId, residentName, profile.get());
+                    dialogues.speak(player, conversation.profile(), residentName,
+                            conversation.reputation());
+                    sendQuestActions(player, npcId, residentName, conversation);
                 });
             } catch (RuntimeException schedulingError) {
                 plugin.getLogger().warning("Could not schedule resident dialogue: "
@@ -105,20 +130,49 @@ public final class ResidentInteractionListener implements Listener {
         });
     }
 
-    private void sendQuestOffers(Player player, NpcId residentId, String residentName,
-            ru.raskolnpc.npc.resident.model.ResidentProfile profile) {
-        for (ResidentQuest quest : quests.availableFor(profile)) {
-            Component offer = Component.text("  » Взять поручение: ")
-                    .append(Component.text(quest.requiredAmount() + " "
-                            + quest.requiredMaterial() + " (награда: "
-                            + quest.reputationReward() + " репутации)")
-                            .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest accept "
-                                    + residentId + " " + quest.id())));
-            player.sendMessage(Component.text("[" + residentName + "] ").append(offer));
-            Component submit = Component.text("  » Сдать ресурсы по поручению")
-                    .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest submit "
-                            + residentId + " " + quest.id()));
-            player.sendMessage(Component.text("[" + residentName + "] ").append(submit));
+    private void sendQuestActions(Player player, NpcId residentId, String residentName,
+            ConversationContext context) {
+        for (ResidentQuest quest : quests.availableFor(context.profile())) {
+            boolean active = context.activeAssignments().stream().anyMatch(assignment ->
+                    assignment.residentId().equals(residentId)
+                            && assignment.questId().equals(quest.id()));
+            boolean underReview = context.reviews().stream().anyMatch(review ->
+                    review.playerId().equals(player.getUniqueId())
+                            && review.residentId().equals(residentId)
+                            && review.questId().equals(quest.id()));
+
+            Component prefix = Component.text("[" + residentName + "] ");
+            if (underReview) {
+                player.sendMessage(prefix.append(Component.text(
+                        "  » Сдача этого поручения ожидает проверки администрации.")));
+            } else if (active) {
+                Component submit = Component.text("  » Сдать ресурсы по поручению")
+                        .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest submit "
+                                + residentId + " " + quest.id()));
+                player.sendMessage(prefix.append(submit));
+            } else {
+                Component offer = Component.text("  » Взять поручение: ")
+                        .append(Component.text(quest.requiredAmount() + " "
+                                + quest.requiredMaterial() + " (награда: "
+                                + quest.reputationReward() + " репутации)")
+                                .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest accept "
+                                        + residentId + " " + quest.id())));
+                player.sendMessage(prefix.append(offer));
+            }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ResidentQuest.Assignment> castAssignments(Object value) {
+        return (List<ResidentQuest.Assignment>) value;
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null
+                ? current.getClass().getSimpleName() : current.getMessage();
     }
 }
