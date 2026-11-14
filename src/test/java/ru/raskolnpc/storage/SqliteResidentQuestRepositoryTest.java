@@ -65,6 +65,45 @@ class SqliteResidentQuestRepositoryTest {
         assertTrue(quests.findActiveForPlayer(player).join().isEmpty());
     }
 
+    @Test
+    void submissionCreditsReputationExactlyOnce() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertFalse(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertEquals(5, quests.getReputation(player).join());
+        assertTrue(quests.findActiveForPlayer(player).join().isEmpty());
+    }
+
+    @Test
+    void releasingReservationAllowsRetryWithoutCreditingReputation() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertEquals(0, quests.getReputation(player).join());
+    }
+
+    @Test
+    void uncertainSubmissionCanBeMarkedForReview() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+
+        assertTrue(quests.markSubmissionForReview(player, resident.id(),
+                "miner_iron_delivery", "test failure").join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertEquals(0, quests.getReputation(player).join());
+    }
+
     private NpcRecord createResident() {
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
                 null, "town", "nation", "{}");
