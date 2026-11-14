@@ -71,6 +71,7 @@ public final class ResidentQuestService {
     public CompletableFuture<AcceptResult> accept(Player player, NpcId residentId, String questId) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(residentId, "residentId");
+        java.util.UUID playerId = player.getUniqueId();
         if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
             return CompletableFuture.completedFuture(AcceptResult.RESIDENT_NOT_FOUND);
         }
@@ -84,12 +85,12 @@ public final class ResidentQuestService {
             if (profile.get().profession() != quest.profession()) {
                 return CompletableFuture.completedFuture(AcceptResult.WRONG_PROFESSION);
             }
-            return repository.accept(player.getUniqueId(), residentId, quest.id())
+            return repository.accept(playerId, residentId, quest.id())
                     .thenApply(accepted -> accepted
                             ? AcceptResult.ACCEPTED : AcceptResult.ALREADY_ACTIVE);
         }).exceptionally(error -> {
             plugin.getLogger().log(Level.WARNING,
-                    "Could not accept resident quest " + questId + " for " + player.getUniqueId(),
+                    "Could not accept resident quest " + questId + " for " + playerId,
                     error);
             throw new java.util.concurrent.CompletionException(error);
         });
