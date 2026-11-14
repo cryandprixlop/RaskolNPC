@@ -65,7 +65,7 @@ class ResidentQuestServiceTest {
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
         when(repository.accept(any(), eq(resident.id()), eq("miner_iron_delivery"),
-                eq("IRON_INGOT"), eq(32), eq(0))
+                eq("IRON_INGOT"), eq(32), eq(0)))
                 .thenReturn(CompletableFuture.completedFuture(true));
         Player player = mock(Player.class);
         UUID playerId = UUID.randomUUID();
