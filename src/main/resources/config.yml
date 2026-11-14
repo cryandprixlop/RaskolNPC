@@ -15,6 +15,10 @@ guards:
   maximum-debt-days: 3
   # Must match a nation rank already configured in Towny; RaskolNPC never creates ranks.
   towny-general-rank: general
+  # Maximum number of guard orders advanced in one scheduler pass.
+  order-batch-size: 6
+  # Horizontal/vertical movement step used by the shared guard order controller.
+  movement-step: 0.6
 
 integrations:
   towny:
