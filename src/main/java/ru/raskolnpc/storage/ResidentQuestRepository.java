@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
 /** Asynchronous persistence for player assignments and resident quest submissions. */
 public interface ResidentQuestRepository {
     CompletableFuture<Boolean> accept(UUID playerId, NpcId residentId, String questId,
-                                     int requiredAmount, int stockTarget);
+                                     String requiredMaterial, int requiredAmount, int stockTarget);
     CompletableFuture<Optional<ResidentQuest.Assignment>> findActive(
             UUID playerId, NpcId residentId, String questId);
     CompletableFuture<List<ResidentQuest.Assignment>> findActiveForPlayer(UUID playerId);
@@ -19,7 +19,8 @@ public interface ResidentQuestRepository {
 
     /** Reserves an accepted assignment before inventory mutation. */
     CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId,
-                                                int reputationReward, int stockAmount, int stockCapacity);
+                                                String stockMaterial, int reputationReward,
+                                                int stockAmount, int stockCapacity);
     /** Releases a reservation only when no inventory items have been removed. */
     CompletableFuture<Boolean> releaseSubmission(UUID playerId, NpcId residentId, String questId);
     /** Completes the assignment and credits reputation exactly once in one SQL transaction. */
