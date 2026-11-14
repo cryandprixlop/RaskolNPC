@@ -9,6 +9,7 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.glaremasters.me/repository/towny/")
+    maven("https://jitpack.io")
 }
 
 dependencies {
@@ -16,6 +17,8 @@ dependencies {
     testImplementation("io.papermc.paper:paper-api:26.2.build.135-stable")
     compileOnly("com.palmergames.bukkit.towny:towny:0.103.2.0")
     testImplementation("com.palmergames.bukkit.towny:towny:0.103.2.0")
+    compileOnly("com.github.TownyAdvanced:SiegeWar:3.7.0")
+    testImplementation("com.github.TownyAdvanced:SiegeWar:3.7.0")
 
     runtimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")
     testRuntimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")
