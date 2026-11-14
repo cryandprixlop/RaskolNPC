@@ -124,9 +124,10 @@ public final class GuardOrderController {
 
     private void execute(NpcRecord record, GuardOrder order) {
         Entity entity = entities.find(record.id()).orElse(null);
-        if (entity == null || !entity.isValid()) return;
+        if (!(entity instanceof LivingEntity livingEntity)
+                || !livingEntity.isValid() || livingEntity.isDead()) return;
 
-        Location pursuitTarget = nearestVerifiedHostile(record, entity);
+        Location pursuitTarget = nearestVerifiedHostile(record, livingEntity);
         if (pursuitTarget != null) {
             moveOneStep(entity, pursuitTarget);
             return;
