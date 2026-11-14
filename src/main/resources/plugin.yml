@@ -13,7 +13,6 @@ commands:
     description: NPC management commands.
     usage: /raskolnpc <create|list|info|delete|guard|resident>
     aliases: [rnpc]
-    aliases: [rnpc]
 
 permissions:
   raskolnpc.admin:
