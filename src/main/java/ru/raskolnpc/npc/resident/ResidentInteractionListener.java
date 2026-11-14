@@ -42,7 +42,8 @@ public final class ResidentInteractionListener implements Listener {
             ResidentProfile profile,
             int reputation,
             List<ResidentQuest.Assignment> activeAssignments,
-            List<ResidentQuestReview> reviews
+            List<ResidentQuestReview> reviews,
+            List<ResidentQuest> availableQuests
     ) {}
 
     private final Plugin plugin;
@@ -110,8 +111,12 @@ public final class ResidentInteractionListener implements Listener {
                             }
                             return new ConversationContext(profileAndAssignments.profile().get(),
                                     profileAndAssignments.reputation(),
-                                    profileAndAssignments.assignments(), reviews);
-                        });
+                                    profileAndAssignments.assignments(), reviews, List.of());
+                        })
+                .thenCompose(context -> quests.availableFor(context.profile(), npcId)
+                        .thenApply(available -> new ConversationContext(context.profile(),
+                                context.reputation(), context.activeAssignments(),
+                                context.reviews(), available)));
 
         context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
@@ -137,7 +142,7 @@ public final class ResidentInteractionListener implements Listener {
 
     private void sendQuestActions(Player player, NpcId residentId, String residentName,
             ConversationContext context) {
-        for (ResidentQuest quest : quests.availableFor(context.profile())) {
+        for (ResidentQuest quest : context.availableQuests()) {
             boolean active = context.activeAssignments().stream().anyMatch(assignment ->
                     assignment.residentId().equals(residentId)
                             && assignment.questId().equals(quest.id()));
