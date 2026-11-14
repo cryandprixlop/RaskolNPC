@@ -29,6 +29,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 8)) applyResidentQuestSchema(connection);
         if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
         if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
+        if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -459,6 +460,52 @@ public final class DatabaseMigrations {
                     CHECK (reputation_reward IS NULL OR reputation_reward >= 0)
                     """);
             statement.execute("INSERT INTO schema_migrations(version) VALUES (10)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentBusinessStockSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_business_stock (
+                        business_id TEXT NOT NULL,
+                        profession TEXT NOT NULL,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount >= 0),
+                        capacity INTEGER NOT NULL CHECK (capacity >= 0),
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY (business_id, profession, material)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_business_stock_business
+                    ON resident_business_stock(business_id, profession)
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_amount INTEGER
+                    CHECK (stock_amount IS NULL OR stock_amount >= 0)
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_capacity INTEGER
+                    CHECK (stock_capacity IS NULL OR stock_capacity >= 0)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (11)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
