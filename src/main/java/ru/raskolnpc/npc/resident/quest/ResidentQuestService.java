@@ -120,7 +120,15 @@ public final class ResidentQuestService {
                             removeItemsAndFinalize(player, playerId, residentId, quest, result));
                 } catch (RuntimeException schedulingError) {
                     repository.releaseSubmission(playerId, residentId, quest.id())
-                            .whenComplete((released, releaseError) -> result.completeExceptionally(schedulingError));
+                            .whenComplete((released, releaseError) -> {
+                                if (releaseError == null && Boolean.TRUE.equals(released)) {
+                                    result.completeExceptionally(schedulingError);
+                                } else {
+                                    String reason = "Could not schedule inventory submission and could not "
+                                            + "release its reservation: " + messageOf(releaseError);
+                                    markForReview(playerId, residentId, quest.id(), reason, result);
+                                }
+                            });
                 }
                 return result;
             });
@@ -130,26 +138,24 @@ public final class ResidentQuestService {
     private void removeItemsAndFinalize(Player player, UUID playerId, NpcId residentId,
             ResidentQuest quest, CompletableFuture<SubmitResult> result) {
         if (!plugin.isEnabled()) {
-            result.complete(SubmitResult.REVIEW_REQUIRED);
+            markForReview(playerId, residentId, quest.id(),
+                    "Plugin disabled before the reserved submission could be processed.", result);
             return;
         }
         if (!player.isOnline()) {
-            repository.releaseSubmission(playerId, residentId, quest.id())
-                    .whenComplete((released, error) -> result.complete(SubmitResult.PLAYER_OFFLINE));
+            releaseReservation(playerId, residentId, quest.id(), SubmitResult.PLAYER_OFFLINE, result);
             return;
         }
 
         Material material = Material.matchMaterial(quest.requiredMaterial());
         if (material == null || !material.isItem() || material.isAir()) {
-            repository.releaseSubmission(playerId, residentId, quest.id())
-                    .whenComplete((released, error) -> result.complete(SubmitResult.INVALID_MATERIAL));
+            releaseReservation(playerId, residentId, quest.id(), SubmitResult.INVALID_MATERIAL, result);
             return;
         }
 
         try {
             if (!player.getInventory().containsAtLeast(new ItemStack(material), quest.requiredAmount())) {
-                repository.releaseSubmission(playerId, residentId, quest.id())
-                        .whenComplete((released, error) -> result.complete(SubmitResult.NOT_ENOUGH_ITEMS));
+                releaseReservation(playerId, residentId, quest.id(), SubmitResult.NOT_ENOUGH_ITEMS, result);
                 return;
             }
             var leftovers = player.getInventory().removeItem(
@@ -161,7 +167,7 @@ public final class ResidentQuestService {
             }
         } catch (RuntimeException inventoryError) {
             markForReview(playerId, residentId, quest.id(),
-                    "Inventory mutation failed; outcome may be partial: " + inventoryError.getMessage(), result);
+                    "Inventory mutation failed; outcome may be partial: " + messageOf(inventoryError), result);
             return;
         }
 
@@ -170,7 +176,7 @@ public final class ResidentQuestService {
                     if (error != null || !Boolean.TRUE.equals(completed)) {
                         String reason = error == null
                                 ? "Assignment could not be finalized after inventory removal."
-                                : "Database finalization failed after inventory removal: " + error.getMessage();
+                                : "Database finalization failed after inventory removal: " + messageOf(error);
                         markForReview(playerId, residentId, quest.id(), reason, result);
                     } else {
                         result.complete(SubmitResult.SUBMITTED);
@@ -178,17 +184,49 @@ public final class ResidentQuestService {
                 });
     }
 
+    /**
+     * A failed release must never be reported as an ordinary retryable outcome:
+     * the reservation would otherwise remain IN_PROGRESS and block future attempts.
+     */
+    private void releaseReservation(UUID playerId, NpcId residentId, String questId,
+            SubmitResult releasedResult, CompletableFuture<SubmitResult> result) {
+        repository.releaseSubmission(playerId, residentId, questId).whenComplete((released, error) -> {
+            if (error == null && Boolean.TRUE.equals(released)) {
+                result.complete(releasedResult);
+                return;
+            }
+            String reason = "A submission with no inventory change could not release its reservation: "
+                    + (error == null ? "reservation was not in IN_PROGRESS." : messageOf(error));
+            markForReview(playerId, residentId, questId, reason, result);
+        });
+    }
+
     private void markForReview(UUID playerId, NpcId residentId, String questId,
             String reason, CompletableFuture<SubmitResult> result) {
         repository.markSubmissionForReview(playerId, residentId, questId, reason)
                 .whenComplete((marked, error) -> {
-                    if (error != null) plugin.getLogger().log(Level.SEVERE,
-                            "Could not mark resident quest submission for manual review.", error);
+                    if (error != null) {
+                        plugin.getLogger().log(Level.SEVERE,
+                                "Could not mark resident quest submission for manual review.", error);
+                    } else if (!Boolean.TRUE.equals(marked)) {
+                        plugin.getLogger().warning(
+                                "Resident quest submission could not be moved to REVIEW_REQUIRED for "
+                                        + playerId + "/" + residentId + "/" + questId
+                                        + "; startup recovery will inspect any remaining IN_PROGRESS record.");
+                    }
                     result.complete(SubmitResult.REVIEW_REQUIRED);
                 });
     }
 
     public CompletableFuture<Integer> reputation(UUID playerId) {
         return repository.getReputation(Objects.requireNonNull(playerId, "playerId"));
+    }
+
+    private static String messageOf(Throwable error) {
+        if (error == null) return "unknown persistence result";
+        Throwable cause = error;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
     }
 }
