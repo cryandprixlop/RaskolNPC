@@ -182,6 +182,47 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void pursuesNearestOfMultipleVerifiedHostileTargets() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        LivingEntity fartherHostile = mock(LivingEntity.class);
+        LivingEntity nearerHostile = mock(LivingEntity.class);
+        NpcRecord fartherRecord = NpcRecord.create(
+                NpcType.GUARD, "Farther hostile", null, "enemy-town", "enemy-nation", "{}");
+        NpcRecord nearerRecord = NpcRecord.create(
+                NpcType.GUARD, "Nearer hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(fartherRecord);
+        registry.register(nearerRecord);
+
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(fartherHostile, nearerHostile));
+        for (LivingEntity candidate : List.of(fartherHostile, nearerHostile)) {
+            when(candidate.isValid()).thenReturn(true);
+            when(candidate.isDead()).thenReturn(false);
+            when(candidate.getWorld()).thenReturn(world);
+        }
+        when(fartherHostile.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(nearerHostile.getLocation()).thenReturn(new Location(world, 0.5, 64, 2.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+        when(entities.getNpcId(fartherHostile)).thenReturn(Optional.of(fartherRecord.id()));
+        when(entities.getNpcId(nearerHostile)).thenReturn(Optional.of(nearerRecord.id()));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertEquals(origin.getX(), destination.getValue().getX(), 0.001,
+                "guard should move toward the nearer target rather than the farther target");
+        assertTrue(destination.getValue().getZ() > origin.getZ());
+    }
+
+    @Test
     void pursuesVerifiedHostileNpcEvenWhenGuardHasNoAssignedOrder() {
         LivingEntity guardEntity = mock(LivingEntity.class);
         LivingEntity hostileEntity = mock(LivingEntity.class);

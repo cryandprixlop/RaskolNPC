@@ -169,8 +169,8 @@ public final class GuardOrderController {
     }
 
     /**
-     * Returns a nearby registered NPC only when diplomacy explicitly confirms hostility.
-     * Players, unregistered entities, neutral relations and unknown relations are ignored.
+     * Returns the nearest nearby registered hostile NPC or Towny-resolved player.
+     * Unregistered entities, unresolved players, neutral relations and unknown relations are ignored.
      */
     private Location nearestVerifiedHostile(NpcRecord guard, Entity entity) {
         if (relationships == null || maxPursuitDistance <= 0
