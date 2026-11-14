@@ -258,6 +258,21 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(32, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
     }
 
+    @Test
+    void businessStockWithdrawalIsAtomicAndCannotBecomeNegative() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 96).join());
+        assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+
+        assertTrue(quests.withdrawBusinessStock(resident.id(), "IRON_INGOT", 16).join());
+        assertFalse(quests.withdrawBusinessStock(resident.id(), "IRON_INGOT", 17).join());
+        assertEquals(16, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+    }
+
     private NpcRecord createResident() {
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
                 null, "town", "nation", "{}");
