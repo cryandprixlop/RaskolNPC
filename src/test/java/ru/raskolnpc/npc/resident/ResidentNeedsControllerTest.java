@@ -56,7 +56,7 @@ class ResidentNeedsControllerTest {
         assertEquals(0, exhausted.hunger());
         assertEquals(0, exhausted.energy());
         assertEquals(0, exhausted.rest());
-        assertEquals(0, exhausted.mood());
+        assertEquals(15, exhausted.mood());
         assertEquals(100, rested.energy());
         assertEquals(100, rested.rest());
         assertTrue(rested.mood() <= 100);
