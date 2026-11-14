@@ -14,6 +14,7 @@ class ResidentQuestCatalogTest {
         yaml.set("quests.miner_iron.required-material", "IRON_INGOT");
         yaml.set("quests.miner_iron.required-amount", 32);
         yaml.set("quests.miner_iron.reputation-reward", 5);
+        yaml.set("quests.miner_iron.stock-target", 96);
         yaml.set("quests.farmer_wheat.profession", "FARMER");
         yaml.set("quests.farmer_wheat.required-material", "WHEAT");
         yaml.set("quests.farmer_wheat.required-amount", 16);
@@ -24,9 +25,17 @@ class ResidentQuestCatalogTest {
         assertEquals(2, catalog.all().size());
         assertEquals("IRON_INGOT", catalog.forProfession(ResidentProfession.MINER)
                 .getFirst().requiredMaterial());
+        assertEquals(96, catalog.forProfession(ResidentProfession.MINER)
+                .getFirst().stockTarget());
         assertEquals("farmer_wheat", catalog.forProfession(ResidentProfession.FARMER)
                 .getFirst().id());
         assertTrue(catalog.forProfession(ResidentProfession.COOK).isEmpty());
+    }
+
+    @Test
+    void rejectsStockTargetSmallerThanDelivery() {
+        assertThrows(IllegalArgumentException.class, () -> new ResidentQuest(
+                "miner_iron", ResidentProfession.MINER, "IRON_INGOT", 32, 5, 16));
     }
 
     @Test
