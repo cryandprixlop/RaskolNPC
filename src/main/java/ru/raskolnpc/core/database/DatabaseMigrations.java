@@ -27,6 +27,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 6)) applyResidentProfileSchema(connection);
         if (!isApplied(connection, 7)) applyResidentScheduleSchema(connection);
         if (!isApplied(connection, 8)) applyResidentQuestSchema(connection);
+        if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -385,6 +386,61 @@ public final class DatabaseMigrations {
             try {
                 connection.setAutoCommit(previousAutoCommit);
             } catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    private static void applyResidentQuestSubmissionSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_quest_submissions (
+                        player_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        quest_id TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN (
+                            'IN_PROGRESS', 'COMPLETED', 'REVIEW_REQUIRED'
+                        )),
+                        reason TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY (player_uuid, resident_npc_id, quest_id)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_reputation (
+                        player_uuid TEXT PRIMARY KEY,
+                        points INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0),
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_quest_submissions_status
+                    ON resident_quest_submissions(status, updated_at)
+                    """);
+            statement.execute("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'REVIEW_REQUIRED',
+                        reason = 'Server restarted before submission was finalized.',
+                        updated_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+                    WHERE status = 'IN_PROGRESS'
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (9)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
                 if (failure != null) failure.addSuppressed(restoreException);
                 else throw restoreException;
             }
