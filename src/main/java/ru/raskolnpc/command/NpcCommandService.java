@@ -177,6 +177,13 @@ public final class NpcCommandService {
                     "Имя должно содержать от 1 до 64 символов."));
         }
 
+        double hireCost = guardBaseHireCost * level;
+        double dailyRent = guardBaseDailyRent * level;
+        if (!Double.isFinite(hireCost) || !Double.isFinite(dailyRent)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Стоимость найма и аренды стража должна быть конечным числом."));
+        }
+
         Location location = player.getLocation().clone();
         final TownyKingdomGuardAccess.Placement placement;
         final KingdomGuardService.Reservation reservation;
@@ -187,8 +194,6 @@ public final class NpcCommandService {
             return CompletableFuture.failedFuture(exception);
         }
 
-        double hireCost = guardBaseHireCost * level;
-        double dailyRent = guardBaseDailyRent * level;
         String paymentId = UUID.randomUUID().toString();
         GuardHiringPayment payment = new GuardHiringPayment(
                 paymentId, null, player.getUniqueId(), placement.townId(),
