@@ -39,8 +39,8 @@ class IntegrationCapabilitiesTest {
                 .filter(value -> value.name().equals("WorldGuard region protection"))
                 .findFirst().orElseThrow();
 
-        assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, worldGuard.status());
-        assertTrue(worldGuard.details().contains("no verified adapter"));
+        assertEquals(IntegrationCapabilities.Status.AVAILABLE, worldGuard.status());
+        assertTrue(worldGuard.details().contains("MOB_DAMAGE flag"));
         var siegeWar = snapshot.stream()
                 .filter(value -> value.name().equals("SiegeWar diplomacy"))
                 .findFirst().orElseThrow();
@@ -57,6 +57,19 @@ class IntegrationCapabilitiesTest {
 
         var towny = new IntegrationCapabilities(manager, true).snapshot().getFirst();
         assertEquals(IntegrationCapabilities.Status.DISABLED, towny.status());
+    }
+
+    @Test
+    void reportsDisabledWorldGuardAsDisabled() {
+        PluginManager manager = mock(PluginManager.class);
+        when(manager.getPlugin("Towny")).thenReturn(null);
+        when(manager.getPlugin("WorldGuard")).thenReturn(plugin("7.0.19", false));
+        when(manager.getPlugin("SiegeWar")).thenReturn(null);
+
+        var worldGuard = new IntegrationCapabilities(manager, false).snapshot().stream()
+                .filter(value -> value.name().equals("WorldGuard region protection"))
+                .findFirst().orElseThrow();
+        assertEquals(IntegrationCapabilities.Status.DISABLED, worldGuard.status());
     }
 
     @Test
