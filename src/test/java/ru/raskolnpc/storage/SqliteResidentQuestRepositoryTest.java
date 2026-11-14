@@ -211,7 +211,7 @@ class SqliteResidentQuestRepositoryTest {
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
         assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
-        assertTrue(quests.markSubmissionForReview(player, resident.id(),
+        assertTrue(quests.markSubmissionForReview(player, resident.id(), "miner_iron_delivery",
                 "uncertain result").join());
 
         assertTrue(quests.resolveReview(player, resident.id(),
