@@ -4,7 +4,6 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -30,8 +29,9 @@ class IntegrationCapabilitiesTest {
     @Test
     void doesNotClaimWorldGuardSupportJustBecausePluginIsInstalled() {
         PluginManager manager = mock(PluginManager.class);
+        Plugin worldGuard = plugin("7.0.14", true);
         when(manager.getPlugin("Towny")).thenReturn(null);
-        when(manager.getPlugin("WorldGuard")).thenReturn(plugin("7.0.14", true));
+        when(manager.getPlugin("WorldGuard")).thenReturn(worldGuard);
 
         var snapshot = new IntegrationCapabilities(manager, false).snapshot();
         var worldGuard = snapshot.stream()
@@ -45,7 +45,8 @@ class IntegrationCapabilitiesTest {
     @Test
     void reportsConfiguredTownyAsUnavailableWhenPluginIsDisabled() {
         PluginManager manager = mock(PluginManager.class);
-        when(manager.getPlugin("Towny")).thenReturn(plugin("0.103.2.0", false));
+        Plugin towny = plugin("0.103.2.0", false);
+        when(manager.getPlugin("Towny")).thenReturn(towny);
         when(manager.getPlugin("WorldGuard")).thenReturn(null);
 
         var towny = new IntegrationCapabilities(manager, true).snapshot().getFirst();
