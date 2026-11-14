@@ -21,6 +21,8 @@ class SqliteGuardSquadRepositoryTest {
     private DatabaseManager database;
     private SqliteNpcRepository npcs;
     private SqliteGuardSquadRepository squads;
+    private SqliteGuardOrderRepository orders;
+    private SqliteNpcDeletionRepository deletions;
 
     @BeforeEach
     void setUp() {
@@ -31,6 +33,8 @@ class SqliteGuardSquadRepositoryTest {
         database.initialize().join();
         npcs = new SqliteNpcRepository(database);
         squads = new SqliteGuardSquadRepository(database);
+        orders = new SqliteGuardOrderRepository(database);
+        deletions = new SqliteNpcDeletionRepository(database);
     }
 
     @AfterEach
@@ -76,6 +80,27 @@ class SqliteGuardSquadRepositoryTest {
         assertFalse(squads.addMember(squadId, secondGuard.id(), 1).join());
         assertTrue(squads.delete(squadId).join());
         assertTrue(squads.findAll().join().isEmpty());
+    }
+
+    @Test
+    void deletingGuardCascadesItsOrderAndSquadMembership() {
+        NpcRecord guard = createNpc(NpcType.GUARD);
+        UUID squadId = UUID.randomUUID();
+        squads.create(squadId, "Watch", UUID.randomUUID(), 1234L).join();
+        assertTrue(squads.addMember(squadId, guard.id(), 10).join());
+        var order = new ru.raskolnpc.guard.model.GuardOrder(
+                guard.id(), ru.raskolnpc.guard.model.GuardOrder.Type.RALLY,
+                java.util.List.of(new ru.raskolnpc.guard.model.GuardOrder.Waypoint(
+                        UUID.randomUUID(), 1, 64, 1, 0, 0)),
+                UUID.randomUUID(), 123456L);
+        assertTrue(orders.save(order).join());
+
+        assertTrue(deletions.deleteAndQueue(guard.id()).join());
+
+        assertTrue(orders.find(guard.id()).join().isEmpty());
+        var persistedSquad = squads.findAll().join().getFirst();
+        assertEquals(squadId, persistedSquad.id());
+        assertTrue(persistedSquad.members().isEmpty());
     }
 
     private NpcRecord createNpc(NpcType type) {
