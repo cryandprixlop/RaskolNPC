@@ -14,10 +14,17 @@ import java.util.Objects;
 public final class IntegrationCapabilities {
     private final PluginManager plugins;
     private final boolean townyConfigured;
+    private final boolean worldGuardAdapterAvailable;
 
     public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured) {
+        this(plugins, townyConfigured, true);
+    }
+
+    public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured,
+                                   boolean worldGuardAdapterAvailable) {
         this.plugins = Objects.requireNonNull(plugins, "plugins");
         this.townyConfigured = townyConfigured;
+        this.worldGuardAdapterAvailable = worldGuardAdapterAvailable;
     }
 
     public List<Capability> snapshot() {
@@ -41,11 +48,15 @@ public final class IntegrationCapabilities {
                         townyAvailable ? "Guard hiring and daily rent use Towny town accounts."
                                 : "No supported town-bank economy provider is active."),
                 new Capability("WorldGuard region protection",
-                        worldGuardPresent ? Status.AVAILABLE
+                        worldGuardPresent ? worldGuardAdapterAvailable ? Status.AVAILABLE : Status.DETECTED_UNSUPPORTED
                                 : worldGuard != null ? Status.DISABLED : Status.NOT_CONFIGURED,
                         worldGuard == null ? null : worldGuard.getDescription().getVersion(),
                         worldGuardPresent
-                                ? "WorldGuard API adapter is available and can query the MOB_DAMAGE flag; guard combat enforcement is not yet wired."
+                                ? worldGuardPresent && worldGuardAdapterAvailable
+                                ? "WorldGuard API adapter can query the MOB_DAMAGE flag; guard combat enforcement is not yet wired."
+                                : worldGuardPresent
+                                ? "WorldGuard is detected, but its API adapter could not be initialized."
+                                : "No region-protection adapter is configured."
                                 : "No region-protection adapter is configured."),
                 new Capability("SiegeWar diplomacy",
                         siegeWarPresent ? Status.AVAILABLE
