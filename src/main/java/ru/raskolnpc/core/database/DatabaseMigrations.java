@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 13;
+    private static final int CURRENT_SCHEMA_VERSION = 14;
 
     private DatabaseMigrations() {
     }
@@ -40,6 +40,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
         if (!isApplied(connection, 12)) applyGuardOrderSchema(connection);
         if (!isApplied(connection, 13)) applyGuardSquadSchema(connection);
+        if (!isApplied(connection, 14)) applyGuardRallyOrderSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -611,6 +612,75 @@ public final class DatabaseMigrations {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_squad_members_squad "
                     + "ON guard_squad_members(squad_id)");
             statement.execute("INSERT INTO schema_migrations(version) VALUES (13)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    /**
+     * Adds the RALLY order type while preserving all persisted orders and waypoints.
+     * SQLite cannot alter a CHECK constraint in place, so both related tables are
+     * copied to replacement tables and swapped within one migration transaction.
+     */
+    private static void applyGuardRallyOrderSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE guard_orders_new (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        order_type TEXT NOT NULL CHECK (order_type IN (
+                            'HOLD_POSITION', 'PATROL', 'DEFEND', 'RALLY',
+                            'ESCORT', 'RETURN_TO_POST'
+                        )),
+                        issuer_uuid TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE guard_order_waypoints_new (
+                        npc_id TEXT NOT NULL REFERENCES guard_orders_new(npc_id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 15),
+                        world_uuid TEXT NOT NULL,
+                        x REAL NOT NULL,
+                        y REAL NOT NULL,
+                        z REAL NOT NULL,
+                        yaw REAL NOT NULL,
+                        pitch REAL NOT NULL,
+                        PRIMARY KEY (npc_id, sequence)
+                    )
+                    """);
+            statement.execute("""
+                    INSERT INTO guard_orders_new(npc_id, order_type, issuer_uuid, updated_at)
+                    SELECT npc_id, order_type, issuer_uuid, updated_at FROM guard_orders
+                    """);
+            statement.execute("""
+                    INSERT INTO guard_order_waypoints_new(
+                        npc_id, sequence, world_uuid, x, y, z, yaw, pitch
+                    )
+                    SELECT npc_id, sequence, world_uuid, x, y, z, yaw, pitch
+                    FROM guard_order_waypoints
+                    """);
+            statement.execute("DROP TABLE guard_order_waypoints");
+            statement.execute("DROP TABLE guard_orders");
+            statement.execute("ALTER TABLE guard_orders_new RENAME TO guard_orders");
+            statement.execute("ALTER TABLE guard_order_waypoints_new RENAME TO guard_order_waypoints");
+            statement.execute("CREATE INDEX idx_guard_orders_type ON guard_orders(order_type)");
+            statement.execute("CREATE INDEX idx_guard_order_waypoints_world "
+                    + "ON guard_order_waypoints(world_uuid)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (14)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
