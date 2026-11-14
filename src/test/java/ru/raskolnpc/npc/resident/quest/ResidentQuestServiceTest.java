@@ -83,6 +83,44 @@ class ResidentQuestServiceTest {
     }
 
     @Test
+    void doesNotOfferDeliveryWhenTownBusinessHasEnoughStock() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-quest-demand-test"));
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), """
+                quests:
+                  miner_iron_delivery:
+                    profession: MINER
+                    required-material: IRON_INGOT
+                    required-amount: 32
+                    reputation-reward: 5
+                    stock-target: 32
+                """);
+
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
+                null, "town", "nation", "{}");
+        NpcRegistry registry = new NpcRegistry();
+        registry.register(resident);
+        ResidentProfile profile = new ResidentProfile(resident.id(), 30,
+                ResidentProfession.MINER, Set.of(), 75, 75, 75, 75, 75, 75, Map.of());
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        when(profiles.find(resident.id()))
+                .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
+        ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
+        when(repository.getBusinessStock(resident.id(), "IRON_INGOT"))
+                .thenReturn(CompletableFuture.completedFuture(32));
+        Player player = mock(Player.class);
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+
+        ResidentQuestService service = new ResidentQuestService(
+                plugin, profiles, registry, repository);
+
+        assertEquals(ResidentQuestService.AcceptResult.NO_BUSINESS_DEMAND,
+                service.accept(player, resident.id(), "miner_iron_delivery").join());
+        verify(repository, never()).accept(any(), any(), any(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
     void failedReservationReleaseIsMovedToManualReview() throws Exception {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
