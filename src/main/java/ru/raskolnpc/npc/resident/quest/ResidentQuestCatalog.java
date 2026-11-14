@@ -51,7 +51,8 @@ public final class ResidentQuestCatalog {
                         profession,
                         questSection.getString("required-material", ""),
                         questSection.getInt("required-amount", 0),
-                        questSection.getInt("reputation-reward", 0)
+                        questSection.getInt("reputation-reward", 0),
+                        questSection.getInt("stock-target", 0)
                 );
                 if (loaded.putIfAbsent(quest.id(), quest) != null) {
                     throw new IllegalArgumentException("Duplicate quest id: " + quest.id());
