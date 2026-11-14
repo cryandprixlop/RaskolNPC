@@ -86,7 +86,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         boolean residentQuestAccept = args.length == 5
                 && args[0].equalsIgnoreCase("resident")
                 && args[1].equalsIgnoreCase("quest")
-                && args[2].equalsIgnoreCase("accept")
+                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit"))
                 && sender instanceof Player;
         boolean guardGeneralManagement = args.length >= 2
                 && args[0].equalsIgnoreCase("guard")
@@ -154,7 +154,74 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private void resident(CommandSender sender, String[] args) {
         if (args.length == 5 && args[1].equalsIgnoreCase("quest")
-                && args[2].equalsIgnoreCase("accept")) {
+                && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit"))) {
+            if (!(sender instanceof Player player)) {
+                messages.sendRaw(sender, "&cЭту операцию может выполнить только игрок.");
+                return;
+            }
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
+                return;
+            }
+            var residentId = NpcCommandParser.parseId(args[3]);
+            if (residentId.isEmpty()) {
+                messages.sendRaw(sender, "&cНекорректный UUID жителя.");
+                return;
+            }
+            if (args[2].equalsIgnoreCase("submit")) {
+                quests.submit(player, residentId.get(), args[4]).whenComplete((result, error) ->
+                        runMain(sender, () -> {
+                            if (error != null) {
+                                messages.sendRaw(sender, "&cНе удалось сдать ресурсы: " + rootMessage(error));
+                                return;
+                            }
+                            switch (result) {
+                                case SUBMITTED -> messages.sendRaw(sender,
+                                        "&aРесурсы приняты. Репутация RaskolNPC увеличена.");
+                                case NO_ACTIVE_QUEST -> messages.sendRaw(sender,
+                                        "&cУ вас нет активного такого поручения.");
+                                case SUBMISSION_PENDING -> messages.sendRaw(sender,
+                                        "&eСдача уже выполняется или требует проверки.");
+                                case NOT_ENOUGH_ITEMS -> messages.sendRaw(sender,
+                                        "&cВ инвентаре недостаточно нужных ресурсов. Предметы не списаны.");
+                                case INVALID_MATERIAL -> messages.sendRaw(sender,
+                                        "&cМатериал поручения настроен неверно. Обратитесь к администрации.");
+                                case PLAYER_OFFLINE -> messages.sendRaw(sender,
+                                        "&eИгрок вышел. Поручение осталось активным.");
+                                case REVIEW_REQUIRED -> messages.sendRaw(sender,
+                                        "&cОперация требует проверки администрацией. Не повторяйте сдачу.");
+                                case RESIDENT_NOT_FOUND -> messages.sendRaw(sender,
+                                        "&cЖитель не найден или больше не доступен.");
+                                case QUEST_NOT_FOUND -> messages.sendRaw(sender,
+                                        "&cТакого поручения нет в каталоге.");
+                            }
+                        }));
+                return;
+            }
+            quests.accept(player, residentId.get(), args[4]).whenComplete((result, error) ->
+                    runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось принять поручение: " + rootMessage(error));
+                            return;
+                        }
+                        switch (result) {
+                            case ACCEPTED -> messages.sendRaw(sender,
+                                    "&aПоручение принято. Оно сохранено и останется активным после перезапуска.");
+                            case ALREADY_ACTIVE -> messages.sendRaw(sender,
+                                    "&eЭто поручение уже активно у вас.");
+                            case RESIDENT_NOT_FOUND -> messages.sendRaw(sender,
+                                    "&cЖитель не найден или больше не доступен.");
+                            case QUEST_NOT_FOUND -> messages.sendRaw(sender,
+                                    "&cТакого поручения нет в каталоге.");
+                            case WRONG_PROFESSION -> messages.sendRaw(sender,
+                                    "&cЭтот житель не выдаёт такое поручение.");
+                            case PROFILE_UNAVAILABLE -> messages.sendRaw(sender,
+                                    "&cПрофиль жителя пока недоступен.");
+                        }
+                    }));
+            return;
+        }
             if (!(sender instanceof Player player)) {
                 messages.sendRaw(sender, "&cПринять поручение может только игрок.");
                 return;
@@ -652,6 +719,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         messages.sendRaw(sender, "&6Команды RaskolNPC:");
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest accept <UUID> <ID> &7— принять поручение жителя");
+        messages.sendRaw(sender, "&e/" + label + " resident quest submit <UUID> <ID> &7— сдать ресурсы жителю");
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
@@ -707,7 +775,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (canAcceptResidentQuest && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
-            return startsWith(List.of("accept"), args[2]);
+            return startsWith(List.of("accept", "submit"), args[2]);
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
