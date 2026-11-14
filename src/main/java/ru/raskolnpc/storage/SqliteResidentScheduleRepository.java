@@ -165,10 +165,16 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
                 }
             }
 
+            // Include home-only residents so their default behavior can be executed.
+            java.util.Set<NpcId> residentIds = new java.util.HashSet<>(schedules.keySet());
+            residentIds.addAll(destinations.keySet());
+
             List<ResidentBehaviorData> snapshots = new ArrayList<>();
-            schedules.forEach((id, entries) -> snapshots.add(new ResidentBehaviorData(
-                    id, new ResidentSchedule(entries),
-                    destinations.getOrDefault(id, List.of()))));
+            for (NpcId id : residentIds) {
+                snapshots.add(new ResidentBehaviorData(
+                        id, new ResidentSchedule(schedules.getOrDefault(id, List.of())),
+                        destinations.getOrDefault(id, List.of())));
+            }
             return List.copyOf(snapshots);
         });
     }
