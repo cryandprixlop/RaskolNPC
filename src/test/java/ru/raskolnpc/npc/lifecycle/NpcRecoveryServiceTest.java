@@ -15,6 +15,7 @@ import ru.raskolnpc.npc.entity.NpcEntityTagger;
 import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcDeletionRepository;
@@ -133,6 +134,23 @@ class NpcRecoveryServiceTest {
         recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of());
 
         verify(deletions, never()).findPending();
+    }
+
+    @Test
+    void doesNotRespawnAnNpcThatWasIntentionallyUnloaded() {
+        NpcRecord record = recordAt(new Location(world, 160.5, 70, 160.5))
+                .withState(NpcState.UNLOADED);
+        registry.put(record);
+        world.loadChunk(10, 10);
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(startup::join);
+
+        recovery.onEntitiesLoad(world.getChunkAt(10, 10), List.of());
+        server.getScheduler().performTicks(2);
+
+        verifyNoInteractions(provider);
     }
 
     @Test
@@ -280,6 +298,7 @@ class NpcRecoveryServiceTest {
 
     private NpcRecord recordAt(Location location) {
         return NpcRecord.create(NpcType.GUARD, "Recovery sentinel",
-                null, null, null, null, NpcSpawnLocation.from(location));
+                null, null, null, null, NpcSpawnLocation.from(location))
+                .withState(NpcState.ACTIVE);
     }
 }
