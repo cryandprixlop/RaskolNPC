@@ -175,6 +175,11 @@ public final class ResidentBehaviorService {
             ResidentDestination destination = data.destinations().stream()
                     .filter(point -> point.type() == destinationType)
                     .findFirst().orElse(null);
+            if (destination == null && destinationType != ResidentDestination.DestinationType.HOME) {
+                destination = data.destinations().stream()
+                        .filter(point -> point.type() == ResidentDestination.DestinationType.HOME)
+                        .findFirst().orElse(null);
+            }
             if (destination == null) continue;
 
             World targetWorld = Bukkit.getWorld(destination.worldId());
