@@ -44,3 +44,17 @@ The current movement layer is intentionally simple: it does not yet perform full
 ## Integration diagnostics
 
 Administrators can use `/raskolnpc integrations` to inspect detected providers. A detected plugin is not automatically treated as a supported adapter. WorldGuard's API adapter can query the `MOB_DAMAGE` flag, but guard combat enforcement is not yet wired to it; RaskolNPC does not claim that guard attacks are currently blocked by region flags.
+
+
+## Guard squads (initial management layer)
+
+Small persistent squads can be created and managed by server administrators. A squad stores its name, creator, and member guard UUIDs in SQLite. Each guard can belong to at most one squad, and the configured squad size is capped at 10 (`guards.squad-max-members`). Deleting a squad removes its membership rows without deleting the guards.
+
+Commands:
+- `/raskolnpc guard squad create <name>`
+- `/raskolnpc guard squad list`
+- `/raskolnpc guard squad add <squad-uuid> <guard-uuid>`
+- `/raskolnpc guard squad remove <guard-uuid>`
+- `/raskolnpc guard squad delete <squad-uuid>`
+
+This is the persistence and administration foundation only. Squads do not yet share movement orders, coordinate combat targets, or rally automatically. Those behaviors remain explicitly out of scope until the tactical execution layer is implemented.
