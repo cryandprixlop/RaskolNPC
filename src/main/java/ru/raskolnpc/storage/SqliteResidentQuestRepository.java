@@ -101,6 +101,170 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         });
     }
 
+
+    @Override
+    public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId) {
+        String id = normalizeQuestId(questId);
+        return database.transaction(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO resident_quest_submissions (
+                        player_uuid, resident_npc_id, quest_id, status, created_at, updated_at
+                    )
+                    SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?
+                    WHERE EXISTS (
+                        SELECT 1 FROM resident_quest_assignments
+                        WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                          AND status = 'ACCEPTED'
+                    )
+                    """)) {
+                long now = System.currentTimeMillis();
+                statement.setString(1, requirePlayer(playerId).toString());
+                statement.setString(2, residentId.toString());
+                statement.setString(3, id);
+                statement.setLong(4, now);
+                statement.setLong(5, now);
+                statement.setString(6, playerId.toString());
+                statement.setString(7, residentId.toString());
+                statement.setString(8, id);
+                return statement.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> releaseSubmission(UUID playerId, NpcId residentId, String questId) {
+        String id = normalizeQuestId(questId);
+        return database.transaction(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    DELETE FROM resident_quest_submissions
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'IN_PROGRESS'
+                    """)) {
+                statement.setString(1, requirePlayer(playerId).toString());
+                statement.setString(2, residentId.toString());
+                statement.setString(3, id);
+                return statement.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> completeSubmission(
+            UUID playerId, NpcId residentId, String questId, int reputationReward) {
+        String id = normalizeQuestId(questId);
+        if (reputationReward < 0) throw new IllegalArgumentException("Reputation reward cannot be negative.");
+        return database.transaction(connection -> {
+            long now = System.currentTimeMillis();
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_quest_assignments
+                    SET status = 'COMPLETED', completed_at = ?
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'ACCEPTED'
+                      AND EXISTS (
+                          SELECT 1 FROM resident_quest_submissions
+                          WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                            AND status = 'IN_PROGRESS'
+                      )
+                    """)) {
+                update.setLong(1, now);
+                update.setString(2, playerId.toString());
+                update.setString(3, residentId.toString());
+                update.setString(4, id);
+                update.setString(5, playerId.toString());
+                update.setString(6, residentId.toString());
+                update.setString(7, id);
+                if (update.executeUpdate() != 1) return false;
+            }
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'COMPLETED', reason = NULL, updated_at = ?
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'IN_PROGRESS'
+                    """)) {
+                update.setLong(1, now);
+                update.setString(2, playerId.toString());
+                update.setString(3, residentId.toString());
+                update.setString(4, id);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Submission reservation changed before completion.");
+                }
+            }
+            try (var update = connection.prepareStatement("""
+                    INSERT INTO resident_reputation(player_uuid, points, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(player_uuid) DO UPDATE SET
+                        points = resident_reputation.points + excluded.points,
+                        updated_at = excluded.updated_at
+                    """)) {
+                update.setString(1, playerId.toString());
+                update.setInt(2, reputationReward);
+                update.setLong(3, now);
+                update.executeUpdate();
+            }
+            return true;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> markSubmissionForReview(
+            UUID playerId, NpcId residentId, String questId, String reason) {
+        String id = normalizeQuestId(questId);
+        String safeReason = reason == null ? "Uncertain submission result." : reason;
+        if (safeReason.length() > 500) safeReason = safeReason.substring(0, 500);
+        final String finalReason = safeReason;
+        return database.transaction(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'REVIEW_REQUIRED', reason = ?, updated_at = ?
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'IN_PROGRESS'
+                    """)) {
+                statement.setString(1, finalReason);
+                statement.setLong(2, System.currentTimeMillis());
+                statement.setString(3, playerId.toString());
+                statement.setString(4, residentId.toString());
+                statement.setString(5, id);
+                return statement.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Integer> getReputation(UUID playerId) {
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT points FROM resident_reputation WHERE player_uuid = ?")) {
+                statement.setString(1, requirePlayer(playerId).toString());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getInt("points") : 0;
+                }
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Integer> recoverUnfinishedSubmissions() {
+        return database.execute(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'REVIEW_REQUIRED',
+                        reason = 'Server restarted before submission was finalized.',
+                        updated_at = ?
+                    WHERE status = 'IN_PROGRESS'
+                    """)) {
+                statement.setLong(1, System.currentTimeMillis());
+                statement.executeUpdate();
+            }
+        }).thenCompose(ignored -> database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT COUNT(*) FROM resident_quest_submissions WHERE status = 'REVIEW_REQUIRED'")) {
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getInt(1) : 0;
+                }
+            }
+        }));
+    }
+
     private static ResidentQuest.Assignment readAssignment(ResultSet result) throws SQLException {
         long completedAt = result.getLong("completed_at");
         Instant completed = result.wasNull() ? null : Instant.ofEpochMilli(completedAt);
