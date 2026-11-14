@@ -51,6 +51,10 @@ public final class GuardOrderService {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("DEFEND requires exactly one target waypoint."));
         }
+        if (type == GuardOrder.Type.RALLY && route.size() != 1) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("RALLY requires exactly one shared rally waypoint."));
+        }
         if (type == GuardOrder.Type.ESCORT && !route.isEmpty()) {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("ESCORT follows the player who issued the order; no waypoint is used."));
