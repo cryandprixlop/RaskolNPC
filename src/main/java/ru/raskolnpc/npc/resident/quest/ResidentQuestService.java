@@ -137,6 +137,16 @@ public final class ResidentQuestService {
         });
     }
 
+    public CompletableFuture<Boolean> abandon(Player player, NpcId residentId, String questId) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(residentId, "residentId");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (catalog.find(questId).isEmpty()) return CompletableFuture.completedFuture(false);
+        return repository.abandon(player.getUniqueId(), residentId, questId);
+    }
+
     /**
      * Reserves the assignment in SQLite, then checks/removes inventory only on the
      * server thread. SQLite completion and reputation credit share one transaction.
