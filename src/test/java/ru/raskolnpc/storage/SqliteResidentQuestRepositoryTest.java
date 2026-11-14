@@ -73,8 +73,8 @@ class SqliteResidentQuestRepositoryTest {
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
 
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertFalse(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(5, quests.getReputation(player).join());
@@ -87,12 +87,12 @@ class SqliteResidentQuestRepositoryTest {
         UUID player = UUID.randomUUID();
 
         assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(5, quests.getReputation(player).join());
 
         assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(10, quests.getReputation(player).join());
     }
@@ -104,9 +104,9 @@ class SqliteResidentQuestRepositoryTest {
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
 
         CompletableFuture<Boolean> first =
-                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery");
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5);
         CompletableFuture<Boolean> second =
-                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery");
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5);
         CompletableFuture.allOf(first, second).join();
 
         assertEquals(1, List.of(first.join(), second.join()).stream()
@@ -119,10 +119,10 @@ class SqliteResidentQuestRepositoryTest {
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
 
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(0, quests.getReputation(player).join());
     }
 
@@ -131,11 +131,11 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
 
         assertTrue(quests.markSubmissionForReview(player, resident.id(),
                 "miner_iron_delivery", "test failure").join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(0, quests.getReputation(player).join());
     }
@@ -145,10 +145,10 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
 
         assertEquals(1, quests.recoverUnfinishedSubmissions().join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(0, quests.getReputation(player).join());
         assertEquals(1, quests.recoverUnfinishedSubmissions().join());
     }
@@ -158,14 +158,14 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
         quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
 
         assertEquals(0, quests.recoverUnfinishedSubmissions().join());
         assertEquals(5, quests.getReputation(player).join());
 
         assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
     }
 
     private NpcRecord createResident() {
