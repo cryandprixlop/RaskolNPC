@@ -3,7 +3,6 @@ package ru.raskolnpc.guard;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.Material;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -326,6 +325,24 @@ class GuardOrderControllerTest {
         controller.tick();
 
         verify(guardEntity, never()).teleport(any(Location.class));
+    }
+
+
+    @Test
+    void deadGuardDoesNotMoveOrPursue() {
+        when(entity.isDead()).thenReturn(true);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder patrol = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(point(5.5), point(10.5)), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(patrol)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.tick();
+
+        verify(entity, never()).teleport(any(Location.class));
     }
 
     private GuardOrder.Waypoint point(double x) {
