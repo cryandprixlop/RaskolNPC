@@ -33,6 +33,11 @@ public final class ResidentInteractionListener implements Listener {
     private static final int REVIEW_LOOKUP_LIMIT = 100;
 
     private record InteractionKey(UUID playerId, NpcId npcId) {}
+    private record ProfileAndReputation(
+            java.util.Optional<ResidentProfile> profile, int reputation) {}
+    private record ProfileAndAssignments(
+            java.util.Optional<ResidentProfile> profile, int reputation,
+            List<ResidentQuest.Assignment> assignments) {}
     private record ConversationContext(
             ResidentProfile profile,
             int reputation,
@@ -93,20 +98,20 @@ public final class ResidentInteractionListener implements Listener {
 
         String residentName = record.name();
         CompletableFuture<ConversationContext> context = profiles.find(npcId)
-                .thenCombine(quests.reputation(playerId), (profile, reputation) ->
-                        new Object[]{profile, reputation})
-                .thenCombine(quests.activeAssignments(playerId), (pair, assignments) ->
-                        new Object[]{pair[0], pair[1], assignments})
-                .thenCombine(quests.reviewRequired(REVIEW_LOOKUP_LIMIT), (triple, reviews) -> {
-                    @SuppressWarnings("unchecked")
-                    java.util.Optional<ResidentProfile> profile =
-                            (java.util.Optional<ResidentProfile>) triple[0];
-                    if (profile == null || profile.isEmpty()) {
-                        throw new IllegalStateException("Resident profile is unavailable.");
-                    }
-                    return new ConversationContext(profile.get(), (Integer) triple[1],
-                            castAssignments(triple[2]), reviews);
-                });
+                .thenCombine(quests.reputation(playerId), ProfileAndReputation::new)
+                .thenCombine(quests.activeAssignments(playerId), (profileAndReputation, assignments) ->
+                        new ProfileAndAssignments(profileAndReputation.profile(),
+                                profileAndReputation.reputation(), assignments))
+                .thenCombine(quests.reviewRequired(REVIEW_LOOKUP_LIMIT),
+                        (profileAndAssignments, reviews) -> {
+                            if (profileAndAssignments.profile() == null
+                                    || profileAndAssignments.profile().isEmpty()) {
+                                throw new IllegalStateException("Resident profile is unavailable.");
+                            }
+                            return new ConversationContext(profileAndAssignments.profile().get(),
+                                    profileAndAssignments.reputation(),
+                                    profileAndAssignments.assignments(), reviews);
+                        });
 
         context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
@@ -162,10 +167,6 @@ public final class ResidentInteractionListener implements Listener {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<ResidentQuest.Assignment> castAssignments(Object value) {
-        return (List<ResidentQuest.Assignment>) value;
-    }
 
     private static String rootMessage(Throwable error) {
         Throwable current = error;
