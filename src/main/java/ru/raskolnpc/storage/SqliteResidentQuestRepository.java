@@ -107,7 +107,7 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         String id = normalizeQuestId(questId);
         return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
-                    INSERT OR IGNORE INTO resident_quest_submissions (
+                    INSERT INTO resident_quest_submissions (
                         player_uuid, resident_npc_id, quest_id, status, created_at, updated_at
                     )
                     SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?
@@ -116,6 +116,19 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                         WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
                           AND status = 'ACCEPTED'
                     )
+                    ON CONFLICT(player_uuid, resident_npc_id, quest_id) DO UPDATE SET
+                        status = 'IN_PROGRESS',
+                        reason = NULL,
+                        created_at = excluded.created_at,
+                        updated_at = excluded.updated_at
+                    WHERE resident_quest_submissions.status = 'COMPLETED'
+                      AND EXISTS (
+                          SELECT 1 FROM resident_quest_assignments
+                          WHERE player_uuid = excluded.player_uuid
+                            AND resident_npc_id = excluded.resident_npc_id
+                            AND quest_id = excluded.quest_id
+                            AND status = 'ACCEPTED'
+                      )
                     """)) {
                 long now = System.currentTimeMillis();
                 statement.setString(1, requirePlayer(playerId).toString());
