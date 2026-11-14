@@ -57,6 +57,7 @@ Commands:
 - `/raskolnpc guard squad remove <guard-uuid>`
 - `/raskolnpc guard squad delete <squad-uuid>`
 - `/raskolnpc guard squad order <squad-uuid> hold|return|defend|escort`
+- `/raskolnpc guard squad order <squad-uuid> rally` — gather the squad around the issuing player's current position using separate nearby destinations.
 - `/raskolnpc guard squad order <squad-uuid> patrol <x1> <y1> <z1> <x2> <y2> <z2>`
 - `/raskolnpc guard squad order <squad-uuid> clear`
 
