@@ -67,6 +67,44 @@ class ResidentMovementControllerTest {
     }
 
     @Test
+    void refusesToMoveAcrossWorldsOrLargeHeightDifferences() {
+        World currentWorld = mock(World.class);
+        World otherWorld = mock(World.class);
+        when(currentWorld.getUID()).thenReturn(UUID.randomUUID());
+        when(otherWorld.getUID()).thenReturn(UUID.randomUUID());
+        Entity entity = mock(Entity.class);
+        when(entity.getLocation()).thenReturn(new Location(currentWorld, 0, 64, 0));
+
+        ResidentMovementController controller = new ResidentMovementController(0.8);
+        assertFalse(controller.moveTowards(entity, new Location(otherWorld, 5, 64, 0)));
+        assertFalse(controller.moveTowards(entity, new Location(currentWorld, 5, 66, 0)));
+        verify(entity, never()).teleport(any(Location.class));
+        verify(currentWorld, never()).getBlockAt(any(Location.class));
+    }
+
+    @Test
+    void doesNotTeleportWhenThereIsNoSolidFloor() {
+        World world = mock(World.class);
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+
+        Block passable = mock(Block.class);
+        when(passable.isPassable()).thenReturn(true);
+        Block airFloor = mock(Block.class);
+        when(airFloor.getType()).thenReturn(Material.AIR);
+        when(world.getBlockAt(any(Location.class))).thenReturn(passable);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(invocation ->
+                invocation.getArgument(1, Integer.class) == 63 ? airFloor : passable);
+
+        Entity entity = mock(Entity.class);
+        when(entity.getLocation()).thenReturn(new Location(world, 0, 64, 0));
+
+        assertFalse(new ResidentMovementController(0.8).moveTowards(
+                entity, new Location(world, 5, 64, 0)));
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
     void acceptsBoundedPositiveMovementStep() {
         assertDoesNotThrow(() -> new ResidentMovementController(0.8));
     }
