@@ -88,13 +88,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("quest")
                 && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit"))
                 && sender instanceof Player;
+        boolean residentQuestReadOwn = args.length == 3
+                && args[0].equalsIgnoreCase("resident")
+                && args[1].equalsIgnoreCase("quest")
+                && (args[2].equalsIgnoreCase("reputation") || args[2].equalsIgnoreCase("active"))
+                && sender instanceof Player;
         boolean guardGeneralManagement = args.length >= 2
                 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("general")
                 && sender instanceof Player;
 
         if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing
-                && !guardGeneralManagement && !residentQuestAccept) {
+                && !guardGeneralManagement && !residentQuestAccept && !residentQuestReadOwn) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -222,6 +227,128 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     }));
             return;
         }
+        if (args.length >= 3 && args[1].equalsIgnoreCase("quest")
+                && (args[2].equalsIgnoreCase("reputation") || args[2].equalsIgnoreCase("active"))) {
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
+                return;
+            }
+            if (args.length > 4) {
+                messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest reputation [UUID]");
+                messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest active [UUID]");
+                return;
+            }
+            UUID targetId;
+            if (args.length == 4) {
+                if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+                var parsed = NpcCommandParser.parseId(args[3]);
+                if (parsed.isEmpty()) { messages.sendRaw(sender, "&cНекорректный UUID игрока."); return; }
+                targetId = parsed.get().value();
+            } else if (sender instanceof Player player) {
+                targetId = player.getUniqueId();
+            } else {
+                messages.sendRaw(sender, "&cИз консоли укажите UUID игрока.");
+                return;
+            }
+
+            if (args[2].equalsIgnoreCase("reputation")) {
+                quests.reputation(targetId).whenComplete((points, error) -> runMain(sender, () -> {
+                    if (error != null) messages.sendRaw(sender,
+                            "&cНе удалось получить репутацию: " + rootMessage(error));
+                    else messages.sendRaw(sender, "&6Репутация игрока &f" + targetId + "&6: &a" + points);
+                }));
+            } else {
+                quests.activeAssignments(targetId).whenComplete((assignments, error) -> runMain(sender, () -> {
+                    if (error != null) {
+                        messages.sendRaw(sender, "&cНе удалось получить поручения: " + rootMessage(error));
+                        return;
+                    }
+                    if (assignments.isEmpty()) {
+                        messages.sendRaw(sender, "&eАктивных поручений нет.");
+                        return;
+                    }
+                    messages.sendRaw(sender, "&6Активные поручения игрока &f" + targetId + "&6: "
+                            + assignments.size());
+                    assignments.forEach(assignment -> messages.sendRaw(sender,
+                            "&e" + assignment.questId() + " &7Житель: &f" + assignment.residentId()
+                                    + " &7Принято: &f" + assignment.acceptedAt()));
+                }));
+            }
+            return;
+        }
+
+        if (args.length == 3 && args[1].equalsIgnoreCase("quest")
+                && args[2].equalsIgnoreCase("review")) {
+            if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
+                return;
+            }
+            quests.reviewRequired(25).whenComplete((reviews, error) -> runMain(sender, () -> {
+                if (error != null) {
+                    messages.sendRaw(sender, "&cНе удалось загрузить спорные поручения: "
+                            + rootMessage(error));
+                    return;
+                }
+                if (reviews.isEmpty()) {
+                    messages.sendRaw(sender, "&aСпорных поручений нет.");
+                    return;
+                }
+                messages.sendRaw(sender, "&6Поручения, требующие проверки: &f" + reviews.size());
+                for (var review : reviews) {
+                    messages.sendRaw(sender, "&eИгрок: &f" + review.playerId()
+                            + " &7Житель: &f" + review.residentId()
+                            + " &7Поручение: &f" + review.questId()
+                            + " &7Награда: &f" + (review.reputationReward() == null
+                                    ? "legacy/unknown" : review.reputationReward()));
+                    messages.sendRaw(sender, "&8Причина: " + (review.reason() == null
+                            ? "не указана" : review.reason()));
+                }
+                messages.sendRaw(sender, "&eРазрешение: /raskolnpc resident quest resolve <playerUUID> <residentUUID> <questID> <complete|retry>");
+            }));
+            return;
+        }
+
+        if (args.length == 7 && args[1].equalsIgnoreCase("quest")
+                && args[2].equalsIgnoreCase("resolve")) {
+            if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+            var playerId = NpcCommandParser.parseId(args[3]);
+            var residentId = NpcCommandParser.parseId(args[4]);
+            if (playerId.isEmpty() || residentId.isEmpty()) {
+                messages.sendRaw(sender, "&cНекорректный UUID игрока или жителя.");
+                return;
+            }
+            boolean complete;
+            if (args[6].equalsIgnoreCase("complete")) complete = true;
+            else if (args[6].equalsIgnoreCase("retry")) complete = false;
+            else {
+                messages.sendRaw(sender, "&eВыберите complete или retry.");
+                return;
+            }
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема поручений временно недоступна.");
+                return;
+            }
+            quests.resolveReview(playerId.get().value(), residentId.get(), args[5], complete)
+                    .whenComplete((resolved, error) -> runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось разрешить поручение: "
+                                    + rootMessage(error));
+                        } else if (Boolean.TRUE.equals(resolved)) {
+                            messages.sendRaw(sender, complete
+                                    ? "&aСдача подтверждена. Поручение завершено, награда начислена один раз."
+                                    : "&eСдача отклонена. Поручение снова доступно игроку.");
+                        } else {
+                            messages.sendRaw(sender, "&cСпорная операция не найдена, уже разрешена "
+                                    + "или активное поручение отсутствует.");
+                        }
+                    }));
+            return;
+        }
+
         if (args.length == 2 && args[1].equalsIgnoreCase("reload-dialogues")) {
             ResidentDialogueService dialogues = residentDialogueService;
             if (dialogues == null) {
@@ -323,6 +450,12 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return;
         }
         messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest accept <UUID> <ID>");
+        messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest reputation [UUID]");
+        messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest active [UUID]");
+        if (sender.hasPermission(PERMISSION)) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest review");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc resident quest resolve <playerUUID> <residentUUID> <questID> <complete|retry>");
+        }
         messages.sendRaw(sender, "&eИспользование: /raskolnpc resident schedule list|add ...");
         messages.sendRaw(sender, "&eИспользование: /raskolnpc resident setpoint|delpoint ...");
     }
@@ -683,6 +816,12 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest accept <UUID> <ID> &7— принять поручение жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest submit <UUID> <ID> &7— сдать ресурсы жителю");
+        messages.sendRaw(sender, "&e/" + label + " resident quest reputation [UUID] &7— репутация игрока");
+        messages.sendRaw(sender, "&e/" + label + " resident quest active [UUID] &7— активные поручения");
+        if (sender.hasPermission(PERMISSION)) {
+            messages.sendRaw(sender, "&e/" + label + " resident quest review &7— спорные сдачи");
+            messages.sendRaw(sender, "&e/" + label + " resident quest resolve ... &7— разрешить спорную сдачу");
+        }
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
@@ -738,7 +877,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (canAcceptResidentQuest && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
-            return startsWith(List.of("accept", "submit"), args[2]);
+            return startsWith(sender.hasPermission(PERMISSION)
+                    ? List.of("accept", "submit", "reputation", "active", "review", "resolve")
+                    : List.of("accept", "submit", "reputation", "active"), args[2]);
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("schedule"))
