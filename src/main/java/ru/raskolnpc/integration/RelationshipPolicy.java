@@ -26,6 +26,9 @@ public final class RelationshipPolicy {
         if (same(first.nationId(), second.nationId()) && first.nationId() != null) {
             return Relation.ALLY;
         }
+        if (first.nationId() == null || second.nationId() == null) {
+            return Relation.NEUTRAL;
+        }
         DiplomacyRelation result = diplomacy.relation(first.nationId(), second.nationId());
         return switch (result) {
             case ALLIED -> Relation.ALLY;
