@@ -8,21 +8,25 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-/** Asynchronous persistence for player assignments to resident quests. */
+/** Asynchronous persistence for player assignments and resident quest submissions. */
 public interface ResidentQuestRepository {
-    /**
-     * Creates an active assignment. Returns false when the same player already
-     * has this quest active for this resident.
-     */
-    CompletableFuture<Boolean> accept(
-            UUID playerId, NpcId residentId, String questId);
-
+    CompletableFuture<Boolean> accept(UUID playerId, NpcId residentId, String questId);
     CompletableFuture<Optional<ResidentQuest.Assignment>> findActive(
             UUID playerId, NpcId residentId, String questId);
-
     CompletableFuture<List<ResidentQuest.Assignment>> findActiveForPlayer(UUID playerId);
+    CompletableFuture<Boolean> complete(UUID playerId, NpcId residentId, String questId);
 
-    /** Atomically changes ACCEPTED to COMPLETED; repeated calls return false. */
-    CompletableFuture<Boolean> complete(
-            UUID playerId, NpcId residentId, String questId);
+    /** Reserves an accepted assignment before inventory mutation. */
+    CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId);
+    /** Releases a reservation only when no inventory items have been removed. */
+    CompletableFuture<Boolean> releaseSubmission(UUID playerId, NpcId residentId, String questId);
+    /** Completes the assignment and credits reputation exactly once in one SQL transaction. */
+    CompletableFuture<Boolean> completeSubmission(
+            UUID playerId, NpcId residentId, String questId, int reputationReward);
+    /** Marks an uncertain inventory/database boundary for manual review. */
+    CompletableFuture<Boolean> markSubmissionForReview(
+            UUID playerId, NpcId residentId, String questId, String reason);
+    CompletableFuture<Integer> getReputation(UUID playerId);
+    /** Moves reservations left unfinished by a previous process into manual review. */
+    CompletableFuture<Integer> recoverUnfinishedSubmissions();
 }
