@@ -100,6 +100,6 @@ class GuardCombatControllerTest {
 
         assertDoesNotThrow(controller::tick);
 
-        verify(target, never()).damage(anyDouble(), any());
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
 }
