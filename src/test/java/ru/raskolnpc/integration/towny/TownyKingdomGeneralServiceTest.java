@@ -113,7 +113,9 @@ class TownyKingdomGeneralServiceTest {
     @Test
     void failedSaveAttemptsToRestorePreviousRankState() {
         when(access.addRank(target, "General")).thenReturn(true);
-        doThrow(new IllegalStateException("disk error")).when(access).save(target);
+        doAnswer(invocation -> {
+            throw new IllegalStateException("disk error");
+        }).when(access).save(target);
 
         assertThrows(IllegalStateException.class, () -> service.appoint(king, "Target"));
 
