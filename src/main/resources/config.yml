@@ -29,6 +29,9 @@ guards:
     detection-radius: 12.0
     damage: 2.0
     attack-cooldown-ms: 1000
+    # Guards pursue only explicitly hostile registered NPCs, up to this distance.
+    # Set to 0 to disable pursuit; players and unregistered entities are never chased.
+    max-pursuit-distance: 16.0
 
 integrations:
   towny:
