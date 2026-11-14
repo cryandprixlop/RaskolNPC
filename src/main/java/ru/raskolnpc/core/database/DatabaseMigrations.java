@@ -26,6 +26,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 5)) applyGuardHiringPaymentSchema(connection);
         if (!isApplied(connection, 6)) applyResidentProfileSchema(connection);
         if (!isApplied(connection, 7)) applyResidentScheduleSchema(connection);
+        if (!isApplied(connection, 8)) applyResidentQuestSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -339,4 +340,55 @@ public final class DatabaseMigrations {
             }
         }
     }
+
+    private static void applyResidentQuestSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_quest_assignments (
+                        assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        player_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id)
+                            ON DELETE CASCADE,
+                        quest_id TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN ('ACCEPTED', 'COMPLETED')),
+                        accepted_at INTEGER NOT NULL CHECK (accepted_at > 0),
+                        completed_at INTEGER,
+                        CHECK (
+                            (status = 'ACCEPTED' AND completed_at IS NULL)
+                            OR (status = 'COMPLETED' AND completed_at IS NOT NULL)
+                        )
+                    )
+                    """);
+            statement.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_resident_quest_active_unique
+                    ON resident_quest_assignments(player_uuid, resident_npc_id, quest_id)
+                    WHERE status = 'ACCEPTED'
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_quest_player_status
+                    ON resident_quest_assignments(player_uuid, status, accepted_at)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (8)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackException) {
+                exception.addSuppressed(rollbackException);
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
 }
