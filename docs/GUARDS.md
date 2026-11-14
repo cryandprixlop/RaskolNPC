@@ -62,3 +62,12 @@ Commands:
 - `/raskolnpc guard squad order <squad-uuid> clear`
 
 A shared order is persisted as an individual order for each current squad member. The command reports successful and failed member updates separately; a failed save for one guard does not hide successful saves for the others. A squad with no members produces a zero-member result. This is shared order assignment, not synchronized formation movement: members still advance through the existing bounded movement scheduler independently. Squads do not yet coordinate combat targets or rally automatically.
+
+
+## Basic combat
+
+- A bounded shared task checks only a small batch of registered guards per pass.
+- Guards can attack only registered NPC entities with a verified hostile Towny/SiegeWar relationship; unknown and neutral relations are ignored.
+- If WorldGuard is installed, both the attacker and target locations must explicitly allow `MOB_DAMAGE`. Missing or failed WorldGuard checks deny the attack.
+- Detection radius, damage, batch size, and attack cooldown are configurable under `guards.combat`.
+- This is the first combat slice: target selection and damage are implemented; pursuit, retaliation, player-target resolution, and coordinated squad combat remain future work.
