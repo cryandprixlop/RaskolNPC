@@ -36,5 +36,10 @@ class WorldGuardProtectionAdapterTest {
                 unavailable.checkMobDamage(new Location(null, 0, 0, 0)));
         assertEquals(WorldGuardProtectionAdapter.Decision.UNKNOWN,
                 unavailable.checkMobDamage(new Location(mock(World.class), 0, 0, 0)));
+        var incompatible = new WorldGuardProtectionAdapter(ignored -> {
+            throw new NoSuchMethodError("WorldGuard API mismatch");
+        });
+        assertEquals(WorldGuardProtectionAdapter.Decision.UNKNOWN,
+                incompatible.checkMobDamage(new Location(mock(World.class), 0, 0, 0)));
     }
 }

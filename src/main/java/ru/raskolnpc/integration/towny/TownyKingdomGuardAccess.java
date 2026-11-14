@@ -83,9 +83,13 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
         if (player.hasPermission("raskolnpc.admin") || player.hasPermission("towny.admin")) {
             return true;
         }
-        Placement placement = resolver.resolve(player, player.getLocation());
-        return placement != null && placement.king()
-                && nationId.equals(placement.nationId());
+        try {
+            Placement placement = resolver.resolve(player, player.getLocation());
+            return placement != null && placement.king()
+                    && nationId.equals(placement.nationId());
+        } catch (RuntimeException | LinkageError unavailable) {
+            return false;
+        }
     }
 
     /** Allows a nation king to inspect only their own nation's guard roster. */
@@ -99,7 +103,7 @@ public final class TownyKingdomGuardAccess implements GuardHiringService.HiringA
             NationContext membership = nationResolver.apply(player);
             return membership != null && membership.king()
                     && nationId.equals(membership.nationId());
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
     }

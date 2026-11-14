@@ -81,6 +81,11 @@ class SiegeWarDiplomacyAdapterTest {
 
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 adapter.relation(ATTACKER.toString(), DEFENDER.toString()));
+        var incompatible = new SiegeWarDiplomacyAdapter(() -> {
+            throw new NoSuchMethodError("SiegeWar API mismatch");
+        });
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                incompatible.relation(ATTACKER.toString(), DEFENDER.toString()));
     }
 
     private static Siege siege(UUID attackerId, UUID defenderId) {

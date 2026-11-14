@@ -31,7 +31,7 @@ public final class TownyGuardTerritoryAccess implements BiFunction<Location, Str
                 || nationId == null || nationId.isBlank()) return false;
         try {
             return Boolean.TRUE.equals(lookup.apply(location.clone(), nationId));
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
     }

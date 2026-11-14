@@ -29,6 +29,9 @@ class TownyGuardTerritoryAccessTest {
         assertFalse(new TownyGuardTerritoryAccess((queried, nationId) -> {
             throw new IllegalStateException("Towny unavailable");
         }).apply(location, "nation-a"));
+        assertFalse(new TownyGuardTerritoryAccess((queried, nationId) -> {
+            throw new NoSuchMethodError("Towny API mismatch");
+        }).apply(location, "nation-a"));
         assertFalse(new TownyGuardTerritoryAccess((queried, nationId) -> true)
                 .apply(location, null));
         assertFalse(new TownyGuardTerritoryAccess((queried, nationId) -> true)

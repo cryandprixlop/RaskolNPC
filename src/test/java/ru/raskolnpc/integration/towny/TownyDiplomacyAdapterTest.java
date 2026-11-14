@@ -41,5 +41,10 @@ class TownyDiplomacyAdapterTest {
         });
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 unavailable.relation(FIRST.toString(), SECOND.toString()));
+        var incompatible = new TownyDiplomacyAdapter((first, second) -> {
+            throw new NoSuchMethodError("Towny API mismatch");
+        });
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                incompatible.relation(FIRST.toString(), SECOND.toString()));
     }
 }

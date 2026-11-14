@@ -33,7 +33,7 @@ public final class WorldGuardProtectionAdapter {
             Boolean allowed = mobDamageQuery.apply(location.clone());
             if (allowed == null) return Decision.UNKNOWN;
             return allowed ? Decision.ALLOWED : Decision.DENIED;
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return Decision.UNKNOWN;
         }
     }

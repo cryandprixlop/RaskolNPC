@@ -29,7 +29,7 @@ public final class TownyDiplomacyAdapter implements RelationshipPolicy.Diplomacy
         try {
             RelationshipPolicy.DiplomacyRelation result = relationLookup.apply(firstId, secondId);
             return result == null ? RelationshipPolicy.DiplomacyRelation.UNKNOWN : result;
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }
     }

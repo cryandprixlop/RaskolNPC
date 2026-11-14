@@ -28,7 +28,14 @@ public final class TownyResidentService {
     }
 
     public TownAssignment resolveAndAuthorize(Player player, Location location) {
-        TownContext context = towny.resolve(player, location);
+        final TownContext context;
+        try {
+            context = towny.resolve(player, location);
+        } catch (RuntimeException | LinkageError unavailable) {
+            throw new TownyIntegrationException(
+                    "Towny недоступен или несовместим; создание жителей временно запрещено.",
+                    unavailable);
+        }
         if (context == null) {
             throw new TownyIntegrationException(
                     "Создавать жителей можно только на территории города Towny.");

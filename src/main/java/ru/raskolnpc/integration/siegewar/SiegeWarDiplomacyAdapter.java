@@ -50,7 +50,7 @@ public final class SiegeWarDiplomacyAdapter implements RelationshipPolicy.Diplom
                     return RelationshipPolicy.DiplomacyRelation.HOSTILE;
                 }
             }
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             // SiegeWar may be shutting down or its API may temporarily be unavailable.
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }

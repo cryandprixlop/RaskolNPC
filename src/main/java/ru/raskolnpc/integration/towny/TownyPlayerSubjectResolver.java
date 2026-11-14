@@ -25,7 +25,7 @@ public final class TownyPlayerSubjectResolver implements PlayerSubjectResolver {
                     player.getUniqueId(),
                     town == null ? null : town.getUUID().toString(),
                     nation == null ? null : nation.getUUID().toString()));
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             // Missing or shutting-down Towny data must never be interpreted as hostility.
             return Optional.empty();
         }

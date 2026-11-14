@@ -143,18 +143,29 @@ public final class RaskolNPC extends JavaPlugin {
         residentBehaviorService.setDailyStockConsumptionPercent(Math.max(0, Math.min(100,
                 getConfig().getInt("resident-business-stock.daily-consumption-percent", 10))));
 
-        TownyIntegration townyIntegration = new TownyIntegration(this);
-        boolean townyEnabled = townyIntegration.isAvailable()
-                && getConfig().getBoolean("integrations.towny.enabled", true);
-        boolean siegeWarEnabled = getServer().getPluginManager().getPlugin("SiegeWar") != null
-                && getServer().getPluginManager().getPlugin("SiegeWar").isEnabled();
+        TownyIntegration townyIntegration = null;
+        boolean townyEnabled = false;
+        if (getConfig().getBoolean("integrations.towny.enabled", true)) {
+            try {
+                townyIntegration = new TownyIntegration(this);
+                townyEnabled = townyIntegration.isAvailable();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny was detected but its API is incompatible or unavailable. "
+                                + "Towny-backed features are disabled; unknown relations remain neutral.",
+                        adapterError);
+            }
+        }
+        org.bukkit.plugin.Plugin siegeWarPlugin =
+                getServer().getPluginManager().getPlugin("SiegeWar");
+        boolean siegeWarEnabled = siegeWarPlugin != null && siegeWarPlugin.isEnabled();
         org.bukkit.plugin.Plugin worldGuardPlugin =
                 getServer().getPluginManager().getPlugin("WorldGuard");
         worldGuardProtectionAdapter = null;
         if (worldGuardPlugin != null && worldGuardPlugin.isEnabled()) {
             try {
                 worldGuardProtectionAdapter = new WorldGuardProtectionAdapter();
-            } catch (RuntimeException adapterError) {
+            } catch (RuntimeException | LinkageError adapterError) {
                 getLogger().log(Level.WARNING,
                         "WorldGuard was detected, but its region query adapter could not initialize. "
                                 + "NPC combat must fail closed until the adapter is available.",
@@ -163,7 +174,16 @@ public final class RaskolNPC extends JavaPlugin {
         }
         java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
         if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
-        if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
+        if (siegeWarEnabled) {
+            try {
+                diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "SiegeWar was detected but its API adapter could not initialize. "
+                                + "Siege relations remain unknown.",
+                        adapterError);
+            }
+        }
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
         PlayerSubjectResolver playerSubjects = townyEnabled
                 ? new TownyPlayerSubjectResolver() : PlayerSubjectResolver.none();
