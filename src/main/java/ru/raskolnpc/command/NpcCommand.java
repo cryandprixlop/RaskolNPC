@@ -112,9 +112,14 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("general")
                 && sender instanceof Player;
+        boolean guardOrderManagement = args.length >= 2
+                && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("order")
+                && sender instanceof Player
+                && service.isGuardHiringEnabled();
 
         if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing
-                && !guardGeneralManagement && !residentQuestAccept && !residentQuestReadOwn) {
+                && !guardGeneralManagement && !guardOrderManagement && !residentQuestAccept && !residentQuestReadOwn) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
