@@ -491,6 +491,7 @@ class GuardOrderControllerTest {
         registry.register(hostile);
         when(hostileEntity.isValid()).thenReturn(true);
         when(hostileEntity.isDead()).thenReturn(false);
+        when(hostileEntity.getWorld()).thenReturn(world);
         when(hostileEntity.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
         when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostileEntity));
         when(entities.getNpcId(hostileEntity)).thenReturn(Optional.of(hostile.id()));
@@ -509,6 +510,7 @@ class GuardOrderControllerTest {
         Player hostilePlayer = mock(Player.class);
         when(hostilePlayer.isValid()).thenReturn(true);
         when(hostilePlayer.isDead()).thenReturn(false);
+        when(hostilePlayer.getWorld()).thenReturn(world);
         when(hostilePlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
         when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostilePlayer));
         RelationshipPolicy policy = new RelationshipPolicy(
