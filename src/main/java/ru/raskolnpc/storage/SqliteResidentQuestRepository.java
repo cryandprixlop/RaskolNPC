@@ -292,6 +292,36 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Optional<ResidentQuestReview>> findReview(
+            UUID playerId, NpcId residentId, String questId) {
+        String id = normalizeQuestId(questId);
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    SELECT player_uuid, resident_npc_id, quest_id, reason, updated_at, reputation_reward
+                    FROM resident_quest_submissions
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'REVIEW_REQUIRED'
+                    """)) {
+                statement.setString(1, requirePlayer(playerId).toString());
+                statement.setString(2, residentId.toString());
+                statement.setString(3, id);
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next()) return Optional.empty();
+                    int rewardValue = result.getInt("reputation_reward");
+                    Integer reward = result.wasNull() ? null : rewardValue;
+                    return Optional.of(new ResidentQuestReview(
+                            UUID.fromString(result.getString("player_uuid")),
+                            NpcId.fromString(result.getString("resident_npc_id")),
+                            result.getString("quest_id"),
+                            result.getString("reason"),
+                            Instant.ofEpochMilli(result.getLong("updated_at")),
+                            reward));
+                }
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId,
             String questId, boolean complete, int legacyReward) {
         String id = normalizeQuestId(questId);
