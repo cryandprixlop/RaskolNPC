@@ -71,8 +71,14 @@ public final class GuardSquadService {
         List<GuardOrder.Waypoint> route = List.copyOf(Objects.requireNonNull(waypoints, "waypoints"));
         Objects.requireNonNull(issuer, "issuer");
         return findSquad(squadId).thenCompose(squad -> {
-            List<CompletableFuture<Boolean>> results = squad.members().stream()
-                    .map(member -> safely(() -> orders.issue(member, type, route, issuer)))
+            List<CompletableFuture<Boolean>> results = java.util.stream.IntStream
+                    .range(0, squad.members().size())
+                    .mapToObj(index -> {
+                        NpcId member = squad.members().get(index);
+                        List<GuardOrder.Waypoint> memberRoute = type == GuardOrder.Type.RALLY
+                                ? rallyPosition(route, index, squad.members().size()) : route;
+                        return safely(() -> orders.issue(member, type, memberRoute, issuer));
+                    })
                     .toList();
             return summarize(results);
         });
@@ -87,6 +93,23 @@ public final class GuardSquadService {
                     .toList();
             return summarize(results);
         });
+    }
+
+
+    /** Spreads rally destinations around the shared point so guards do not stack on one block. */
+    private List<GuardOrder.Waypoint> rallyPosition(
+            List<GuardOrder.Waypoint> route, int memberIndex, int memberCount) {
+        if (route.size() != 1 || memberCount <= 1) return route;
+        GuardOrder.Waypoint point = route.getFirst();
+        double angle = 2.0 * Math.PI * memberIndex / memberCount;
+        double radius = 1.25;
+        return List.of(new GuardOrder.Waypoint(
+                point.worldId(),
+                point.x() + Math.cos(angle) * radius,
+                point.y(),
+                point.z() + Math.sin(angle) * radius,
+                point.yaw(),
+                point.pitch()));
     }
 
     private CompletableFuture<GuardSquad> findSquad(UUID squadId) {
