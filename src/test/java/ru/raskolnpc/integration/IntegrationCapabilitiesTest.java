@@ -30,8 +30,10 @@ class IntegrationCapabilitiesTest {
     void doesNotClaimWorldGuardSupportJustBecausePluginIsInstalled() {
         PluginManager manager = mock(PluginManager.class);
         Plugin worldGuardPlugin = plugin("7.0.14", true);
+        Plugin siegeWarPlugin = plugin("1.0.0", true);
         when(manager.getPlugin("Towny")).thenReturn(null);
         when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
+        when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
 
         var snapshot = new IntegrationCapabilities(manager, false).snapshot();
         var worldGuard = snapshot.stream()
@@ -40,6 +42,11 @@ class IntegrationCapabilitiesTest {
 
         assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, worldGuard.status());
         assertTrue(worldGuard.details().contains("no verified adapter"));
+        var siegeWar = snapshot.stream()
+                .filter(value -> value.name().equals("SiegeWar diplomacy"))
+                .findFirst().orElseThrow();
+        assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, siegeWar.status());
+        assertTrue(siegeWar.details().contains("unknown relations remain neutral"));
     }
 
     @Test
