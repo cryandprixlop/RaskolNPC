@@ -41,10 +41,11 @@ public final class IntegrationCapabilities {
                         townyAvailable ? "Guard hiring and daily rent use Towny town accounts."
                                 : "No supported town-bank economy provider is active."),
                 new Capability("WorldGuard region protection",
-                        worldGuardPresent ? Status.DETECTED_UNSUPPORTED : Status.NOT_CONFIGURED,
+                        worldGuardPresent ? Status.AVAILABLE
+                                : worldGuard != null ? Status.DISABLED : Status.NOT_CONFIGURED,
                         worldGuard == null ? null : worldGuard.getDescription().getVersion(),
                         worldGuardPresent
-                                ? "WorldGuard is installed, but this build has no verified adapter; no protection is claimed."
+                                ? "WorldGuard API adapter is available and can query the MOB_DAMAGE flag; guard combat enforcement is not yet wired."
                                 : "No region-protection adapter is configured."),
                 new Capability("SiegeWar diplomacy",
                         siegeWarPresent ? Status.AVAILABLE
