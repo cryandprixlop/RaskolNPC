@@ -13,6 +13,7 @@ import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
+import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
@@ -65,6 +66,7 @@ public final class RaskolNPC extends JavaPlugin {
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
     private RelationshipPolicy relationshipPolicy;
+    private WorldGuardProtectionAdapter worldGuardProtectionAdapter;
 
     @Override
     public void onEnable() {
@@ -133,6 +135,10 @@ public final class RaskolNPC extends JavaPlugin {
                 && getConfig().getBoolean("integrations.towny.enabled", true);
         boolean siegeWarEnabled = getServer().getPluginManager().getPlugin("SiegeWar") != null
                 && getServer().getPluginManager().getPlugin("SiegeWar").isEnabled();
+        org.bukkit.plugin.Plugin worldGuardPlugin =
+                getServer().getPluginManager().getPlugin("WorldGuard");
+        worldGuardProtectionAdapter = worldGuardPlugin != null && worldGuardPlugin.isEnabled()
+                ? new WorldGuardProtectionAdapter() : null;
         relationshipPolicy = new RelationshipPolicy(siegeWarEnabled
                 ? new SiegeWarDiplomacyAdapter()
                 : (firstNationId, secondNationId) -> RelationshipPolicy.DiplomacyRelation.UNKNOWN);
@@ -285,6 +291,11 @@ public final class RaskolNPC extends JavaPlugin {
 
     public NpcEntityManager getNpcEntityManager() {
         return npcEntityManager;
+    }
+
+    /** Returns the WorldGuard mob-damage query adapter when WorldGuard is enabled. */
+    public WorldGuardProtectionAdapter getWorldGuardProtectionAdapter() {
+        return worldGuardProtectionAdapter;
     }
 
     /** Returns the provider-neutral relationship policy; unknown relations remain neutral. */
