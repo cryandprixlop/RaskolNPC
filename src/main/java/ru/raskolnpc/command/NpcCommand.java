@@ -16,6 +16,8 @@ import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.GuardOrderService;
+import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
@@ -34,6 +36,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final NpcCommandService service;
     private final NpcCommandMessages messages;
     private volatile GuardRentService guardRentService;
+    private volatile GuardOrderService guardOrderService;
     private volatile ResidentScheduleCommandService residentScheduleService;
     private volatile ResidentDialogueService residentDialogueService;
     private volatile ResidentQuestService residentQuestService;
@@ -49,6 +52,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setGuardRentService(GuardRentService guardRentService) {
         this.guardRentService = guardRentService;
+    }
+
+    public void setGuardOrderService(GuardOrderService service) {
+        this.guardOrderService = service;
     }
 
     public void setResidentScheduleService(ResidentScheduleCommandService service) {
@@ -543,6 +550,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private void guard(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("order")) {
+            guardOrder(sender, args);
+            return;
+        }
         if (args.length >= 2 && args[1].equalsIgnoreCase("general")) {
             guardGeneral(sender, args);
             return;
@@ -601,6 +612,118 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             + " &7Стоимость: &f" + result.hireCost()
                             + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
+    }
+
+    private void guardOrder(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cПриказы стражам может отдавать только игрок.");
+            return;
+        }
+        GuardOrderService orders = guardOrderService;
+        if (orders == null) {
+            messages.sendRaw(sender, "&cСистема приказов стражи недоступна.");
+            return;
+        }
+        if (args.length < 4) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard order <UUID> <hold|return|defend|escort|patrol|clear>");
+            return;
+        }
+        var parsedId = NpcCommandParser.parseId(args[2]);
+        if (parsedId.isEmpty()) {
+            messages.sendRaw(sender, "&cНекорректный UUID стража.");
+            return;
+        }
+        if (service.findVisibleGuard(player, parsedId.get()).isEmpty()) {
+            messages.sendRaw(sender, "&cСтраж не найден или у вас нет полномочий управлять этой нацией.");
+            return;
+        }
+        String action = args[3].toLowerCase(Locale.ROOT);
+        if (action.equals("clear")) {
+            orders.clear(parsedId.get()).whenComplete((cleared, error) ->
+                    runMain(sender, () -> messages.sendRaw(sender, error != null
+                            ? "&cНе удалось отменить приказ: " + rootMessage(error)
+                            : Boolean.TRUE.equals(cleared) ? "&aПриказ отменён."
+                            : "&eУ стража не было сохранённого приказа.")));
+            return;
+        }
+
+        GuardOrder.Type type;
+        List<GuardOrder.Waypoint> points;
+        try {
+            switch (action) {
+                case "hold" -> {
+                    type = GuardOrder.Type.HOLD_POSITION;
+                    points = List.of();
+                }
+                case "return" -> {
+                    type = GuardOrder.Type.RETURN_TO_POST;
+                    points = List.of();
+                }
+                case "escort" -> {
+                    type = GuardOrder.Type.ESCORT;
+                    points = List.of();
+                }
+                case "defend" -> {
+                    type = GuardOrder.Type.DEFEND;
+                    points = List.of(waypoint(player, player.getLocation().getX(),
+                            player.getLocation().getY(), player.getLocation().getZ()));
+                }
+                case "patrol" -> {
+                    if (args.length != 10) {
+                        messages.sendRaw(sender, "&eИспользование: /raskolnpc guard order <UUID> patrol <x1> <y1> <z1> <x2> <y2> <z2>");
+                        return;
+                    }
+                    type = GuardOrder.Type.PATROL;
+                    points = List.of(
+                            waypoint(player, Double.parseDouble(args[4]),
+                                    Double.parseDouble(args[5]), Double.parseDouble(args[6])),
+                            waypoint(player, Double.parseDouble(args[7]),
+                                    Double.parseDouble(args[8]), Double.parseDouble(args[9])));
+                }
+                default -> {
+                    messages.sendRaw(sender, "&cНеизвестный приказ. Доступно: hold, return, defend, escort, patrol, clear.");
+                    return;
+                }
+            }
+        } catch (NumberFormatException | IllegalArgumentException error) {
+            messages.sendRaw(sender, "&cНекорректные координаты приказа.");
+            return;
+        }
+
+        orders.issue(parsedId.get(), type, points, player.getUniqueId())
+                .whenComplete((order, error) -> runMain(sender, () -> {
+                    if (error != null) {
+                        messages.sendRaw(sender, "&cНе удалось сохранить приказ: " + rootMessage(error));
+                    } else {
+                        messages.sendRaw(sender, "&aПриказ &f" + order.type()
+                                + " &aсохранён для стража &f" + parsedId.get() + "&a.");
+                    }
+                }));
+    }
+
+    private GuardOrder.Waypoint waypoint(Player player, double x, double y, double z) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || y < player.getWorld().getMinHeight()
+                || y >= player.getWorld().getMaxHeight()) {
+            throw new IllegalArgumentException("Invalid waypoint coordinates.");
+        }
+        org.bukkit.Location location = new org.bukkit.Location(player.getWorld(), x, y, z);
+        if (!player.getWorld().getWorldBorder().isInside(location)) {
+            throw new IllegalArgumentException("Waypoint is outside the world border.");
+        }
+        return new GuardOrder.Waypoint(player.getWorld().getUID(), x, y, z,
+                player.getLocation().getYaw(), player.getLocation().getPitch());
+    }
+
+    private void runMain(CommandSender sender, Runnable action) {
+        if (!plugin.isEnabled()) return;
+        try {
+            if (Bukkit.isPrimaryThread()) action.run();
+            else Bukkit.getScheduler().runTask(plugin, action);
+        } catch (RuntimeException schedulingError) {
+            plugin.getLogger().warning("Could not schedule guard order response: "
+                    + schedulingError.getMessage());
+        }
     }
 
     private void guardGeneral(CommandSender sender, String[] args) {
@@ -911,6 +1034,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
+            messages.sendRaw(sender, "&e/" + label + " guard order <UUID> <приказ> &7— приказ стражу");
             messages.sendRaw(sender, "&e/" + label + " guard info <UUID> &7— карточка стража");
             messages.sendRaw(sender, "&e/" + label + " guard general appoint|dismiss <игрок> &7— управление генералами");
             messages.sendRaw(sender, "&e/" + label + " guard general list &7— список генералов");
@@ -990,8 +1114,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("hire", "rent", "list", "info", "general")
-                    : List.of("hire", "list", "info", "general"), args[1]);
+                    ? List.of("hire", "rent", "list", "info", "general", "order")
+                    : List.of("hire", "list", "info", "general", "order"), args[1]);
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("general")) {
