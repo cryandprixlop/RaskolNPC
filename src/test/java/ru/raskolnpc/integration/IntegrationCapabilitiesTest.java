@@ -60,6 +60,21 @@ class IntegrationCapabilitiesTest {
     }
 
     @Test
+    void reportsDetectedWorldGuardWhenItsAdapterCannotInitialize() {
+        PluginManager manager = mock(PluginManager.class);
+        Plugin worldGuardPlugin = plugin("7.0.19", true);
+        when(manager.getPlugin("Towny")).thenReturn(null);
+        when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
+        when(manager.getPlugin("SiegeWar")).thenReturn(null);
+
+        var worldGuard = new IntegrationCapabilities(manager, false, false).snapshot().stream()
+                .filter(value -> value.name().equals("WorldGuard region protection"))
+                .findFirst().orElseThrow();
+        assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, worldGuard.status());
+        assertTrue(worldGuard.details().contains("could not be initialized"));
+    }
+
+    @Test
     void reportsDisabledWorldGuardAsDisabled() {
         PluginManager manager = mock(PluginManager.class);
         Plugin worldGuardPlugin = plugin("7.0.19", false);
