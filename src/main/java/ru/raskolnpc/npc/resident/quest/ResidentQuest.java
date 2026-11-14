@@ -14,8 +14,15 @@ public record ResidentQuest(
         ResidentProfession profession,
         String requiredMaterial,
         int requiredAmount,
-        int reputationReward
+        int reputationReward,
+        int stockTarget
 ) {
+    /** Backwards-compatible constructor for quests without business stock gating. */
+    public ResidentQuest(String id, ResidentProfession profession, String requiredMaterial,
+            int requiredAmount, int reputationReward) {
+        this(id, profession, requiredMaterial, requiredAmount, reputationReward, 0);
+    }
+
     public ResidentQuest {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(profession, "profession");
@@ -33,6 +40,11 @@ public record ResidentQuest(
         }
         if (reputationReward < 0 || reputationReward > 10000) {
             throw new IllegalArgumentException("Reputation reward must be between 0 and 10000.");
+        }
+        if (stockTarget < 0 || stockTarget > 1_000_000
+                || (stockTarget > 0 && stockTarget < requiredAmount)) {
+            throw new IllegalArgumentException(
+                    "Stock target must be zero (disabled) or at least the required amount, up to 1000000.");
         }
     }
 
