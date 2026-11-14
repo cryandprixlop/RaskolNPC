@@ -101,7 +101,6 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         });
     }
 
-
     @Override
     public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId) {
         String id = normalizeQuestId(questId);
@@ -180,7 +179,7 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                       )
                     """)) {
                 update.setLong(1, now);
-                update.setString(2, playerId.toString());
+                update.setString(2, requirePlayer(playerId).toString());
                 update.setString(3, residentId.toString());
                 update.setString(4, id);
                 update.setString(5, playerId.toString());
@@ -234,7 +233,7 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                     """)) {
                 statement.setString(1, finalReason);
                 statement.setLong(2, System.currentTimeMillis());
-                statement.setString(3, playerId.toString());
+                statement.setString(3, requirePlayer(playerId).toString());
                 statement.setString(4, residentId.toString());
                 statement.setString(5, id);
                 return statement.executeUpdate() == 1;
@@ -257,7 +256,7 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
 
     @Override
     public CompletableFuture<Integer> recoverUnfinishedSubmissions() {
-        return database.execute(connection -> {
+        return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
                     UPDATE resident_quest_submissions
                     SET status = 'REVIEW_REQUIRED',
@@ -268,14 +267,13 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 statement.setLong(1, System.currentTimeMillis());
                 statement.executeUpdate();
             }
-        }).thenCompose(ignored -> database.query(connection -> {
             try (var statement = connection.prepareStatement(
                     "SELECT COUNT(*) FROM resident_quest_submissions WHERE status = 'REVIEW_REQUIRED'")) {
                 try (ResultSet result = statement.executeQuery()) {
                     return result.next() ? result.getInt(1) : 0;
                 }
             }
-        }));
+        });
     }
 
     private static ResidentQuest.Assignment readAssignment(ResultSet result) throws SQLException {
