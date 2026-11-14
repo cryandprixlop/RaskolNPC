@@ -31,8 +31,8 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_squad_members");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(13, schemaVersion(connection));
-            assertEquals(15, migrationCount(connection));
+            assertEquals(14, schemaVersion(connection));
+            assertEquals(14, migrationCount(connection));
         }
     }
 
@@ -49,7 +49,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(14, migrationCount(connection));
+            assertEquals(15, migrationCount(connection));
         }
     }
 
