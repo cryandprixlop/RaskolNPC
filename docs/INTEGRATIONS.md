@@ -2,7 +2,7 @@
 
 ## Towny
 
-Towny is the authority source for nation membership, town placement, guard hiring permissions, and town-bank transactions. The Towny integration is optional at startup; guard hiring and rent collection are unavailable when Towny is disabled.
+Towny is the authority source for nation membership, town placement, guard hiring permissions, and town-bank transactions. The diplomacy adapter reads nation UUIDs and declared enemy/ally relations from the public Towny API. An alliance is accepted only when both nations list each other as allies; a declared enemy on either side is hostile. Existing nations with neither relation are neutral, while missing nation data is unknown. The Towny integration is optional at startup; guard hiring, rent collection, and Towny-backed diplomacy are unavailable when Towny is disabled.
 
 ## SiegeWar
 
@@ -12,7 +12,7 @@ The adapter reads `SiegeWarAPI.getActiveSieges()` and compares the public attack
 
 This is deliberately narrow: it does not infer alliance, permanent war, occupation, or hostility from a town name, plugin presence, or stale siege metadata. SiegeWar must be installed and enabled. The dependency is compile-only and the plugin is declared as a soft dependency, so servers without SiegeWar can still start RaskolNPC.
 
-The adapter currently provides the verified diplomacy input for subsequent guard target-selection work. It does not itself make guards attack players or change their movement orders.
+The SiegeWar result is composed with Towny diplomacy. A verified active siege takes precedence over Towny's stored alliance relation; absent a siege, Towny's declared alliance/enemy state is used. Unknown results never become hostile. These providers currently expose the shared relationship policy for subsequent guard target-selection work; they do not themselves make guards attack players or change their movement orders.
 
 ## WorldGuard
 
