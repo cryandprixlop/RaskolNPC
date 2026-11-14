@@ -230,6 +230,41 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     }));
             return;
         }
+        if (args.length == 3 && args[1].equalsIgnoreCase("stock")) {
+            if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+            ResidentQuestService quests = residentQuestService;
+            if (quests == null) {
+                messages.sendRaw(sender, "&cСистема запасов жителей временно недоступна.");
+                return;
+            }
+            var residentId = NpcCommandParser.parseId(args[2]);
+            if (residentId.isEmpty()) {
+                messages.sendRaw(sender, "&cНекорректный UUID жителя.");
+                return;
+            }
+            quests.stockReport(residentId.get()).whenComplete((report, error) -> runMain(sender, () -> {
+                if (error != null) {
+                    messages.sendRaw(sender, "&cНе удалось получить запасы предприятия: "
+                            + rootMessage(error));
+                    return;
+                }
+                if (report.isEmpty()) {
+                    messages.sendRaw(sender, "&eДля профессии жителя пока нет настроенных поставок.");
+                    return;
+                }
+                messages.sendRaw(sender, "&6Запасы предприятия жителя &f" + residentId.get() + "&6:");
+                for (var entry : report) {
+                    messages.sendRaw(sender, "&e" + entry.questId() + " &7Материал: &f"
+                            + entry.material() + " &7Запас: &f" + entry.amount()
+                            + (entry.target() == 0 ? " &7(без лимита)" :
+                                    "/" + entry.target())
+                            + (entry.deliveryAvailable() ? " &a— поставка нужна"
+                                    : " &8— запаса достаточно"));
+                }
+            }));
+            return;
+        }
+
         if (args.length >= 3 && args[1].equalsIgnoreCase("quest")
                 && (args[2].equalsIgnoreCase("reputation") || args[2].equalsIgnoreCase("active"))) {
             ResidentQuestService quests = residentQuestService;
@@ -840,6 +875,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " resident schedule add ... &7— добавить запись");
             messages.sendRaw(sender, "&e/" + label + " resident setpoint/delpoint ... &7— точки жителя");
             messages.sendRaw(sender, "&e/" + label + " resident reload-dialogues &7— перезагрузить диалоги");
+            messages.sendRaw(sender, "&e/" + label + " resident stock <UUID> &7— запасы предприятия");
             messages.sendRaw(sender, "&e/" + label + " guard rent review &7— спорные платежи");
             messages.sendRaw(sender, "&e/" + label + " guard hire review &7— спорные операции найма");
             messages.sendRaw(sender, "&e/" + label + " guard hire resolve <ID> <paid|failed|refunded> &7— разрешить найм");
@@ -873,7 +909,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("resident")) {
             java.util.ArrayList<String> residentActions = new java.util.ArrayList<>();
             if (sender.hasPermission(PERMISSION)) {
-                residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues"));
+                residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues", "stock"));
             }
             if (canAcceptResidentQuest) residentActions.add("quest");
             return startsWith(residentActions, args[1]);
