@@ -22,6 +22,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.mockito.ArgumentCaptor;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -75,9 +77,11 @@ class GuardOrderControllerTest {
                 new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
         controller.tick();
 
-        verify(entity).teleport((Location) argThat((Location location) ->
-                location.getX() > 0.5 && location.getX() <= 1.11
-                        && location.getWorld().getUID().equals(world.getUID())));
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(entity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > 0.5);
+        assertTrue(destination.getValue().getX() <= 1.11);
+        assertEquals(world.getUID(), destination.getValue().getWorld().getUID());
     }
 
     @Test
