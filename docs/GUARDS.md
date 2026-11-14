@@ -29,7 +29,7 @@ A nation king or administrator can issue orders to a guard visible in their nati
 
 Orders and patrol waypoints are stored in SQLite. One shared scheduler processes only a configured number of guards per pass. Movement uses small steps, checks passable feet/head blocks, attempts a simple left/right sidestep around a single blocked step, and never force-loads destination chunks. If the destination world or chunk is unavailable, movement pauses until it is available.
 
-The current movement layer is intentionally simple: it does not yet perform full pathfinding around complex terrain, perform full pathfinding around complex terrain, enforce region flags in an active combat loop, or implement combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies. Those remain later guard-system increments and must not be considered complete merely because orders are persisted.
+The current movement layer is intentionally simple: it does not yet perform full pathfinding around complex terrain, enforce region flags in an active combat loop, or implement combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies. Those remain later guard-system increments and must not be considered complete merely because orders are persisted.
 
 ## Configuration
 
@@ -56,5 +56,8 @@ Commands:
 - `/raskolnpc guard squad add <squad-uuid> <guard-uuid>`
 - `/raskolnpc guard squad remove <guard-uuid>`
 - `/raskolnpc guard squad delete <squad-uuid>`
+- `/raskolnpc guard squad order <squad-uuid> hold|return|defend|escort`
+- `/raskolnpc guard squad order <squad-uuid> patrol <x1> <y1> <z1> <x2> <y2> <z2>`
+- `/raskolnpc guard squad order <squad-uuid> clear`
 
-This is the persistence and administration foundation only. Squads do not yet share movement orders, coordinate combat targets, or rally automatically. Those behaviors remain explicitly out of scope until the tactical execution layer is implemented.
+A shared order is persisted as an individual order for each current squad member. The command reports successful and failed member updates separately; a failed save for one guard does not hide successful saves for the others. A squad with no members produces a zero-member result. This is shared order assignment, not synchronized formation movement: members still advance through the existing bounded movement scheduler independently. Squads do not yet coordinate combat targets or rally automatically.
