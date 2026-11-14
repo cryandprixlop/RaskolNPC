@@ -381,6 +381,33 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> withdrawBusinessStock(
+            NpcId residentId, String material, int amount) {
+        String normalizedMaterial = normalizeMaterial(material);
+        if (amount < 1 || amount > 1_000_000) {
+            throw new IllegalArgumentException("Stock withdrawal amount must be between 1 and 1000000.");
+        }
+        return database.transaction(connection -> {
+            BusinessIdentity business = businessIdentity(connection, residentId);
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET amount = amount - ?, updated_at = ?
+                    WHERE business_id = ? AND profession = ? AND material = ?
+                      AND amount >= ?
+                    """)) {
+                long now = System.currentTimeMillis();
+                update.setInt(1, amount);
+                update.setLong(2, now);
+                update.setString(3, business.businessId());
+                update.setString(4, business.profession());
+                update.setString(5, normalizedMaterial);
+                update.setInt(6, amount);
+                return update.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Integer> recoverUnfinishedSubmissions() {
         return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
