@@ -40,7 +40,8 @@ class IntegrationCapabilitiesTest {
                 .findFirst().orElseThrow();
 
         assertEquals(IntegrationCapabilities.Status.AVAILABLE, worldGuard.status());
-        assertTrue(worldGuard.details().contains("MOB_DAMAGE flag"));
+        assertTrue(worldGuard.details().contains("MOB_DAMAGE checks are enforced"));
+        assertTrue(worldGuard.details().contains("both guard and target locations"));
         var siegeWar = snapshot.stream()
                 .filter(value -> value.name().equals("SiegeWar diplomacy"))
                 .findFirst().orElseThrow();

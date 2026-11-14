@@ -53,7 +53,7 @@ public final class IntegrationCapabilities {
                         worldGuard == null ? null : worldGuard.getDescription().getVersion(),
                         worldGuardPresent
                                 ? worldGuardPresent && worldGuardAdapterAvailable
-                                ? "WorldGuard API adapter can query the MOB_DAMAGE flag; guard combat enforcement is not yet wired."
+                                ? "WorldGuard MOB_DAMAGE checks are enforced at both guard and target locations during guard combat."
                                 : worldGuardPresent
                                 ? "WorldGuard is detected, but its API adapter could not be initialized."
                                 : "No region-protection adapter is configured."
