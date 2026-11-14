@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
