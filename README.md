@@ -67,6 +67,7 @@ The CI workflow compiles the plugin, compiles test sources, runs JUnit tests, an
 
 - [Resident systems guide](docs/RESIDENTS.md)
 - [Kingdom guards guide](docs/GUARDS.md)
+- [Paper acceptance and load-test plan](docs/PAPER-ACCEPTANCE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 
