@@ -17,7 +17,7 @@ public final class IntegrationCapabilities {
     private final boolean worldGuardAdapterAvailable;
 
     public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured) {
-        this(plugins, townyConfigured, true);
+        this(plugins, townyConfigured, false);
     }
 
     public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured,
