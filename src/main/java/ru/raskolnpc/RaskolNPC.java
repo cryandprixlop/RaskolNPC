@@ -8,6 +8,7 @@ import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
+import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
@@ -139,6 +140,8 @@ public final class RaskolNPC extends JavaPlugin {
         }
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
+        commandHandler.setIntegrationCapabilities(new IntegrationCapabilities(
+                getServer().getPluginManager(), townyEnabled));
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
