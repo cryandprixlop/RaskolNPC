@@ -31,6 +31,6 @@ public final class NpcEntityListener implements Listener {
 
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {
-        entityManager.untrack(event.getEntity());
+        recoveryService.onEntityDeath(event.getEntity());
     }
 }
