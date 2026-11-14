@@ -4,7 +4,7 @@ main: ru.raskolnpc.RaskolNPC
 api-version: '26.2'
 description: Persistent NPC framework for a Paper-based Minecraft RPG server.
 authors: [cryandprixlop]
-softdepend: [Towny]
+softdepend: [Towny, SiegeWar]
 libraries:
   - org.xerial:sqlite-jdbc:3.54.1.0
 
