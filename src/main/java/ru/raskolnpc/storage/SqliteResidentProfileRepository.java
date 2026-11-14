@@ -9,8 +9,12 @@ import ru.raskolnpc.npc.resident.model.ResidentProfile.ResidentTrait;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -158,6 +162,69 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
         });
     }
 
+    /**
+     * Reads the profile, trait and skill tables once each. This avoids N+1
+     * lookups when the behavior service initializes its in-memory resident cache.
+     */
+    @Override
+    public CompletableFuture<List<ResidentProfile>> findAll() {
+        return database.query(connection -> {
+            Map<NpcId, ProfileBuilder> profiles = new LinkedHashMap<>();
+            try (var statement = connection.prepareStatement("""
+                    SELECT npc_id, age, profession, hunger, energy, rest, social,
+                           housing_satisfaction, mood
+                    FROM resident_profiles
+                    ORDER BY npc_id
+                    """);
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    NpcId id = NpcId.fromString(result.getString("npc_id"));
+                    profiles.put(id, new ProfileBuilder(id,
+                            result.getInt("age"),
+                            ResidentProfession.valueOf(result.getString("profession")),
+                            result.getInt("hunger"),
+                            result.getInt("energy"),
+                            result.getInt("rest"),
+                            result.getInt("social"),
+                            result.getInt("housing_satisfaction"),
+                            result.getInt("mood")));
+                }
+            }
+
+            try (var statement = connection.prepareStatement(
+                    "SELECT npc_id, trait FROM resident_traits ORDER BY npc_id");
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ProfileBuilder profile = profiles.get(
+                            NpcId.fromString(result.getString("npc_id")));
+                    if (profile != null) {
+                        profile.traits.add(ResidentTrait.valueOf(result.getString("trait")));
+                    }
+                }
+            }
+
+            try (var statement = connection.prepareStatement("""
+                    SELECT npc_id, profession, skill_level
+                    FROM resident_skills ORDER BY npc_id
+                    """);
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ProfileBuilder profile = profiles.get(
+                            NpcId.fromString(result.getString("npc_id")));
+                    if (profile != null) {
+                        profile.skills.put(
+                                ResidentProfession.valueOf(result.getString("profession")),
+                                ResidentSkillLevel.valueOf(result.getString("skill_level")));
+                    }
+                }
+            }
+
+            List<ResidentProfile> result = new ArrayList<>(profiles.size());
+            profiles.values().forEach(profile -> result.add(profile.build()));
+            return List.copyOf(result);
+        });
+    }
+
     @Override
     public CompletableFuture<Boolean> delete(NpcId npcId) {
         return database.query(connection -> {
@@ -167,5 +234,38 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
                 return statement.executeUpdate() > 0;
             }
         });
+    }
+
+    private static final class ProfileBuilder {
+        private final NpcId npcId;
+        private final int age;
+        private final ResidentProfession profession;
+        private final int hunger;
+        private final int energy;
+        private final int rest;
+        private final int social;
+        private final int housing;
+        private final int mood;
+        private final EnumSet<ResidentTrait> traits = EnumSet.noneOf(ResidentTrait.class);
+        private final EnumMap<ResidentProfession, ResidentSkillLevel> skills =
+                new EnumMap<>(ResidentProfession.class);
+
+        private ProfileBuilder(NpcId npcId, int age, ResidentProfession profession,
+                int hunger, int energy, int rest, int social, int housing, int mood) {
+            this.npcId = npcId;
+            this.age = age;
+            this.profession = profession;
+            this.hunger = hunger;
+            this.energy = energy;
+            this.rest = rest;
+            this.social = social;
+            this.housing = housing;
+            this.mood = mood;
+        }
+
+        private ResidentProfile build() {
+            return new ResidentProfile(npcId, age, profession, traits,
+                    hunger, energy, rest, social, housing, mood, skills);
+        }
     }
 }
