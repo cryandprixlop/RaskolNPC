@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 12;
+    private static final int CURRENT_SCHEMA_VERSION = 13;
 
     private DatabaseMigrations() {
     }
@@ -39,6 +39,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
         if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
         if (!isApplied(connection, 12)) applyGuardOrderSchema(connection);
+        if (!isApplied(connection, 13)) applyGuardSquadSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -572,6 +573,44 @@ public final class DatabaseMigrations {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_orders_type "
                     + "ON guard_orders(order_type)");
             statement.execute("INSERT INTO schema_migrations(version) VALUES (12)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyGuardSquadSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_squads (
+                        squad_id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 32),
+                        created_by TEXT NOT NULL,
+                        created_at INTEGER NOT NULL CHECK (created_at > 0)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS guard_squad_members (
+                        squad_id TEXT NOT NULL REFERENCES guard_squads(squad_id) ON DELETE CASCADE,
+                        npc_id TEXT NOT NULL UNIQUE REFERENCES npcs(id) ON DELETE CASCADE,
+                        PRIMARY KEY (squad_id, npc_id)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_guard_squad_members_squad "
+                    + "ON guard_squad_members(squad_id)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (13)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
