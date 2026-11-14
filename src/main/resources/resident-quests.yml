@@ -1,0 +1,26 @@
+# Resident delivery quests. These are definitions only; gameplay activation is added separately.
+# required-material uses a Bukkit Material key.
+quests:
+  miner_iron_delivery:
+    profession: MINER
+    required-material: IRON_INGOT
+    required-amount: 32
+    reputation-reward: 5
+
+  lumberjack_oak_delivery:
+    profession: LUMBERJACK
+    required-material: OAK_LOG
+    required-amount: 24
+    reputation-reward: 4
+
+  farmer_wheat_delivery:
+    profession: FARMER
+    required-material: WHEAT
+    required-amount: 32
+    reputation-reward: 4
+
+  blacksmith_coal_delivery:
+    profession: BLACKSMITH
+    required-material: COAL
+    required-amount: 16
+    reputation-reward: 3
