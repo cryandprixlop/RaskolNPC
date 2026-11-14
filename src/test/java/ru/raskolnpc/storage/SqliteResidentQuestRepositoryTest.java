@@ -220,6 +220,44 @@ class SqliteResidentQuestRepositoryTest {
         assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
     }
 
+    @Test
+    void deliveredResourcesIncreaseSharedTownBusinessStockAndSuppressFurtherDemand() {
+        NpcRecord resident = createResident();
+        UUID firstPlayer = UUID.randomUUID();
+        UUID secondPlayer = UUID.randomUUID();
+
+        assertEquals(0, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertTrue(quests.accept(firstPlayer, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 32).join());
+        assertTrue(quests.reserveSubmission(firstPlayer, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 32).join());
+        assertTrue(quests.completeSubmission(firstPlayer, resident.id(),
+                "miner_iron_delivery", 5).join());
+
+        assertEquals(32, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertFalse(quests.accept(secondPlayer, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 32).join());
+
+        NpcRecord secondMiner = NpcRecord.create(NpcType.RESIDENT, "Second Miner",
+                null, "town", "nation", "{}");
+        npcs.insert(secondMiner).join();
+        profiles.save(new ResidentProfile(secondMiner.id(), 35, ResidentProfession.MINER,
+                Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
+        assertEquals(32, quests.getBusinessStock(secondMiner.id(), "IRON_INGOT").join());
+    }
+
+    @Test
+    void businessStockNeverExceedsConfiguredTarget() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 40).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 40).join());
+        assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertEquals(32, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+    }
+
     private NpcRecord createResident() {
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
                 null, "town", "nation", "{}");
