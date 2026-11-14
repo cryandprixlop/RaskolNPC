@@ -103,22 +103,26 @@ public final class GuardOrderController {
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
     public void tick() {
         requireMainThread();
-        var snapshot = orders.snapshot();
-        if (snapshot.isEmpty()) {
+        var guards = registry.all().stream()
+                .filter(record -> record.type() == ru.raskolnpc.npc.model.NpcType.GUARD)
+                .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
+                .toList();
+        if (guards.isEmpty()) {
             cursor = 0;
             return;
         }
-        int count = Math.min(batchSize, snapshot.size());
-        int start = Math.floorMod(cursor, snapshot.size());
+        Map<ru.raskolnpc.npc.model.NpcId, GuardOrder> activeOrders = new java.util.HashMap<>();
+        for (GuardOrder order : orders.snapshot()) activeOrders.put(order.npcId(), order);
+        int count = Math.min(batchSize, guards.size());
+        int start = Math.floorMod(cursor, guards.size());
         for (int offset = 0; offset < count; offset++) {
-            execute(snapshot.get((start + offset) % snapshot.size()));
+            NpcRecord guard = guards.get((start + offset) % guards.size());
+            execute(guard, activeOrders.get(guard.id()));
         }
-        cursor = (start + count) % snapshot.size();
+        cursor = (start + count) % guards.size();
     }
 
-    private void execute(GuardOrder order) {
-        NpcRecord record = registry.get(order.npcId()).orElse(null);
-        if (record == null || record.type() != ru.raskolnpc.npc.model.NpcType.GUARD) return;
+    private void execute(NpcRecord record, GuardOrder order) {
         Entity entity = entities.find(order.npcId()).orElse(null);
         if (entity == null || !entity.isValid()) return;
 
@@ -128,6 +132,7 @@ public final class GuardOrderController {
             return;
         }
 
+        if (order == null) return;
         Location target = switch (order.type()) {
             case HOLD_POSITION -> null;
             case RETURN_TO_POST -> record.spawnLocation() == null
