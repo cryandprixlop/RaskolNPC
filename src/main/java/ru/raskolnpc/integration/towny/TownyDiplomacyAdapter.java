@@ -5,18 +5,18 @@ import com.palmergames.bukkit.towny.object.Nation;
 import ru.raskolnpc.integration.RelationshipPolicy;
 
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /** Reads reciprocal Towny alliances and declared nation enemies by UUID. */
 public final class TownyDiplomacyAdapter implements RelationshipPolicy.Diplomacy {
-    private final Function<UUID, Nation> nationLookup;
+    private final BiFunction<UUID, UUID, RelationshipPolicy.DiplomacyRelation> relationLookup;
 
     public TownyDiplomacyAdapter() {
-        this(uuid -> TownyAPI.getInstance().getNation(uuid));
+        this(TownyDiplomacyAdapter::lookupTownyRelation);
     }
 
-    TownyDiplomacyAdapter(Function<UUID, Nation> nationLookup) {
-        this.nationLookup = java.util.Objects.requireNonNull(nationLookup, "nationLookup");
+    TownyDiplomacyAdapter(BiFunction<UUID, UUID, RelationshipPolicy.DiplomacyRelation> relationLookup) {
+        this.relationLookup = java.util.Objects.requireNonNull(relationLookup, "relationLookup");
     }
 
     @Override
@@ -27,19 +27,27 @@ public final class TownyDiplomacyAdapter implements RelationshipPolicy.Diplomacy
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }
         try {
-            Nation first = nationLookup.apply(firstId);
-            Nation second = nationLookup.apply(secondId);
-            if (first == null || second == null) return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
-            if (first.hasEnemy(second) || second.hasEnemy(first)) {
-                return RelationshipPolicy.DiplomacyRelation.HOSTILE;
-            }
-            if (first.hasAlly(second) && second.hasAlly(first)) {
-                return RelationshipPolicy.DiplomacyRelation.ALLIED;
-            }
-            return RelationshipPolicy.DiplomacyRelation.NEUTRAL;
+            RelationshipPolicy.DiplomacyRelation result = relationLookup.apply(firstId, secondId);
+            return result == null ? RelationshipPolicy.DiplomacyRelation.UNKNOWN : result;
         } catch (RuntimeException unavailable) {
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }
+    }
+
+    private static RelationshipPolicy.DiplomacyRelation lookupTownyRelation(UUID firstId, UUID secondId) {
+        Nation first = TownyAPI.getInstance().getNation(firstId);
+        Nation second = TownyAPI.getInstance().getNation(secondId);
+        if (first == null || second == null) return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
+        return mapRelations(first.hasEnemy(second), second.hasEnemy(first),
+                first.hasAlly(second), second.hasAlly(first));
+    }
+
+    static RelationshipPolicy.DiplomacyRelation mapRelations(
+            boolean firstListsEnemy, boolean secondListsEnemy,
+            boolean firstListsAlly, boolean secondListsAlly) {
+        if (firstListsEnemy || secondListsEnemy) return RelationshipPolicy.DiplomacyRelation.HOSTILE;
+        if (firstListsAlly && secondListsAlly) return RelationshipPolicy.DiplomacyRelation.ALLIED;
+        return RelationshipPolicy.DiplomacyRelation.NEUTRAL;
     }
 
     private static UUID parse(String value) {
