@@ -25,10 +25,12 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "resident_business_stock");
             assertTableExists(connection, "guard_rent_payments");
             assertTableExists(connection, "guard_hiring_payments");
+            assertTableExists(connection, "guard_orders");
+            assertTableExists(connection, "guard_order_waypoints");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(11, schemaVersion(connection));
-            assertEquals(11, migrationCount(connection));
+            assertEquals(12, migrationCount(connection));
         }
     }
 
