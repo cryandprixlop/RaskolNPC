@@ -99,10 +99,7 @@ public final class ResidentBehaviorService {
                         return;
                     }
                     applyLoadedData(loaded);
-                    residents = registry.all().stream()
-                            .filter(record -> record.type() == NpcType.RESIDENT)
-                            .toList();
-                    cursor = 0;
+                    refreshResidentRoster();
                     if (taskId == -1) {
                         taskId = Bukkit.getScheduler().runTaskTimer(
                                 plugin, this::tick, intervalTicks, intervalTicks).getTaskId();
@@ -255,11 +252,7 @@ public final class ResidentBehaviorService {
                     return;
                 }
                 applyLoadedData(loaded);
-                residents = registry.all().stream()
-                        .filter(record -> record.type() == NpcType.RESIDENT)
-                        .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
-                        .toList();
-                cursor = residents.isEmpty() ? 0 : Math.floorMod(cursor, residents.size());
+                refreshResidentRoster();
             });
         });
     }

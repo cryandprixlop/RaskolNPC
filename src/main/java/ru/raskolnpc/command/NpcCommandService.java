@@ -377,7 +377,7 @@ public final class NpcCommandService {
                 .handle((ignored, cleanupError) -> {
                     if (cleanupError != null) error.addSuppressed(cleanupError);
                     throw new CompletionException(error);
-                });
+                }).whenComplete((ignored, cleanupError) -> refreshResidentBehavior());
     }
 
     private <T> CompletableFuture<T> onMainThread(
