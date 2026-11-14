@@ -1,5 +1,6 @@
 package ru.raskolnpc.guard;
 
+import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.guard.model.GuardSquad;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
@@ -59,5 +60,66 @@ public final class GuardSquadService {
 
     public CompletableFuture<List<GuardSquad>> list() {
         return repository.findAll();
+    }
+
+    /** Persists the same individual order for every member and reports partial failures. */
+    public CompletableFuture<SquadOrderResult> issueOrder(
+            UUID squadId, GuardOrderService orders, GuardOrder.Type type,
+            List<GuardOrder.Waypoint> waypoints, UUID issuer) {
+        Objects.requireNonNull(orders, "orders");
+        Objects.requireNonNull(type, "type");
+        List<GuardOrder.Waypoint> route = List.copyOf(Objects.requireNonNull(waypoints, "waypoints"));
+        Objects.requireNonNull(issuer, "issuer");
+        return findSquad(squadId).thenCompose(squad -> {
+            List<CompletableFuture<Boolean>> results = squad.members().stream()
+                    .map(member -> safely(() -> orders.issue(member, type, route, issuer)))
+                    .toList();
+            return summarize(results);
+        });
+    }
+
+    /** Clears persisted orders for every member and reports partial failures. */
+    public CompletableFuture<SquadOrderResult> clearOrders(UUID squadId, GuardOrderService orders) {
+        Objects.requireNonNull(orders, "orders");
+        return findSquad(squadId).thenCompose(squad -> {
+            List<CompletableFuture<Boolean>> results = squad.members().stream()
+                    .map(member -> safely(() -> orders.clear(member)))
+                    .toList();
+            return summarize(results);
+        });
+    }
+
+    private CompletableFuture<GuardSquad> findSquad(UUID squadId) {
+        Objects.requireNonNull(squadId, "squadId");
+        return repository.findAll().thenApply(squads -> squads.stream()
+                .filter(squad -> squad.id().equals(squadId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Guard squad was not found.")));
+    }
+
+    private CompletableFuture<SquadOrderResult> summarize(List<CompletableFuture<Boolean>> results) {
+        return CompletableFuture.allOf(results.toArray(CompletableFuture[]::new))
+                .thenApply(ignored -> {
+                    int succeeded = (int) results.stream()
+                            .filter(result -> Boolean.TRUE.equals(result.join())).count();
+                    return new SquadOrderResult(results.size(), succeeded, results.size() - succeeded);
+                });
+    }
+
+    private CompletableFuture<Boolean> safely(
+            java.util.function.Supplier<CompletableFuture<Boolean>> operation) {
+        try {
+            return operation.get().handle((success, error) -> error == null && Boolean.TRUE.equals(success));
+        } catch (RuntimeException exception) {
+            return CompletableFuture.completedFuture(false);
+        }
+    }
+
+    public record SquadOrderResult(int total, int succeeded, int failed) {
+        public SquadOrderResult {
+            if (total < 0 || succeeded < 0 || failed < 0 || succeeded + failed != total) {
+                throw new IllegalArgumentException("Invalid squad order result counts.");
+            }
+        }
     }
 }
