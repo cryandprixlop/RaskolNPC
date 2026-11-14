@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(11, schemaVersion(connection));
+            assertEquals(12, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
