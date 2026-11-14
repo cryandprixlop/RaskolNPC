@@ -162,6 +162,9 @@ public final class RaskolNPC extends JavaPlugin {
         if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
         if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
+        guardOrderController.setPursuitPolicy(relationshipPolicy,
+                Math.max(0.0, Math.min(32.0,
+                        getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))));
         guardCombatController = new GuardCombatController(
                 this, npcRegistry, npcEntityManager, relationshipPolicy,
                 worldGuardProtectionAdapter,
