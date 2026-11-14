@@ -17,6 +17,7 @@ import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardOrderService;
+import ru.raskolnpc.guard.GuardSquadService;
 import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
@@ -37,6 +38,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final NpcCommandMessages messages;
     private volatile GuardRentService guardRentService;
     private volatile GuardOrderService guardOrderService;
+    private volatile GuardSquadService guardSquadService;
     private volatile ResidentScheduleCommandService residentScheduleService;
     private volatile ResidentDialogueService residentDialogueService;
     private volatile ResidentQuestService residentQuestService;
@@ -56,6 +58,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setGuardOrderService(GuardOrderService service) {
         this.guardOrderService = service;
+    }
+
+    public void setGuardSquadService(GuardSquadService service) {
+        this.guardSquadService = service;
     }
 
     public void setResidentScheduleService(ResidentScheduleCommandService service) {
@@ -559,6 +565,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             guardOrder(sender, args);
             return;
         }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("squad")) {
+            guardSquad(sender, args);
+            return;
+        }
         if (args.length >= 2 && args[1].equalsIgnoreCase("general")) {
             guardGeneral(sender, args);
             return;
@@ -617,6 +627,109 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             + " &7Стоимость: &f" + result.hireCost()
                             + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
+    }
+
+
+    private void guardSquad(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(PERMISSION)) {
+            deny(sender);
+            return;
+        }
+        GuardSquadService squads = guardSquadService;
+        if (squads == null) {
+            messages.sendRaw(sender, "&cУправление отрядами стражи недоступно.");
+            return;
+        }
+        if (args.length < 3) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad <create|list|add|remove|delete> ...");
+            return;
+        }
+        String action = args[2].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "create" -> {
+                if (!(sender instanceof Player player) || args.length < 4) {
+                    messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad create <название>");
+                    return;
+                }
+                String name = NpcCommandParser.joinName(args, 3);
+                squads.create(name, player.getUniqueId()).whenComplete((id, error) -> runMain(sender, () ->
+                        messages.sendRaw(sender, error == null
+                                ? "&aОтряд создан. UUID: &f" + id
+                                : "&cНе удалось создать отряд: " + rootMessage(error))));
+            }
+            case "list" -> squads.list().whenComplete((entries, error) -> runMain(sender, () -> {
+                if (error != null) {
+                    messages.sendRaw(sender, "&cНе удалось получить отряды: " + rootMessage(error));
+                    return;
+                }
+                if (entries.isEmpty()) {
+                    messages.sendRaw(sender, "&eОтрядов стражи пока нет.");
+                    return;
+                }
+                messages.sendRaw(sender, "&6Отряды стражи:");
+                entries.forEach(squad -> messages.sendRaw(sender, "&e" + squad.name()
+                        + " &7(" + squad.members().size() + "/10) &8" + squad.id()
+                        + " &7Стража: " + squad.members()));
+            }));
+            case "add" -> {
+                if (args.length != 5) {
+                    messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad add <UUID-отряда> <UUID-стража>");
+                    return;
+                }
+                var squadId = parseUuid(args[3]);
+                var guardId = NpcCommandParser.parseId(args[4]);
+                if (squadId == null || guardId.isEmpty()) {
+                    messages.sendRaw(sender, "&cНекорректный UUID отряда или стража.");
+                    return;
+                }
+                squads.add(squadId, guardId.get()).whenComplete((added, error) -> runMain(sender, () ->
+                        messages.sendRaw(sender, error != null
+                                ? "&cНе удалось добавить стража: " + rootMessage(error)
+                                : Boolean.TRUE.equals(added) ? "&aСтраж добавлен в отряд."
+                                : "&cОтряд не найден или достигнут лимит участников (10).")));
+            }
+            case "remove" -> {
+                if (args.length != 4) {
+                    messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad remove <UUID-стража>");
+                    return;
+                }
+                var guardId = NpcCommandParser.parseId(args[3]);
+                if (guardId.isEmpty()) {
+                    messages.sendRaw(sender, "&cНекорректный UUID стража.");
+                    return;
+                }
+                squads.remove(guardId.get()).whenComplete((removed, error) -> runMain(sender, () ->
+                        messages.sendRaw(sender, error != null
+                                ? "&cНе удалось исключить стража: " + rootMessage(error)
+                                : Boolean.TRUE.equals(removed) ? "&aСтраж исключён из отряда."
+                                : "&eСтраж не состоял в отряде.")));
+            }
+            case "delete" -> {
+                if (args.length != 4) {
+                    messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad delete <UUID-отряда>");
+                    return;
+                }
+                UUID squadId = parseUuid(args[3]);
+                if (squadId == null) {
+                    messages.sendRaw(sender, "&cНекорректный UUID отряда.");
+                    return;
+                }
+                squads.delete(squadId).whenComplete((deleted, error) -> runMain(sender, () ->
+                        messages.sendRaw(sender, error != null
+                                ? "&cНе удалось удалить отряд: " + rootMessage(error)
+                                : Boolean.TRUE.equals(deleted) ? "&aОтряд удалён."
+                                : "&eОтряд не найден.")));
+            }
+            default -> messages.sendRaw(sender, "&cНеизвестное действие. Доступно: create, list, add, remove, delete.");
+        }
+    }
+
+    private UUID parseUuid(String value) {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     private void guardOrder(CommandSender sender, String[] args) {
@@ -1029,6 +1142,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
             messages.sendRaw(sender, "&e/" + label + " guard order <UUID> <приказ> &7— приказ стражу");
+            if (sender.hasPermission(PERMISSION)) messages.sendRaw(sender, "&e/" + label + " guard squad <create|list|add|remove|delete> &7— управление отрядами");
             messages.sendRaw(sender, "&e/" + label + " guard info <UUID> &7— карточка стража");
             messages.sendRaw(sender, "&e/" + label + " guard general appoint|dismiss <игрок> &7— управление генералами");
             messages.sendRaw(sender, "&e/" + label + " guard general list &7— список генералов");
@@ -1108,9 +1222,15 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("hire", "rent", "list", "info", "general", "order")
+                    ? List.of("hire", "rent", "list", "info", "general", "order", "squad")
                     : List.of("hire", "list", "info", "general", "order"), args[1]);
         }
+        if (sender.hasPermission(PERMISSION) && args.length == 3
+                && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("squad"))
+            return startsWith(List.of("create", "list", "add", "remove", "delete"), args[2]);
+        if (sender.hasPermission(PERMISSION) && args.length == 4
+                && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("squad")
+                && args[2].equalsIgnoreCase("delete")) return List.of();
         if (args.length == 4 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("order")) {
             return startsWith(List.of("hold", "return", "defend", "escort", "patrol", "clear"), args[3]);
