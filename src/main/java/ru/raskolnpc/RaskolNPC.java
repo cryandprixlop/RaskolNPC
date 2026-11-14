@@ -139,8 +139,17 @@ public final class RaskolNPC extends JavaPlugin {
                 && getServer().getPluginManager().getPlugin("SiegeWar").isEnabled();
         org.bukkit.plugin.Plugin worldGuardPlugin =
                 getServer().getPluginManager().getPlugin("WorldGuard");
-        worldGuardProtectionAdapter = worldGuardPlugin != null && worldGuardPlugin.isEnabled()
-                ? new WorldGuardProtectionAdapter() : null;
+        worldGuardProtectionAdapter = null;
+        if (worldGuardPlugin != null && worldGuardPlugin.isEnabled()) {
+            try {
+                worldGuardProtectionAdapter = new WorldGuardProtectionAdapter();
+            } catch (RuntimeException adapterError) {
+                getLogger().log(Level.WARNING,
+                        "WorldGuard was detected, but its region query adapter could not initialize. "
+                                + "NPC combat must fail closed until the adapter is available.",
+                        adapterError);
+            }
+        }
         java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
         if (townyEnabled) diplomacyProviders.add(new TownyDiplomacyAdapter());
         if (siegeWarEnabled) diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
@@ -170,7 +179,8 @@ public final class RaskolNPC extends JavaPlugin {
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
         commandHandler.setIntegrationCapabilities(new IntegrationCapabilities(
-                getServer().getPluginManager(), townyEnabled));
+                getServer().getPluginManager(), townyEnabled,
+                worldGuardProtectionAdapter != null));
         commandHandler.setGuardOrderService(guardOrderService);
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
