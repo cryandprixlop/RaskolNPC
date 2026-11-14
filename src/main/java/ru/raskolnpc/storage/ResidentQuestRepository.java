@@ -33,6 +33,8 @@ public interface ResidentQuestRepository {
     CompletableFuture<Integer> getBusinessStock(NpcId residentId, String material);
     /** Atomically removes stock for a business purchase or production use. */
     CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
+    /** Applies one configured daily consumption pass to all town business stock rows. */
+    CompletableFuture<Integer> consumeBusinessStockDaily(int percentage);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
     /** Resolves a review once; completion credits the stored reward (or the legacy fallback) exactly once. */
     CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId, String questId,
