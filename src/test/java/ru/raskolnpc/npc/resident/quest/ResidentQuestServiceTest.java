@@ -64,7 +64,8 @@ class ResidentQuestServiceTest {
         when(profiles.find(resident.id()))
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
-        when(repository.accept(any(), eq(resident.id()), eq("miner_iron_delivery")))
+        when(repository.accept(any(), eq(resident.id()), eq("miner_iron_delivery"),
+                eq("IRON_INGOT"), eq(32), eq(0))
                 .thenReturn(CompletableFuture.completedFuture(true));
         Player player = mock(Player.class);
         UUID playerId = UUID.randomUUID();
@@ -77,7 +78,8 @@ class ResidentQuestServiceTest {
                 service.accept(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(ResidentQuestService.AcceptResult.WRONG_PROFESSION,
                 service.accept(player, resident.id(), "farmer_wheat_delivery").join());
-        verify(repository, times(1)).accept(playerId, resident.id(), "miner_iron_delivery");
+        verify(repository, times(1)).accept(playerId, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 0);
     }
 
     @Test
@@ -105,7 +107,8 @@ class ResidentQuestServiceTest {
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(
                         new ResidentQuest.Assignment(playerId, resident.id(), "miner_iron_delivery",
                                 ResidentQuest.AssignmentStatus.ACCEPTED, Instant.now(), null))));
-        when(repository.reserveSubmission(playerId, resident.id(), "miner_iron_delivery", 5))
+        when(repository.reserveSubmission(playerId, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 0))
                 .thenReturn(CompletableFuture.completedFuture(true));
         when(repository.releaseSubmission(playerId, resident.id(), "miner_iron_delivery"))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("database unavailable")));
