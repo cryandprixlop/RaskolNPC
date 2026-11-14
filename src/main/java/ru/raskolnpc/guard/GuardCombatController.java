@@ -87,8 +87,13 @@ public final class GuardCombatController {
                 .toList();
         if (guards.isEmpty()) {
             cursor = 0;
+            lastAttack.clear();
             return;
         }
+        java.util.Set<NpcId> activeGuardIds = guards.stream()
+                .map(NpcRecord::id)
+                .collect(java.util.stream.Collectors.toSet());
+        lastAttack.keySet().retainAll(activeGuardIds);
         int count = Math.min(batchSize, guards.size());
         int start = Math.floorMod(cursor, guards.size());
         for (int offset = 0; offset < count; offset++) {
