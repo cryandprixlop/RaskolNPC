@@ -28,7 +28,7 @@ The resident milestone and its automated validation are present on the active pu
 - **Stage 3:** Towny authority/placement and Town-bank operations use existing verified Towny APIs. A provider-neutral relationship policy treats missing diplomacy as neutral. Administrator diagnostics report Towny, Town-bank economy, WorldGuard, and SiegeWar capability without claiming unsupported adapters.
 - **Stage 4:** Towny guard hiring, rent, nation roster, general appointments, payment review, durable guard orders, patrol waypoints, escort, defend, hold, and return-to-post movement are implemented incrementally. Orders are processed by one bounded scheduler; unloaded chunks are not force-loaded.
 
-**Not yet complete:** no verified WorldGuard region-protection adapter or SiegeWar diplomacy adapter is available in this branch. Guard pathfinding around complex terrain, combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies still require implementation and in-server acceptance testing. These features must not be considered complete based only on the current order persistence and movement layer.
+**Not yet complete:** a verified SiegeWar 3.7.0 API adapter now identifies active attacker/defender nation pairs; it does not infer hostility outside an active siege. No WorldGuard region-protection adapter is available yet. Guard pathfinding around complex terrain, combat target execution, squads, rally coordination, morale, equipment, injury, and recovery policies still require implementation and in-server acceptance testing. These features must not be considered complete based only on the current order persistence and movement layer.
 
 ## Phase 0 — Product and technical validation
 
@@ -65,7 +65,7 @@ The resident milestone and its automated validation are present on the active pu
 - Implement permission/authority abstractions.
 - Implement shared relationship and hostility policy.
 - Add Towny adapter using verified public APIs.
-- Add economy and region-protection ports/adapters as supported.
+- Add economy and region-protection ports/adapters as supported. A SiegeWar 3.7.0 public-API adapter now reports active siege hostility; alliance and peacetime diplomacy remain neutral/unknown until a verified source is integrated.
 - Add integration capability reporting and graceful degradation.
 
 **Exit criteria:** adapter contracts are tested; unsupported or unavailable integrations fail safely and retain persisted data.
