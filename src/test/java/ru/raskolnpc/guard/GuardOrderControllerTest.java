@@ -181,6 +181,38 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void pursuesVerifiedHostileNpcEvenWhenGuardHasNoAssignedOrder() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        LivingEntity hostileEntity = mock(LivingEntity.class);
+        NpcRecord hostile = NpcRecord.create(
+                NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(hostile);
+
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(hostileEntity));
+        when(hostileEntity.isValid()).thenReturn(true);
+        when(hostileEntity.isDead()).thenReturn(false);
+        when(hostileEntity.getWorld()).thenReturn(world);
+        when(hostileEntity.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+        when(entities.getNpcId(hostileEntity)).thenReturn(Optional.of(hostile.id()));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > origin.getX());
+        assertTrue(destination.getValue().getX() <= 1.11);
+    }
+
+    @Test
     void doesNotPursueUnknownOrUnregisteredTargets() {
         LivingEntity guardEntity = mock(LivingEntity.class);
         LivingEntity unknownEntity = mock(LivingEntity.class);
