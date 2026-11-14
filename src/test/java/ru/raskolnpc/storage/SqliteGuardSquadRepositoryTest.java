@@ -62,7 +62,7 @@ class SqliteGuardSquadRepositoryTest {
 
         assertFalse(squads.addMember(first, resident.id(), 10).join());
         assertTrue(squads.addMember(first, guard.id(), 10).join());
-        assertThrows(RuntimeException.class, () -> squads.addMember(second, guard.id(), 10).join());
+        assertFalse(squads.addMember(second, guard.id(), 10).join());
     }
 
     @Test
