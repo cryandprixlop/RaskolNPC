@@ -37,6 +37,68 @@ class DatabaseMigrationsTest {
     }
 
     @Test
+    void versionThirteenUpgradePreservesOrdersAndAllowsRally() throws Exception {
+        var file = temporaryDirectory.resolve("version-thirteen.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
+                statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
+                for (int version = 1; version <= 13; version++) {
+                    statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
+                }
+                statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY)");
+                statement.execute("""
+                        CREATE TABLE guard_orders (
+                            npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                            order_type TEXT NOT NULL CHECK (order_type IN (
+                                'HOLD_POSITION', 'PATROL', 'DEFEND', 'ESCORT', 'RETURN_TO_POST'
+                            )),
+                            issuer_uuid TEXT NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                        """);
+                statement.execute("""
+                        CREATE TABLE guard_order_waypoints (
+                            npc_id TEXT NOT NULL REFERENCES guard_orders(npc_id) ON DELETE CASCADE,
+                            sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 15),
+                            world_uuid TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL,
+                            z REAL NOT NULL, yaw REAL NOT NULL, pitch REAL NOT NULL,
+                            PRIMARY KEY (npc_id, sequence)
+                        )
+                        """);
+                statement.execute("INSERT INTO npcs(id) VALUES ('guard-1')");
+                statement.execute("""
+                        INSERT INTO guard_orders(npc_id, order_type, issuer_uuid, updated_at)
+                        VALUES ('guard-1', 'PATROL', 'issuer-1', 123)
+                        """);
+                statement.execute("""
+                        INSERT INTO guard_order_waypoints(
+                            npc_id, sequence, world_uuid, x, y, z, yaw, pitch
+                        ) VALUES ('guard-1', 0, 'world-1', 1, 64, 2, 0, 0)
+                        """);
+            }
+
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(14, schemaVersion(connection));
+            try (var statement = connection.createStatement()) {
+                try (var result = statement.executeQuery(
+                        "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
+                    assertTrue(result.next());
+                    assertEquals("PATROL", result.getString("order_type"));
+                    assertEquals(123, result.getLong("updated_at"));
+                }
+                statement.execute("""
+                        INSERT INTO guard_orders(npc_id, order_type, issuer_uuid, updated_at)
+                        VALUES ('guard-1', 'RALLY', 'issuer-2', 456)
+                        ON CONFLICT(npc_id) DO UPDATE SET order_type = excluded.order_type
+                        """);
+                assertEquals(0, foreignKeyViolations(connection));
+            }
+        }
+    }
+
+    @Test
     void refusesDatabaseCreatedByNewerPluginVersionWithoutChangingIt() throws Exception {
         var file = temporaryDirectory.resolve("future.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
@@ -50,6 +112,15 @@ class DatabaseMigrationsTest {
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
             assertEquals(15, migrationCount(connection));
+        }
+    }
+
+    private static int foreignKeyViolations(java.sql.Connection connection) throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("PRAGMA foreign_key_check")) {
+            int count = 0;
+            while (result.next()) count++;
+            return count;
         }
     }
 
