@@ -118,6 +118,56 @@ public final class SqliteGuardOrderRepository implements GuardOrderRepository {
     }
 
     @Override
+    public CompletableFuture<List<GuardOrder>> findAll() {
+        return database.query(connection -> {
+            List<NpcId> ids = new ArrayList<>();
+            try (var statement = connection.createStatement();
+                 ResultSet result = statement.executeQuery(
+                         "SELECT npc_id FROM guard_orders ORDER BY updated_at, npc_id")) {
+                while (result.next()) ids.add(NpcId.fromString(result.getString("npc_id")));
+            }
+
+            List<GuardOrder> orders = new ArrayList<>();
+            for (NpcId id : ids) {
+                String type;
+                UUID issuer;
+                long updatedAt;
+                try (var statement = connection.prepareStatement("""
+                        SELECT order_type, issuer_uuid, updated_at
+                        FROM guard_orders WHERE npc_id = ?
+                        """)) {
+                    statement.setString(1, id.toString());
+                    try (ResultSet result = statement.executeQuery()) {
+                        if (!result.next()) continue;
+                        type = result.getString("order_type");
+                        issuer = UUID.fromString(result.getString("issuer_uuid"));
+                        updatedAt = result.getLong("updated_at");
+                    }
+                }
+                List<GuardOrder.Waypoint> waypoints = new ArrayList<>();
+                try (var statement = connection.prepareStatement("""
+                        SELECT world_uuid, x, y, z, yaw, pitch
+                        FROM guard_order_waypoints WHERE npc_id = ? ORDER BY sequence
+                        """)) {
+                    statement.setString(1, id.toString());
+                    try (ResultSet result = statement.executeQuery()) {
+                        while (result.next()) {
+                            waypoints.add(new GuardOrder.Waypoint(
+                                    UUID.fromString(result.getString("world_uuid")),
+                                    result.getDouble("x"), result.getDouble("y"),
+                                    result.getDouble("z"), result.getFloat("yaw"),
+                                    result.getFloat("pitch")));
+                        }
+                    }
+                }
+                orders.add(new GuardOrder(id, GuardOrder.Type.valueOf(type),
+                        waypoints, issuer, updatedAt));
+            }
+            return List.copyOf(orders);
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> delete(NpcId npcId) {
         java.util.Objects.requireNonNull(npcId, "npcId");
         return database.transaction(connection -> {
