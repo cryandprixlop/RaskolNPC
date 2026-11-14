@@ -83,6 +83,41 @@ class ResidentDialogueServiceTest {
         assertTrue(activeLines.get(0).contains("Рабочий текст"));
     }
 
+    @Test
+    void reputationSelectsHighestReachedDialogueTier() throws Exception {
+        org.bukkit.configuration.file.YamlConfiguration yaml =
+                new org.bukkit.configuration.file.YamlConfiguration();
+        yaml.loadFromString("""
+                greetings:
+                  - "Привет."
+                reputation:
+                  "0":
+                    - "Мы пока не знакомы."
+                  "10":
+                    - "Спасибо за помощь."
+                  "25":
+                    - "Тебя уважают в городе."
+                traits: {}
+                professions: {}
+                """);
+        ResidentDialogueCatalog catalog = ResidentDialogueCatalog.from(yaml);
+        ResidentProfile profile = profile(EnumSet.noneOf(ResidentProfile.ResidentTrait.class));
+
+        assertTrue(catalog.linesFor(profile, 0).contains("Мы пока не знакомы."));
+        assertTrue(catalog.linesFor(profile, 14).contains("Спасибо за помощь."));
+        assertTrue(catalog.linesFor(profile, 25).contains("Тебя уважают в городе."));
+        assertTrue(catalog.linesFor(profile, 100).contains("Тебя уважают в городе."));
+    }
+
+    @Test
+    void reputationDialogueTiersAreOptionalForLegacyCatalogs() {
+        ResidentDialogueCatalog catalog = new ResidentDialogueCatalog(
+                List.of("Привет."), Map.of(), Map.of());
+        ResidentProfile profile = profile(EnumSet.noneOf(ResidentProfile.ResidentTrait.class));
+
+        assertEquals(List.of("Привет."), catalog.linesFor(profile, 100));
+    }
+
     private static ResidentProfile profile(java.util.Set<ResidentProfile.ResidentTrait> traits) {
         Map<ResidentProfession, ResidentSkillLevel> skills = new EnumMap<>(ResidentProfession.class);
         skills.put(ResidentProfession.MINER, ResidentSkillLevel.APPRENTICE);
