@@ -50,8 +50,8 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
 
-        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertFalse(quests.accept(player, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join());
+        assertFalse(quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join());
         assertEquals(1, quests.findActiveForPlayer(player).join().size());
         assertTrue(quests.findActive(player, resident.id(), "miner_iron_delivery").join().isPresent());
     }
@@ -60,7 +60,7 @@ class SqliteResidentQuestRepositoryTest {
     void completionIsOneWayAndCannotBeRepeated() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
 
         assertTrue(quests.complete(player, resident.id(), "miner_iron_delivery").join());
         assertFalse(quests.complete(player, resident.id(), "miner_iron_delivery").join());
@@ -71,10 +71,10 @@ class SqliteResidentQuestRepositoryTest {
     void submissionCreditsReputationExactlyOnce() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
 
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertFalse(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(5, quests.getReputation(player).join());
@@ -86,13 +86,13 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
 
-        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(5, quests.getReputation(player).join());
 
-        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
         assertEquals(10, quests.getReputation(player).join());
     }
@@ -101,12 +101,12 @@ class SqliteResidentQuestRepositoryTest {
     void onlyOneConcurrentSubmissionCanReserveAnActiveAssignment() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
 
         CompletableFuture<Boolean> first =
-                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5);
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96);
         CompletableFuture<Boolean> second =
-                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5);
+                quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96);
         CompletableFuture.allOf(first, second).join();
 
         assertEquals(1, List.of(first.join(), second.join()).stream()
@@ -117,12 +117,12 @@ class SqliteResidentQuestRepositoryTest {
     void releasingReservationAllowsRetryWithoutCreditingReputation() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
 
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertEquals(0, quests.getReputation(player).join());
     }
 
@@ -130,12 +130,12 @@ class SqliteResidentQuestRepositoryTest {
     void uncertainSubmissionCanBeMarkedForReviewAndCannotBeRetried() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
 
         assertTrue(quests.markSubmissionForReview(player, resident.id(),
                 "miner_iron_delivery", "test failure").join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertFalse(quests.releaseSubmission(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(0, quests.getReputation(player).join());
     }
@@ -144,11 +144,11 @@ class SqliteResidentQuestRepositoryTest {
     void startupRecoveryMovesInProgressSubmissionToReviewAndPreventsReplay() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
 
         assertEquals(1, quests.recoverUnfinishedSubmissions().join());
-        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertFalse(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertEquals(0, quests.getReputation(player).join());
         assertEquals(1, quests.recoverUnfinishedSubmissions().join());
     }
@@ -157,23 +157,23 @@ class SqliteResidentQuestRepositoryTest {
     void startupRecoveryDoesNotChangeCompletedSubmissions() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.completeSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
 
         assertEquals(0, quests.recoverUnfinishedSubmissions().join());
         assertEquals(5, quests.getReputation(player).join());
 
-        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery").join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
     }
 
     @Test
     void reviewQueueContainsReasonAndOriginalRewardSnapshot() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 7).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 7, 32, 96).join());
         assertTrue(quests.markSubmissionForReview(player, resident.id(),
                 "miner_iron_delivery", "inventory/database boundary").join());
 
@@ -191,8 +191,8 @@ class SqliteResidentQuestRepositoryTest {
     void resolvingReviewAsCompleteCreditsSnapshotExactlyOnce() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 7).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 7, 32, 96).join());
         assertTrue(quests.markSubmissionForReview(player, resident.id(),
                 "miner_iron_delivery", "uncertain result").join());
 
@@ -209,15 +209,15 @@ class SqliteResidentQuestRepositoryTest {
     void resolvingReviewAsRetryAllowsResubmissionWithoutReward() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
-        quests.accept(player, resident.id(), "miner_iron_delivery").join();
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        quests.accept(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 32, 96).join();
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
         assertTrue(quests.markSubmissionForReview(player, resident.id(), "miner_iron_delivery",
                 "uncertain result").join());
 
         assertTrue(quests.resolveReview(player, resident.id(),
                 "miner_iron_delivery", false, 0).join());
         assertEquals(0, quests.getReputation(player).join());
-        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", 5).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery", "IRON_INGOT", 5, 32, 96).join());
     }
 
     private NpcRecord createResident() {
