@@ -16,6 +16,8 @@ public interface ResidentQuestRepository {
             UUID playerId, NpcId residentId, String questId);
     CompletableFuture<List<ResidentQuest.Assignment>> findActiveForPlayer(UUID playerId);
     CompletableFuture<Boolean> complete(UUID playerId, NpcId residentId, String questId);
+    /** Cancels an accepted assignment only when no uncertain submission is in progress. */
+    CompletableFuture<Boolean> abandon(UUID playerId, NpcId residentId, String questId);
 
     /** Reserves an accepted assignment before inventory mutation. */
     CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId,
