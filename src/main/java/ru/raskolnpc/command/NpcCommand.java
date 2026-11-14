@@ -23,6 +23,7 @@ import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.CompletionException;
 
 public final class NpcCommand implements CommandExecutor, TabCompleter {
