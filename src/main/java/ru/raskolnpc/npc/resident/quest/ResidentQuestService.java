@@ -290,6 +290,20 @@ public final class ResidentQuestService {
         });
     }
 
+    public CompletableFuture<Integer> businessStock(NpcId residentId, String material) {
+        return repository.getBusinessStock(
+                Objects.requireNonNull(residentId, "residentId"),
+                Objects.requireNonNull(material, "material"));
+    }
+
+    /** Used by a future market adapter to reserve goods without allowing negative stock. */
+    public CompletableFuture<Boolean> withdrawBusinessStock(
+            NpcId residentId, String material, int amount) {
+        return repository.withdrawBusinessStock(
+                Objects.requireNonNull(residentId, "residentId"),
+                Objects.requireNonNull(material, "material"), amount);
+    }
+
     public CompletableFuture<Integer> reputation(UUID playerId) {
         return repository.getReputation(Objects.requireNonNull(playerId, "playerId"));
     }
