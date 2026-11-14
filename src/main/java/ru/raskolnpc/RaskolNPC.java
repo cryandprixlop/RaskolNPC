@@ -11,6 +11,7 @@ import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
+import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
@@ -135,6 +136,10 @@ public final class RaskolNPC extends JavaPlugin {
         commandHandler.setResidentScheduleService(new ResidentScheduleCommandService(
                 commandService, residentSchedules, residentBehaviorService));
         commandHandler.setResidentDialogueService(residentDialogues);
+        if (townyEnabled) {
+            commandHandler.setKingdomGeneralService(new TownyKingdomGeneralService(
+                    getConfig().getString("guards.towny-general-rank", "general")));
+        }
 
         databaseManager.initialize()
                 .thenCompose(ignored -> npcLifecycleService.loadAll())
