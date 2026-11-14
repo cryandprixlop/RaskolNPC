@@ -100,6 +100,27 @@ class GuardOrderServiceTest {
         assertTrue(service.snapshot().isEmpty());
     }
 
+    @Test
+    void removesPersistedOrderWhenGuardIsDeletedDuringSave() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord guard = create(NpcType.GUARD);
+        registry.register(guard);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        CompletableFuture<Boolean> pendingSave = new CompletableFuture<>();
+        when(repository.save(any())).thenReturn(pendingSave);
+        when(repository.delete(guard.id())).thenReturn(CompletableFuture.completedFuture(true));
+        GuardOrderService service = new GuardOrderService(registry, repository);
+
+        CompletableFuture<GuardOrder> issuing = service.issue(guard.id(),
+                GuardOrder.Type.HOLD_POSITION, List.of(), UUID.randomUUID());
+        registry.unregister(guard.id());
+        pendingSave.complete(true);
+
+        assertThrows(RuntimeException.class, issuing::join);
+        verify(repository).delete(guard.id());
+        assertTrue(service.snapshot().isEmpty());
+    }
+
     private static NpcRecord create(NpcType type) {
         return NpcRecord.create(type, type.name(), null, "town", "nation", "{}");
     }

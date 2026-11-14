@@ -75,14 +75,20 @@ public final class GuardOrderService {
 
         GuardOrder order = new GuardOrder(guardId, type, route, issuer,
                 Instant.now().toEpochMilli());
-        return repository.save(order).thenApply(saved -> {
-            if (!saved) throw new IllegalStateException(
-                    "Guard order could not be saved; the NPC may have been deleted.");
+        return repository.save(order).thenCompose(saved -> {
+            if (!saved) return CompletableFuture.failedFuture(
+                    new IllegalStateException("Guard order could not be saved; the NPC may have been deleted."));
             if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
-                throw new IllegalStateException("The guard was deleted while its order was being saved.");
+                activeOrders.remove(guardId);
+                return repository.delete(guardId).handle((deleted, cleanupError) -> {
+                    IllegalStateException failure = new IllegalStateException(
+                            "The guard was deleted while its order was being saved.");
+                    if (cleanupError != null) failure.addSuppressed(cleanupError);
+                    throw new java.util.concurrent.CompletionException(failure);
+                });
             }
             activeOrders.put(guardId, order);
-            return order;
+            return CompletableFuture.completedFuture(order);
         });
     }
 
