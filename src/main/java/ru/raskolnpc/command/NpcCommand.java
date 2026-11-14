@@ -14,6 +14,7 @@ import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
 import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
 
@@ -31,6 +32,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private volatile GuardRentService guardRentService;
     private volatile ResidentScheduleCommandService residentScheduleService;
     private volatile ResidentDialogueService residentDialogueService;
+    private volatile TownyKingdomGeneralService kingdomGeneralService;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
                       NpcCommandMessages messages) {
@@ -49,6 +51,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setResidentDialogueService(ResidentDialogueService service) {
         this.residentDialogueService = service;
+    }
+
+    public void setKingdomGeneralService(TownyKingdomGeneralService service) {
+        this.kingdomGeneralService = service;
     }
 
     @Override
@@ -70,8 +76,13 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("hire")
                 && sender instanceof Player
                 && service.isGuardHiringEnabled();
+        boolean guardGeneralManagement = args.length >= 2
+                && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("general")
+                && sender instanceof Player;
 
-        if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing) {
+        if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing
+                && !guardGeneralManagement) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -235,6 +246,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private void guard(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("general")) {
+            guardGeneral(sender, args);
+            return;
+        }
         if (args.length >= 2 && args[1].equalsIgnoreCase("list")) {
             guardList(sender);
             return;
@@ -289,6 +304,52 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             + " &7Стоимость: &f" + result.hireCost()
                             + " &7Суточная аренда: &f" + result.dailyRent());
                 }));
+    }
+
+    private void guardGeneral(CommandSender sender, String[] args) {
+        TownyKingdomGeneralService generals = kingdomGeneralService;
+        if (generals == null) {
+            messages.sendRaw(sender, "&cУправление генералами недоступно: интеграция Towny выключена.");
+            return;
+        }
+        if (args.length == 3 && args[2].equalsIgnoreCase("list")) {
+            try {
+                List<TownyKingdomGeneralService.GeneralEntry> entries = generals.list(sender);
+                if (entries.isEmpty()) {
+                    messages.sendRaw(sender, "&eГенералы пока не назначены.");
+                    return;
+                }
+                messages.sendRaw(sender, "&6Генералы королевской стражи:");
+                for (TownyKingdomGeneralService.GeneralEntry entry : entries) {
+                    messages.sendRaw(sender, "&e" + entry.residentName() + " &7— " + entry.nationName());
+                }
+            } catch (RuntimeException exception) {
+                messages.sendRaw(sender, "&cНе удалось получить список генералов: " + rootMessage(exception));
+            }
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            messages.sendRaw(sender, "&cНазначать и снимать генералов может только король нации в игре.");
+            return;
+        }
+        if (args.length != 4 || !(args[2].equalsIgnoreCase("appoint")
+                || args[2].equalsIgnoreCase("dismiss"))) {
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard general appoint <игрок>");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard general dismiss <игрок>");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard general list");
+            return;
+        }
+        try {
+            if (args[2].equalsIgnoreCase("appoint")) {
+                generals.appoint(player, args[3]);
+                messages.sendRaw(sender, "&aИгрок &f" + args[3] + " &aназначен генералом вашей нации.");
+            } else {
+                generals.dismiss(player, args[3]);
+                messages.sendRaw(sender, "&aПолномочия генерала у игрока &f" + args[3] + " &aсняты.");
+            }
+        } catch (RuntimeException exception) {
+            messages.sendRaw(sender, "&cОперация не выполнена: " + rootMessage(exception));
+        }
     }
 
     private void guardList(CommandSender sender) {
@@ -542,6 +603,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
             messages.sendRaw(sender, "&e/" + label + " guard list &7— состав стражи вашей нации");
             messages.sendRaw(sender, "&e/" + label + " guard info <UUID> &7— карточка стража");
+            messages.sendRaw(sender, "&e/" + label + " guard general appoint|dismiss <игрок> &7— управление генералами");
+            messages.sendRaw(sender, "&e/" + label + " guard general list &7— список генералов");
         }
         if (sender.hasPermission(PERMISSION)) {
             messages.sendRaw(sender, "&e/" + label + " list &7— список NPC");
@@ -603,7 +666,17 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("hire", "rent", "list", "info") : List.of("hire", "list", "info"), args[1]);
+                    ? List.of("hire", "rent", "list", "info", "general")
+                    : List.of("hire", "list", "info", "general"), args[1]);
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("general")) {
+            return startsWith(List.of("appoint", "dismiss", "list"), args[2]);
+        }
+        if (args.length == 4 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("general")
+                && (args[2].equalsIgnoreCase("appoint") || args[2].equalsIgnoreCase("dismiss"))) {
+            return startsWith(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[3]);
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("info")) return List.of();
