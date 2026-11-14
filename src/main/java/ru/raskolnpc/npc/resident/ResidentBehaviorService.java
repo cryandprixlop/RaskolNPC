@@ -135,14 +135,15 @@ public final class ResidentBehaviorService {
         if (clockWorld == null) return;
 
         long dayNumber = Math.floorDiv(clockWorld.getFullTime(), 24000L);
-        if (lastNeedsDay == Long.MIN_VALUE || dayNumber != lastNeedsDay) {
+        boolean firstNeedsCycle = lastNeedsDay == Long.MIN_VALUE;
+        if (firstNeedsCycle || dayNumber != lastNeedsDay) {
             // Run the first daily needs cycle after startup as well as at each
             // subsequent in-game day boundary. Without this initialization,
             // residents would keep their initial needs unchanged for day one.
             lastNeedsDay = dayNumber;
             needsQueue = residents;
             needsCursor = 0;
-            if (dayNumber != Long.MIN_VALUE) {
+            if (!firstNeedsCycle) {
                 ResidentQuestRepository stocks = questRepository;
                 int consumption = dailyStockConsumptionPercent;
                 if (stocks != null && consumption > 0) {
