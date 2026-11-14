@@ -4,7 +4,6 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.Test;
 
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -30,7 +29,7 @@ class IntegrationCapabilitiesTest {
     void doesNotClaimWorldGuardSupportJustBecausePluginIsInstalled() {
         PluginManager manager = mock(PluginManager.class);
         Plugin worldGuardPlugin = plugin("7.0.14", true);
-        Plugin siegeWarPlugin = plugin("1.0.0", true);
+        Plugin siegeWarPlugin = plugin("3.7.0", true);
         when(manager.getPlugin("Towny")).thenReturn(null);
         when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
         when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
@@ -45,8 +44,8 @@ class IntegrationCapabilitiesTest {
         var siegeWar = snapshot.stream()
                 .filter(value -> value.name().equals("SiegeWar diplomacy"))
                 .findFirst().orElseThrow();
-        assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, siegeWar.status());
-        assertTrue(siegeWar.details().contains("unknown relations remain neutral"));
+        assertEquals(IntegrationCapabilities.Status.AVAILABLE, siegeWar.status());
+        assertTrue(siegeWar.details().contains("active attacker/defender nation pairs"));
     }
 
     @Test
@@ -58,6 +57,18 @@ class IntegrationCapabilitiesTest {
 
         var towny = new IntegrationCapabilities(manager, true).snapshot().getFirst();
         assertEquals(IntegrationCapabilities.Status.DISABLED, towny.status());
+    }
+
+    @Test
+    void reportsDisabledSiegeWarAsDisabledRatherThanUnsupported() {
+        PluginManager manager = mock(PluginManager.class);
+        Plugin siegeWarPlugin = plugin("3.7.0", false);
+        when(manager.getPlugin("Towny")).thenReturn(null);
+        when(manager.getPlugin("WorldGuard")).thenReturn(null);
+        when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
+
+        var siegeWar = new IntegrationCapabilities(manager, false).snapshot().getLast();
+        assertEquals(IntegrationCapabilities.Status.DISABLED, siegeWar.status());
     }
 
     private static Plugin plugin(String version, boolean enabled) {
