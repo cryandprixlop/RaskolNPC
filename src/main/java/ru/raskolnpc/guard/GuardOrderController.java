@@ -184,6 +184,7 @@ public final class GuardOrderController {
                 .filter(candidate -> candidate.isValid() && !candidate.isDead())
                 .filter(candidate -> candidate.getWorld().equals(origin.getWorld()))
                 .filter(candidate -> candidate.getLocation().distanceSquared(origin) <= radiusSquared)
+                .filter(candidate -> hasTerritoryAccess(candidate.getLocation(), guard.nationId()))
                 .filter(candidate -> isVerifiedHostile(guard, candidate))
                 .min(java.util.Comparator.comparingDouble(candidate ->
                         candidate.getLocation().distanceSquared(origin)))

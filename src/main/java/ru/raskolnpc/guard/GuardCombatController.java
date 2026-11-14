@@ -153,6 +153,7 @@ public final class GuardCombatController {
                                 attacker.getLocation().getWorld()))
                 .filter(candidate -> candidate.getLocation().distanceSquared(attacker.getLocation())
                         <= detectionRadius * detectionRadius)
+                .filter(candidate -> hasTerritoryAccess(candidate.getLocation(), guard.nationId()))
                 .filter(candidate -> isVerifiedHostile(guard, candidate))
                 .min(Comparator.comparingDouble(candidate ->
                         candidate.getLocation().distanceSquared(attacker.getLocation())))

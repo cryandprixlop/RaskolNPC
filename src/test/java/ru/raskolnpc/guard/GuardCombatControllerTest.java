@@ -379,6 +379,33 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void skipsNearestHostileOutsideHiringTerritoryAndAttacksEligibleTarget() {
+        NpcRecord eligibleEnemy = NpcRecord.create(
+                NpcType.RESIDENT, "Eligible enemy", null, "town-c", "nation-c", "{}");
+        registry.register(eligibleEnemy);
+        LivingEntity eligibleTarget = mock(LivingEntity.class);
+        when(eligibleTarget.isValid()).thenReturn(true);
+        when(eligibleTarget.isDead()).thenReturn(false);
+        when(eligibleTarget.getLocation()).thenReturn(new Location(world, 4.5, 64, 0.5));
+        when(target.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0))
+                .thenReturn(List.of(target, eligibleTarget));
+        when(entities.getNpcId(eligibleTarget)).thenReturn(Optional.of(eligibleEnemy.id()));
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setTerritoryAccess((location, nationId) ->
+                "nation-a".equals(nationId) && location.getX() < 2.0);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+        verify(eligibleTarget).damage(2.0, attacker);
+    }
+
+    @Test
     void processesGuardsInBoundedBatchesWithoutStarvingLaterGuards() {
         NpcRecord secondGuard = NpcRecord.create(
                 NpcType.GUARD, "Second guard", null, "town-c", "nation-c", "{}");

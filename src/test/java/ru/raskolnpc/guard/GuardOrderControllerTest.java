@@ -186,6 +186,50 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void skipsNearestHostileOutsideHiringTerritoryAndPursuesEligibleTarget() {
+        LivingEntity guardEntity = mock(LivingEntity.class);
+        LivingEntity outsideTarget = mock(LivingEntity.class);
+        LivingEntity insideTarget = mock(LivingEntity.class);
+        NpcRecord outsideRecord = NpcRecord.create(
+                NpcType.GUARD, "Outside hostile", null, "enemy-town", "enemy-nation", "{}");
+        NpcRecord insideRecord = NpcRecord.create(
+                NpcType.GUARD, "Inside hostile", null, "enemy-town-2", "enemy-nation-2", "{}");
+        registry.register(outsideRecord);
+        registry.register(insideRecord);
+
+        Location origin = new Location(world, 0.5, 64, 0.5);
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.getLocation()).thenReturn(origin);
+        when(guardEntity.getNearbyEntities(8.0, 8.0, 8.0))
+                .thenReturn(List.of(outsideTarget, insideTarget));
+        for (LivingEntity candidate : List.of(outsideTarget, insideTarget)) {
+            when(candidate.isValid()).thenReturn(true);
+            when(candidate.isDead()).thenReturn(false);
+            when(candidate.getWorld()).thenReturn(world);
+        }
+        when(outsideTarget.getLocation()).thenReturn(new Location(world, 0.5, 64, 1.5));
+        when(insideTarget.getLocation()).thenReturn(new Location(world, 5.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(guardEntity));
+        when(entities.getNpcId(outsideTarget)).thenReturn(Optional.of(outsideRecord.id()));
+        when(entities.getNpcId(insideTarget)).thenReturn(Optional.of(insideRecord.id()));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller = new GuardOrderController(
+                plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.setTerritoryAccess((location, nationId) ->
+                "nation".equals(nationId) && location.getZ() < 1.0);
+
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(guardEntity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > origin.getX(),
+                "guard should pursue the eligible target inside its hiring nation");
+        assertEquals(origin.getZ(), destination.getValue().getZ(), 0.001);
+    }
+
+    @Test
     void pursuesNearestOfMultipleVerifiedHostileTargets() {
         LivingEntity guardEntity = mock(LivingEntity.class);
         LivingEntity fartherHostile = mock(LivingEntity.class);
