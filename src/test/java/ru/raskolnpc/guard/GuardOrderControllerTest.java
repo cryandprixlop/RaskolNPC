@@ -75,7 +75,7 @@ class GuardOrderControllerTest {
                 new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
         controller.tick();
 
-        verify(entity).teleport(argThat(location ->
+        verify(entity).teleport((Location) argThat((Location location) ->
                 location.getX() > 0.5 && location.getX() <= 1.11
                         && location.getWorld().getUID().equals(world.getUID())));
     }
@@ -95,7 +95,7 @@ class GuardOrderControllerTest {
         controller.tick();
 
         assertFalse(world.isChunkLoaded(2, 0));
-        verify(entity, never()).teleport(any(Location.class));
+        verify(entity, never()).teleport((Location) any(Location.class));
     }
 
     @Test
