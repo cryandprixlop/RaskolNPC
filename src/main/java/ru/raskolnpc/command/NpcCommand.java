@@ -685,7 +685,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     return;
                 }
             }
-        } catch (NumberFormatException | IllegalArgumentException error) {
+        } catch (IllegalArgumentException error) {
             messages.sendRaw(sender, "&cНекорректные координаты приказа.");
             return;
         }
@@ -713,17 +713,6 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         return new GuardOrder.Waypoint(player.getWorld().getUID(), x, y, z,
                 player.getLocation().getYaw(), player.getLocation().getPitch());
-    }
-
-    private void runMain(CommandSender sender, Runnable action) {
-        if (!plugin.isEnabled()) return;
-        try {
-            if (Bukkit.isPrimaryThread()) action.run();
-            else Bukkit.getScheduler().runTask(plugin, action);
-        } catch (RuntimeException schedulingError) {
-            plugin.getLogger().warning("Could not schedule guard order response: "
-                    + schedulingError.getMessage());
-        }
     }
 
     private void guardGeneral(CommandSender sender, String[] args) {
