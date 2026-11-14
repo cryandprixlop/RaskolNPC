@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
+    private static final int CURRENT_SCHEMA_VERSION = 11;
 
     private DatabaseMigrations() {
     }
@@ -19,6 +20,13 @@ public final class DatabaseMigrations {
                     """);
         }
 
+        int installedVersion = installedVersion(connection);
+        if (installedVersion > CURRENT_SCHEMA_VERSION) {
+            throw new SQLException("Database schema version " + installedVersion
+                    + " is newer than this RaskolNPC build supports ("
+                    + CURRENT_SCHEMA_VERSION + "). Refusing to start to prevent data loss.");
+        }
+
         if (!isApplied(connection, 1)) applyInitialSchema(connection);
         if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
         if (!isApplied(connection, 3)) applyDeletionQueueSchema(connection);
@@ -30,6 +38,13 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
         if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
         if (!isApplied(connection, 11)) applyResidentBusinessStockSchema(connection);
+    }
+
+    private static int installedVersion(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")) {
+            return result.next() ? result.getInt(1) : 0;
+        }
     }
 
     private static boolean isApplied(Connection connection, int version)
