@@ -68,10 +68,7 @@ class ResidentQuestServiceTest {
         assertEquals(ResidentQuestService.AcceptResult.ACCEPTED,
                 service.accept(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(ResidentQuestService.AcceptResult.WRONG_PROFESSION,
-                service.accept(player, resident.id(), "unknown").join() ==
-                        ResidentQuestService.AcceptResult.QUEST_NOT_FOUND
-                        ? ResidentQuestService.AcceptResult.WRONG_PROFESSION
-                        : ResidentQuestService.AcceptResult.QUEST_NOT_FOUND);
+                service.accept(player, resident.id(), "farmer_wheat_delivery").join());
         verify(repository, times(1)).accept(playerId, resident.id(), "miner_iron_delivery");
     }
 }
