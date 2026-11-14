@@ -79,6 +79,19 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void doesNotAttackTargetOutsideSphericalDetectionRadius() {
+        when(target.getLocation()).thenReturn(new Location(world, 11.5, 64, 11.5));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
     void ignoresNeutralAndUnknownDiplomacy() {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.UNKNOWN);
