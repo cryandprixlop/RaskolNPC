@@ -1,7 +1,5 @@
 package ru.raskolnpc.integration.towny;
 
-import com.palmergames.bukkit.towny.object.Nation;
-import com.palmergames.bukkit.towny.object.Resident;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,20 +19,20 @@ class TownyKingdomGeneralServiceTest {
     private TownyKingdomGeneralService.Access access;
     private TownyKingdomGeneralService service;
     private Player king;
-    private Resident kingResident;
-    private Resident target;
-    private Nation nation;
-    private Nation otherNation;
+    private TownyKingdomGeneralService.ResidentRef kingResident;
+    private TownyKingdomGeneralService.ResidentRef target;
+    private TownyKingdomGeneralService.NationRef nation;
+    private TownyKingdomGeneralService.NationRef otherNation;
 
     @BeforeEach
     void setUp() {
         access = mock(TownyKingdomGeneralService.Access.class);
         service = new TownyKingdomGeneralService(access, "general");
         king = mock(Player.class);
-        kingResident = mock(Resident.class);
-        target = mock(Resident.class);
-        nation = mock(Nation.class);
-        otherNation = mock(Nation.class);
+        kingResident = mock(TownyKingdomGeneralService.ResidentRef.class);
+        target = mock(TownyKingdomGeneralService.ResidentRef.class);
+        nation = mock(TownyKingdomGeneralService.NationRef.class);
+        otherNation = mock(TownyKingdomGeneralService.NationRef.class);
 
         when(king.getUniqueId()).thenReturn(KING_ID);
         when(access.resident(KING_ID)).thenReturn(kingResident);
@@ -43,9 +41,9 @@ class TownyKingdomGeneralServiceTest {
         when(access.matchNationRank("general")).thenReturn("General");
         when(access.resident("Target")).thenReturn(target);
         when(access.nationOf(target)).thenReturn(nation);
-        when(nation.getUUID()).thenReturn(NATION_ID);
-        when(nation.getName()).thenReturn("Kingdom");
-        when(target.getName()).thenReturn("Target");
+        when(nation.id()).thenReturn(NATION_ID);
+        when(nation.name()).thenReturn("Kingdom");
+        when(target.name()).thenReturn("Target");
     }
 
     @Test
@@ -83,7 +81,7 @@ class TownyKingdomGeneralServiceTest {
     @Test
     void cannotAppointResidentFromAnotherNation() {
         when(access.nationOf(target)).thenReturn(otherNation);
-        when(otherNation.getUUID()).thenReturn(OTHER_NATION_ID);
+        when(otherNation.id()).thenReturn(OTHER_NATION_ID);
 
         assertThrows(IllegalStateException.class, () -> service.appoint(king, "Target"));
         verify(access, never()).addRank(any(), anyString());
