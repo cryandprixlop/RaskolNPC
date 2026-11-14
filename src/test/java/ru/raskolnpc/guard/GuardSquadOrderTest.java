@@ -79,6 +79,57 @@ class GuardSquadOrderTest {
         verify(orderRepository).delete(first.id());
     }
 
+
+    @Test
+    void rallyOrderSpreadsMembersAroundSharedPoint() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord first = guard(registry);
+        NpcRecord second = guard(registry);
+        NpcRecord third = guard(registry);
+        UUID squadId = UUID.randomUUID();
+        GuardSquad squad = new GuardSquad(squadId, "Rally", UUID.randomUUID(),
+                System.currentTimeMillis(), List.of(first.id(), second.id(), third.id()));
+        GuardSquadRepository squads = mock(GuardSquadRepository.class);
+        when(squads.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(squad)));
+
+        List<GuardOrder> saved = new java.util.concurrent.CopyOnWriteArrayList<>();
+        GuardOrderRepository orderRepository = mock(GuardOrderRepository.class);
+        when(orderRepository.save(any())).thenAnswer(invocation -> {
+            saved.add(invocation.getArgument(0));
+            return CompletableFuture.completedFuture(true);
+        });
+        GuardOrderService orders = new GuardOrderService(registry, orderRepository);
+        GuardSquadService service = new GuardSquadService(registry, squads, 10);
+        GuardOrder.Waypoint rallyPoint = new GuardOrder.Waypoint(
+                UUID.randomUUID(), 100.0, 64.0, 100.0, 0.0f, 0.0f);
+
+        GuardSquadService.SquadOrderResult result = service.issueOrder(squadId, orders,
+                GuardOrder.Type.RALLY, List.of(rallyPoint), UUID.randomUUID()).join();
+
+        assertEquals(new GuardSquadService.SquadOrderResult(3, 3, 0), result);
+        assertEquals(3, saved.size());
+        assertEquals(3, saved.stream().map(order -> order.waypoints().getFirst())
+                .map(point -> point.x() + ":" + point.z()).distinct().count());
+        for (GuardOrder order : saved) {
+            GuardOrder.Waypoint point = order.waypoints().getFirst();
+            double distance = Math.hypot(point.x() - rallyPoint.x(), point.z() - rallyPoint.z());
+            assertEquals(1.25, distance, 0.0001);
+            assertEquals(rallyPoint.worldId(), point.worldId());
+        }
+    }
+
+    @Test
+    void rejectsRallyOrderWithoutExactlyOneWaypoint() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord guard = guard(registry);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrderService service = new GuardOrderService(registry, repository);
+
+        assertThrows(RuntimeException.class, () -> service.issue(guard.id(),
+                GuardOrder.Type.RALLY, List.of(), UUID.randomUUID()).join());
+        verifyNoInteractions(repository);
+    }
+
     private static NpcRecord guard(NpcRegistry registry) {
         NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
         registry.register(guard);
