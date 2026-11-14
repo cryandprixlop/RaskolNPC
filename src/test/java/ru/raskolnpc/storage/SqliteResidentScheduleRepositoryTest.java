@@ -49,13 +49,7 @@ class SqliteResidentScheduleRepositoryTest {
 
     @Test
     void savesAndReplacesScheduleAndDestinations() {
-        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
-                "town-1", "nation-1", "{}");
-        npcRepository.insert(npc).join();
-        profileRepository.save(new ResidentProfile(npc.id(), 30,
-                ResidentProfession.FARMER, java.util.Set.of(),
-                75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
-
+        NpcRecord npc = createResident("Mira");
         ResidentSchedule first = new ResidentSchedule(List.of(
                 new ResidentSchedule.Entry(DayOfWeek.MONDAY, 480, 720,
                         ResidentSchedule.Activity.WORK,
@@ -90,6 +84,39 @@ class SqliteResidentScheduleRepositoryTest {
     }
 
     @Test
+    void loadsResidentWithHomeEvenWhenNoScheduleExists() {
+        NpcRecord npc = createResident("HomeOnly");
+        ResidentDestination home = new ResidentDestination(npc.id(),
+                ResidentDestination.DestinationType.HOME, UUID.randomUUID(),
+                12, 64, -8, 0, 0, "Home");
+        repository.saveDestination(home).join();
+
+        var snapshot = repository.findAllBehaviorData().join().stream()
+                .filter(data -> data.npcId().equals(npc.id()))
+                .findFirst().orElseThrow();
+
+        assertTrue(snapshot.schedule().entries().isEmpty());
+        assertEquals(List.of(home), snapshot.destinations());
+    }
+
+    @Test
+    void loadsScheduledResidentEvenWhenDestinationIsNotConfiguredYet() {
+        NpcRecord npc = createResident("ScheduleOnly");
+        ResidentSchedule schedule = new ResidentSchedule(List.of(
+                new ResidentSchedule.Entry(DayOfWeek.MONDAY, 480, 600,
+                        ResidentSchedule.Activity.WORK,
+                        ResidentDestination.DestinationType.WORK)));
+        repository.saveSchedule(npc.id(), schedule).join();
+
+        var snapshot = repository.findAllBehaviorData().join().stream()
+                .filter(data -> data.npcId().equals(npc.id()))
+                .findFirst().orElseThrow();
+
+        assertEquals(schedule, snapshot.schedule());
+        assertTrue(snapshot.destinations().isEmpty());
+    }
+
+    @Test
     void refusesScheduleAndDestinationForMissingResidentProfile() {
         NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
                 "town-1", "nation-1", "{}");
@@ -105,5 +132,15 @@ class SqliteResidentScheduleRepositoryTest {
                 () -> repository.saveDestination(new ResidentDestination(npc.id(),
                         ResidentDestination.DestinationType.HOME, UUID.randomUUID(),
                         0, 64, 0, 0, 0, null)).join());
+    }
+
+    private NpcRecord createResident(String name) {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, name, null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        profileRepository.save(new ResidentProfile(npc.id(), 30,
+                ResidentProfession.FARMER, java.util.Set.of(),
+                75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
+        return npc;
     }
 }
