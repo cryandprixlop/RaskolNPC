@@ -109,6 +109,11 @@ public final class GuardCombatController {
                         detectionRadius, detectionRadius, detectionRadius).stream()
                 .filter(candidate -> candidate instanceof LivingEntity)
                 .filter(candidate -> candidate.isValid() && !candidate.isDead())
+                .filter(candidate -> candidate.getLocation().getWorld() != null
+                        && candidate.getLocation().getWorld().equals(
+                                attacker.getLocation().getWorld()))
+                .filter(candidate -> candidate.getLocation().distanceSquared(attacker.getLocation())
+                        <= detectionRadius * detectionRadius)
                 .filter(candidate -> isVerifiedHostile(guard, candidate))
                 .min(Comparator.comparingDouble(candidate ->
                         candidate.getLocation().distanceSquared(attacker.getLocation())))
