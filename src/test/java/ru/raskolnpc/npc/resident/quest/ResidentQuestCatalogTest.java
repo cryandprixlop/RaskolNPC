@@ -39,6 +39,23 @@ class ResidentQuestCatalogTest {
     }
 
     @Test
+    void shippedQuestCatalogCoversAllTenProfessionsWithStockTargets() throws Exception {
+        try (var stream = getClass().getResourceAsStream("/resident-quests.yml")) {
+            assertNotNull(stream);
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(
+                    new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8));
+            ResidentQuestCatalog catalog = ResidentQuestCatalog.from(yaml);
+
+            assertEquals(10, catalog.all().size());
+            assertEquals(java.util.EnumSet.allOf(ResidentProfession.class),
+                    catalog.all().stream().map(ResidentQuest::profession)
+                            .collect(java.util.stream.Collectors.toSet()));
+            assertTrue(catalog.all().stream().allMatch(quest -> quest.stockTarget()
+                    >= quest.requiredAmount()));
+        }
+    }
+
+    @Test
     void rejectsInvalidQuestDefinition() {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.set("quests.bad.profession", "NOT_A_PROFESSION");
