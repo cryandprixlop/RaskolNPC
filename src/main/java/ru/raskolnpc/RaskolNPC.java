@@ -97,7 +97,7 @@ public final class RaskolNPC extends JavaPlugin {
         ResidentScheduleRepository residentSchedules =
                 new SqliteResidentScheduleRepository(databaseManager);
         residentBehaviorService = new ResidentBehaviorService(this, npcRegistry,
-                npcEntityManager, residentSchedules,
+                npcEntityManager, residentSchedules, residentProfiles,
                 Math.max(1, getConfig().getInt("resident-behavior.batch-size", 8)),
                 Math.max(1L, getConfig().getLong("resident-behavior.interval-ticks", 10L)),
                 getConfig().getDouble("resident-behavior.movement-step", 0.8));
