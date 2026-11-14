@@ -62,8 +62,9 @@ class IntegrationCapabilitiesTest {
     @Test
     void reportsDisabledWorldGuardAsDisabled() {
         PluginManager manager = mock(PluginManager.class);
+        Plugin worldGuardPlugin = plugin("7.0.19", false);
         when(manager.getPlugin("Towny")).thenReturn(null);
-        when(manager.getPlugin("WorldGuard")).thenReturn(plugin("7.0.19", false));
+        when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
         when(manager.getPlugin("SiegeWar")).thenReturn(null);
 
         var worldGuard = new IntegrationCapabilities(manager, false).snapshot().stream()
