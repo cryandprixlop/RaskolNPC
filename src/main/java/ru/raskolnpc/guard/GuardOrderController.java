@@ -30,8 +30,8 @@ public final class GuardOrderController {
     private final GuardOrderService orders;
     private final int batchSize;
     private final double movementStep;
-    private final RelationshipPolicy relationships;
-    private final double maxPursuitDistance;
+    private RelationshipPolicy relationships;
+    private double maxPursuitDistance;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
     private BukkitTask task;
@@ -87,6 +87,17 @@ public final class GuardOrderController {
             task.cancel();
             task = null;
         }
+    }
+
+    /** Configures the optional bounded pursuit policy before the controller starts. */
+    public void setPursuitPolicy(RelationshipPolicy relationships, double maxPursuitDistance) {
+        requireMainThread();
+        if (!Double.isFinite(maxPursuitDistance) || maxPursuitDistance < 0
+                || maxPursuitDistance > 32) {
+            throw new IllegalArgumentException("maxPursuitDistance must be between 0 and 32.");
+        }
+        this.relationships = relationships;
+        this.maxPursuitDistance = maxPursuitDistance;
     }
 
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
