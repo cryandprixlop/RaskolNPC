@@ -22,6 +22,14 @@ guards:
   # Hard cap for administrator-managed persistent guard squads.
   squad-max-members: 10
 
+  # Basic combat only targets registered NPCs whose diplomacy is explicitly hostile.
+  # Unknown relationships are ignored; WorldGuard checks fail closed when installed.
+  combat:
+    batch-size: 4
+    detection-radius: 12.0
+    damage: 2.0
+    attack-cooldown-ms: 1000
+
 integrations:
   towny:
     enabled: true
