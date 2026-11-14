@@ -214,6 +214,54 @@ class NpcRecoveryServiceTest {
         assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
     }
 
+    @Test
+    void restoresActiveNpcAfterItsBoundEntityDies() {
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        Entity deadEntity = mock(Entity.class);
+        UUID deadEntityId = UUID.randomUUID();
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+
+        Entity restoredEntity = world.spawnEntity(
+                savedLocation, org.bukkit.entity.EntityType.ZOMBIE);
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(4);
+
+        verify(provider).spawn(eq(record), argThat(location ->
+                location.getWorld().getUID().equals(world.getUID())
+                        && location.getX() == savedLocation.getX()
+                        && location.getY() == savedLocation.getY()
+                        && location.getZ() == savedLocation.getZ()));
+        assertEquals(restoredEntity.getUniqueId(),
+                registry.get(record.id()).orElseThrow().entityUuid());
+        assertEquals(restoredEntity, entities.find(record.id()).orElseThrow());
+    }
+
+    @Test
+    void doesNotRestoreActiveNpcWhenItsDeletionIsPendingAfterDeath() {
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        Entity deadEntity = mock(Entity.class);
+        UUID deadEntityId = UUID.randomUUID();
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+        when(deletions.findPending()).thenReturn(
+                CompletableFuture.completedFuture(List.of(record.id())));
+
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(3);
+
+        verifyNoInteractions(provider);
+        verify(deletions, never()).complete(record.id());
+    }
+
     private Entity createTrackedEntity() {
         world.loadChunk(0, 0);
         Entity entity = world.createEntity(new Location(world, 2, 65, 2), Entity.class);
