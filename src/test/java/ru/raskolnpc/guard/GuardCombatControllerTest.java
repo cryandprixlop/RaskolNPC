@@ -91,6 +91,34 @@ class GuardCombatControllerTest {
         verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
 
+
+    @Test
+    void doesNotAttackDeadRegisteredTarget() {
+        when(target.isDead()).thenReturn(true);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void doesNotAttackRegisteredTargetInAnotherWorld() {
+        World otherWorld = server.addSimpleWorld("guard-combat-other-world");
+        when(target.getLocation()).thenReturn(new Location(otherWorld, 2.5, 64, 0.5));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
     @Test
     void ignoresNeutralAndUnknownDiplomacy() {
         RelationshipPolicy relationships = new RelationshipPolicy(
