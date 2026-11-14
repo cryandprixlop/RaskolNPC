@@ -102,14 +102,15 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
-    public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId) {
+    public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId, int reputationReward) {
         String id = normalizeQuestId(questId);
+        if (reputationReward < 0) throw new IllegalArgumentException("Reputation reward cannot be negative.");
         return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
                     INSERT INTO resident_quest_submissions (
-                        player_uuid, resident_npc_id, quest_id, status, created_at, updated_at
+                        player_uuid, resident_npc_id, quest_id, status, created_at, updated_at, reputation_reward
                     )
-                    SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?
+                    SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?, ?
                     WHERE EXISTS (
                         SELECT 1 FROM resident_quest_assignments
                         WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
@@ -119,7 +120,8 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                         status = 'IN_PROGRESS',
                         reason = NULL,
                         created_at = excluded.created_at,
-                        updated_at = excluded.updated_at
+                        updated_at = excluded.updated_at,
+                        reputation_reward = excluded.reputation_reward
                     WHERE resident_quest_submissions.status = 'COMPLETED'
                       AND EXISTS (
                           SELECT 1 FROM resident_quest_assignments
@@ -135,9 +137,10 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 statement.setString(3, id);
                 statement.setLong(4, now);
                 statement.setLong(5, now);
-                statement.setString(6, playerId.toString());
-                statement.setString(7, residentId.toString());
-                statement.setString(8, id);
+                statement.setInt(6, reputationReward);
+                statement.setString(7, playerId.toString());
+                statement.setString(8, residentId.toString());
+                statement.setString(9, id);
                 return statement.executeUpdate() == 1;
             }
         });
@@ -238,6 +241,124 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 statement.setString(5, id);
                 return statement.executeUpdate() == 1;
             }
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<ResidentQuestReview>> findReviews(int limit) {
+        int safeLimit = Math.max(1, Math.min(100, limit));
+        return database.query(connection -> {
+            List<ResidentQuestReview> reviews = new ArrayList<>();
+            try (var statement = connection.prepareStatement("""
+                    SELECT player_uuid, resident_npc_id, quest_id, reason, updated_at, reputation_reward
+                    FROM resident_quest_submissions
+                    WHERE status = 'REVIEW_REQUIRED'
+                    ORDER BY updated_at, player_uuid
+                    LIMIT ?
+                    """)) {
+                statement.setInt(1, safeLimit);
+                try (ResultSet result = statement.executeQuery()) {
+                    while (result.next()) {
+                        int rewardValue = result.getInt("reputation_reward");
+                        Integer reward = result.wasNull() ? null : rewardValue;
+                        reviews.add(new ResidentQuestReview(
+                                UUID.fromString(result.getString("player_uuid")),
+                                NpcId.fromString(result.getString("resident_npc_id")),
+                                result.getString("quest_id"),
+                                result.getString("reason"),
+                                Instant.ofEpochMilli(result.getLong("updated_at")),
+                                reward));
+                    }
+                }
+            }
+            return List.copyOf(reviews);
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> resolveReview(UUID playerId, NpcId residentId,
+            String questId, boolean complete, int legacyReward) {
+        String id = normalizeQuestId(questId);
+        if (legacyReward < 0) throw new IllegalArgumentException("Legacy reward cannot be negative.");
+        return database.transaction(connection -> {
+            Integer storedReward;
+            try (var select = connection.prepareStatement("""
+                    SELECT reputation_reward FROM resident_quest_submissions
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'REVIEW_REQUIRED'
+                    """)) {
+                select.setString(1, requirePlayer(playerId).toString());
+                select.setString(2, residentId.toString());
+                select.setString(3, id);
+                try (ResultSet result = select.executeQuery()) {
+                    if (!result.next()) return false;
+                    int value = result.getInt(1);
+                    storedReward = result.wasNull() ? null : value;
+                }
+            }
+
+            long now = System.currentTimeMillis();
+            if (!complete) {
+                try (var delete = connection.prepareStatement("""
+                        DELETE FROM resident_quest_submissions
+                        WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                          AND status = 'REVIEW_REQUIRED'
+                          AND EXISTS (
+                              SELECT 1 FROM resident_quest_assignments
+                              WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                                AND status = 'ACCEPTED'
+                          )
+                        """)) {
+                    delete.setString(1, playerId.toString());
+                    delete.setString(2, residentId.toString());
+                    delete.setString(3, id);
+                    delete.setString(4, playerId.toString());
+                    delete.setString(5, residentId.toString());
+                    delete.setString(6, id);
+                    return delete.executeUpdate() == 1;
+                }
+            }
+
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_quest_assignments
+                    SET status = 'COMPLETED', completed_at = ?
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'ACCEPTED'
+                    """)) {
+                update.setLong(1, now);
+                update.setString(2, playerId.toString());
+                update.setString(3, residentId.toString());
+                update.setString(4, id);
+                if (update.executeUpdate() != 1) return false;
+            }
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_quest_submissions
+                    SET status = 'COMPLETED', reason = NULL, updated_at = ?
+                    WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
+                      AND status = 'REVIEW_REQUIRED'
+                    """)) {
+                update.setLong(1, now);
+                update.setString(2, playerId.toString());
+                update.setString(3, residentId.toString());
+                update.setString(4, id);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Review state changed during administrative resolution.");
+                }
+            }
+            int reward = storedReward == null ? legacyReward : storedReward;
+            try (var update = connection.prepareStatement("""
+                    INSERT INTO resident_reputation(player_uuid, points, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(player_uuid) DO UPDATE SET
+                        points = resident_reputation.points + excluded.points,
+                        updated_at = excluded.updated_at
+                    """)) {
+                update.setString(1, playerId.toString());
+                update.setInt(2, reward);
+                update.setLong(3, now);
+                update.executeUpdate();
+            }
+            return true;
         });
     }
 
