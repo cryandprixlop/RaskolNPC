@@ -135,28 +135,19 @@ public final class ResidentBehaviorService {
         if (clockWorld == null) return;
 
         long dayNumber = Math.floorDiv(clockWorld.getFullTime(), 24000L);
-        boolean firstNeedsCycle = lastNeedsDay == Long.MIN_VALUE;
-        if (firstNeedsCycle || dayNumber != lastNeedsDay) {
-            // Run the first daily needs cycle after startup as well as at each
-            // subsequent in-game day boundary. Without this initialization,
-            // residents would keep their initial needs unchanged for day one.
-            lastNeedsDay = dayNumber;
-            needsQueue = residents;
-            needsCursor = 0;
-            if (!firstNeedsCycle) {
-                ResidentQuestRepository stocks = questRepository;
-                int consumption = dailyStockConsumptionPercent;
-                if (stocks != null && consumption > 0) {
-                    stocks.consumeBusinessStockDaily(consumption).whenComplete((changed, error) -> {
-                        if (error != null) {
-                            plugin.getLogger().log(Level.WARNING,
-                                    "Could not apply daily resident business stock consumption.", error);
-                        } else if (changed > 0) {
-                            plugin.getLogger().fine("Applied daily consumption to " + changed
-                                    + " resident business stock row(s).");
-                        }
-                    });
-                }
+        if (beginNeedsCycle(dayNumber)) {
+            ResidentQuestRepository stocks = questRepository;
+            int consumption = dailyStockConsumptionPercent;
+            if (stocks != null && consumption > 0) {
+                stocks.consumeBusinessStockDaily(consumption).whenComplete((changed, error) -> {
+                    if (error != null) {
+                        plugin.getLogger().log(Level.WARNING,
+                                "Could not apply daily resident business stock consumption.", error);
+                    } else if (changed > 0) {
+                        plugin.getLogger().fine("Applied daily consumption to " + changed
+                                + " resident business stock row(s).");
+                    }
+                });
             }
         }
         DayOfWeek day = DayOfWeek.of((int) Math.floorMod(dayNumber, 7L) + 1);
@@ -209,6 +200,21 @@ public final class ResidentBehaviorService {
             }
         }
         processNeedsBatch(day, minute);
+    }
+
+    /**
+     * Starts the initial needs pass after startup and later passes at day boundaries.
+     * Returns true only for subsequent day changes, when business stock should be consumed.
+     */
+    boolean beginNeedsCycle(long dayNumber) {
+        boolean firstCycle = lastNeedsDay == Long.MIN_VALUE;
+        if (firstCycle || dayNumber != lastNeedsDay) {
+            lastNeedsDay = dayNumber;
+            needsQueue = residents;
+            needsCursor = 0;
+            return !firstCycle;
+        }
+        return false;
     }
 
     /** Advances needs once per in-game day, processing only one configured batch per timer tick. */
