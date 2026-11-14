@@ -248,8 +248,6 @@ public final class GuardOrderController {
         if (current.getWorld() == null || target.getWorld() == null
                 || !current.getWorld().equals(target.getWorld())) return;
         World world = current.getWorld();
-        if (!world.isChunkLoaded(target.getBlockX() >> 4, target.getBlockZ() >> 4)) return;
-
         double dx = target.getX() - current.getX();
         double dy = target.getY() - current.getY();
         double dz = target.getZ() - current.getZ();

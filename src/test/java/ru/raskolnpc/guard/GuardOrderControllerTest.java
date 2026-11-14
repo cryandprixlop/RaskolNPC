@@ -89,7 +89,7 @@ class GuardOrderControllerTest {
     }
 
     @Test
-    void doesNotForceLoadDestinationChunk() {
+    void advancesTowardUnloadedDestinationWithoutLoadingItsChunk() {
         GuardOrderRepository repository = mock(GuardOrderRepository.class);
         GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.DEFEND,
                 List.of(new GuardOrder.Waypoint(world.getUID(), 40.5, 64, 0.5, 0, 0)),
@@ -103,7 +103,11 @@ class GuardOrderControllerTest {
         controller.tick();
 
         assertFalse(world.isChunkLoaded(2, 0));
-        verify(entity, never()).teleport((Location) any(Location.class));
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(entity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() > 0.5);
+        assertTrue(destination.getValue().getX() < 16.0);
+        assertFalse(world.isChunkLoaded(2, 0));
     }
 
     @Test
