@@ -28,6 +28,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 7)) applyResidentScheduleSchema(connection);
         if (!isApplied(connection, 8)) applyResidentQuestSchema(connection);
         if (!isApplied(connection, 9)) applyResidentQuestSubmissionSchema(connection);
+        if (!isApplied(connection, 10)) applyResidentQuestReviewRewardSchema(connection);
     }
 
     private static boolean isApplied(Connection connection, int version)
@@ -432,6 +433,32 @@ public final class DatabaseMigrations {
                     WHERE status = 'IN_PROGRESS'
                     """);
             statement.execute("INSERT INTO schema_migrations(version) VALUES (9)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentQuestReviewRewardSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
+                    ADD COLUMN reputation_reward INTEGER
+                    CHECK (reputation_reward IS NULL OR reputation_reward >= 0)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (10)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
