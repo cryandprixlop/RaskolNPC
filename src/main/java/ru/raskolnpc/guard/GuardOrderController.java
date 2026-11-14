@@ -68,22 +68,59 @@ public final class GuardOrderController {
         this.maxPursuitDistance = maxPursuitDistance;
     }
 
-    public void start() {
+    public java.util.concurrent.CompletableFuture<Void> start() {
         requireMainThread();
-        if (task != null) return;
+        if (task != null) return java.util.concurrent.CompletableFuture.completedFuture(null);
+
+        java.util.concurrent.CompletableFuture<Void> started =
+                new java.util.concurrent.CompletableFuture<>();
         orders.loadAll().whenComplete((loaded, error) -> {
-            if (!plugin.isEnabled()) return;
-            if (error != null) {
-                plugin.getLogger().log(Level.SEVERE, "Could not load persisted guard orders.", error);
+            if (!plugin.isEnabled()) {
+                started.completeExceptionally(new IllegalStateException(
+                        "Plugin was disabled before persisted guard orders finished loading."));
                 return;
             }
+
+            Runnable finishStartup = () -> {
+                if (!plugin.isEnabled()) {
+                    started.completeExceptionally(new IllegalStateException(
+                            "Plugin was disabled before the guard order scheduler started."));
+                    return;
+                }
+                if (error != null) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not load persisted guard orders.", error);
+                    started.completeExceptionally(error);
+                    return;
+                }
+                if (task != null) {
+                    started.complete(null);
+                    return;
+                }
+                try {
+                    task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 10L);
+                    started.complete(null);
+                } catch (RuntimeException schedulingError) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not start the guard order scheduler.", schedulingError);
+                    started.completeExceptionally(schedulingError);
+                }
+            };
+
             try {
-                task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 10L);
+                if (Bukkit.isPrimaryThread()) {
+                    finishStartup.run();
+                } else {
+                    Bukkit.getScheduler().runTask(plugin, finishStartup);
+                }
             } catch (RuntimeException schedulingError) {
                 plugin.getLogger().log(Level.SEVERE,
-                        "Could not start the guard order scheduler.", schedulingError);
+                        "Could not schedule guard order startup on the server thread.",
+                        schedulingError);
+                started.completeExceptionally(schedulingError);
             }
         });
+        return started;
     }
 
     public void stop() {

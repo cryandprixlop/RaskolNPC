@@ -290,21 +290,32 @@ public final class RaskolNPC extends JavaPlugin {
                                         }
                                         npcLifecycleService.markReady();
                                         residentBehaviorService.start();
-                                        guardOrderController.start();
-                                        guardCombatController.start();
-                                        if (guardRentService != null) {
-                                            try {
-                                                guardRentService.start();
-                                            } catch (RuntimeException startError) {
-                                                disableAfterStartupFailure(
-                                                        "RaskolNPC could not start guard rent collection.",
-                                                        startError);
-                                                return;
-                                            }
-                                        }
-                                        getLogger().info("RaskolNPC is enabled. Loaded "
-                                                + records.size()
-                                                + " NPC record(s); payment and entity recovery completed.");
+                                        guardOrderController.start().whenComplete((started, orderError) -> {
+                                            if (!isEnabled()) return;
+                                            scheduleStartupStep(() -> {
+                                                if (!isEnabled()) return;
+                                                if (orderError != null) {
+                                                    disableAfterStartupFailure(
+                                                            "RaskolNPC could not restore persisted guard orders.",
+                                                            orderError);
+                                                    return;
+                                                }
+                                                guardCombatController.start();
+                                                if (guardRentService != null) {
+                                                    try {
+                                                        guardRentService.start();
+                                                    } catch (RuntimeException startError) {
+                                                        disableAfterStartupFailure(
+                                                                "RaskolNPC could not start guard rent collection.",
+                                                                startError);
+                                                        return;
+                                                    }
+                                                }
+                                                getLogger().info("RaskolNPC is enabled. Loaded "
+                                                        + records.size()
+                                                        + " NPC record(s); payment, entity, and guard-order recovery completed.");
+                                            });
+                                        });
                                     });
                                 });
                             });

@@ -69,6 +69,21 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void startFailsWhenPersistedGuardOrdersCannotBeLoaded() {
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        when(repository.findAll()).thenReturn(CompletableFuture.failedFuture(
+                new IllegalStateException("SQLite unavailable")));
+        GuardOrderService failingOrders = new GuardOrderService(registry, repository);
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, failingOrders, 4, 0.6);
+
+        CompletableFuture<Void> started = controller.start();
+
+        assertTrue(started.isCompletedExceptionally());
+        assertThrows(java.util.concurrent.CompletionException.class, started::join);
+    }
+
+    @Test
     void patrolMovesInSmallStepsTowardLoadedWaypoint() {
         GuardOrderRepository repository = mock(GuardOrderRepository.class);
         GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
