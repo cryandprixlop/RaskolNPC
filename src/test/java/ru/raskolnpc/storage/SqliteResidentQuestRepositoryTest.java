@@ -286,8 +286,8 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(1, quests.consumeBusinessStockDaily(10).join());
         assertEquals(23, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
         assertEquals(0, quests.consumeBusinessStockDaily(0).join());
-        assertThrows(java.util.concurrent.CompletionException.class,
-                () -> quests.consumeBusinessStockDaily(101).join());
+        assertThrows(IllegalArgumentException.class,
+                () -> quests.consumeBusinessStockDaily(101));
     }
 
     private NpcRecord createResident() {
