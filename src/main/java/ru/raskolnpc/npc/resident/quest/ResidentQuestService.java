@@ -27,7 +27,7 @@ import java.util.logging.Level;
 public final class ResidentQuestService {
     public enum AcceptResult {
         ACCEPTED, ALREADY_ACTIVE, RESIDENT_NOT_FOUND, QUEST_NOT_FOUND,
-        WRONG_PROFESSION, PROFILE_UNAVAILABLE
+        WRONG_PROFESSION, PROFILE_UNAVAILABLE, NO_BUSINESS_DEMAND
     }
 
     public enum SubmitResult {
@@ -73,6 +73,32 @@ public final class ResidentQuestService {
         return catalog.forProfession(profile.profession());
     }
 
+    /** Returns profession quests whose full delivery still fits the town business stock target. */
+    public CompletableFuture<List<ResidentQuest>> availableFor(
+            ResidentProfile profile, NpcId residentId) {
+        Objects.requireNonNull(profile, "profile");
+        Objects.requireNonNull(residentId, "residentId");
+        List<ResidentQuest> candidates = catalog.forProfession(profile.profession());
+        List<CompletableFuture<Integer>> stockLookups = candidates.stream()
+                .map(quest -> quest.stockTarget() == 0
+                        ? CompletableFuture.completedFuture(0)
+                        : repository.getBusinessStock(residentId, quest.requiredMaterial()))
+                .toList();
+        return CompletableFuture.allOf(stockLookups.toArray(CompletableFuture[]::new))
+                .thenApply(ignored -> {
+                    List<ResidentQuest> available = new java.util.ArrayList<>();
+                    for (int index = 0; index < candidates.size(); index++) {
+                        ResidentQuest quest = candidates.get(index);
+                        int stock = stockLookups.get(index).join();
+                        if (quest.stockTarget() == 0
+                                || (long) stock + quest.requiredAmount() <= quest.stockTarget()) {
+                            available.add(quest);
+                        }
+                    }
+                    return List.copyOf(available);
+                });
+    }
+
     public CompletableFuture<AcceptResult> accept(Player player, NpcId residentId, String questId) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(residentId, "residentId");
@@ -88,8 +114,18 @@ public final class ResidentQuestService {
             if (profile.get().profession() != quest.profession()) {
                 return CompletableFuture.completedFuture(AcceptResult.WRONG_PROFESSION);
             }
-            return repository.accept(playerId, residentId, quest.id())
-                    .thenApply(accepted -> accepted ? AcceptResult.ACCEPTED : AcceptResult.ALREADY_ACTIVE);
+            return availableFor(profile.get(), residentId).thenCompose(available -> {
+                if (available.stream().noneMatch(candidate -> candidate.id().equals(quest.id()))) {
+                    return CompletableFuture.completedFuture(AcceptResult.NO_BUSINESS_DEMAND);
+                }
+                return repository.accept(playerId, residentId, quest.id(),
+                                quest.requiredMaterial(), quest.requiredAmount(), quest.stockTarget())
+                        .thenCompose(accepted -> accepted
+                                ? CompletableFuture.completedFuture(AcceptResult.ACCEPTED)
+                                : repository.findActive(playerId, residentId, quest.id()).thenApply(active ->
+                                        active.isPresent() ? AcceptResult.ALREADY_ACTIVE
+                                                : AcceptResult.NO_BUSINESS_DEMAND));
+            });
         }).exceptionally(error -> {
             plugin.getLogger().log(Level.WARNING,
                     "Could not accept resident quest " + questId + " for " + playerId, error);
@@ -113,7 +149,8 @@ public final class ResidentQuestService {
 
         return repository.findActive(playerId, residentId, quest.id()).thenCompose(active -> {
             if (active.isEmpty()) return CompletableFuture.completedFuture(SubmitResult.NO_ACTIVE_QUEST);
-            return repository.reserveSubmission(playerId, residentId, quest.id(), quest.reputationReward()).thenCompose(reserved -> {
+            return repository.reserveSubmission(playerId, residentId, quest.id(), quest.requiredMaterial(),
+                    quest.reputationReward(), quest.requiredAmount(), quest.stockTarget()).thenCompose(reserved -> {
                 if (!reserved) return CompletableFuture.completedFuture(SubmitResult.SUBMISSION_PENDING);
                 CompletableFuture<SubmitResult> result = new CompletableFuture<>();
                 try {
