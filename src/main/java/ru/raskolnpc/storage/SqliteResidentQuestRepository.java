@@ -22,10 +22,20 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
-    public CompletableFuture<Boolean> accept(UUID playerId, NpcId residentId, String questId) {
+    public CompletableFuture<Boolean> accept(UUID playerId, NpcId residentId, String questId,
+            String requiredMaterial, int requiredAmount, int stockTarget) {
         String normalizedQuestId = normalizeQuestId(questId);
+        String material = normalizeMaterial(requiredMaterial);
+        if (requiredAmount < 1 || stockTarget < 0) {
+            throw new IllegalArgumentException("Invalid quest stock requirements.");
+        }
         return database.transaction(connection -> {
             requireResident(connection, residentId);
+            if (stockTarget > 0) {
+                BusinessIdentity business = businessIdentity(connection, residentId);
+                int currentStock = readBusinessStock(connection, business, material);
+                if ((long) currentStock + requiredAmount > stockTarget) return false;
+            }
             try (var statement = connection.prepareStatement("""
                     INSERT OR IGNORE INTO resident_quest_assignments (
                         player_uuid, resident_npc_id, quest_id, status, accepted_at
@@ -102,15 +112,21 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
-    public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId, int reputationReward) {
+    public CompletableFuture<Boolean> reserveSubmission(UUID playerId, NpcId residentId, String questId,
+            String stockMaterial, int reputationReward, int stockAmount, int stockCapacity) {
         String id = normalizeQuestId(questId);
-        if (reputationReward < 0) throw new IllegalArgumentException("Reputation reward cannot be negative.");
+        String material = normalizeMaterial(stockMaterial);
+        if (reputationReward < 0 || stockAmount < 0 || stockCapacity < 0
+                || (stockCapacity > 0 && stockAmount > stockCapacity)) {
+            throw new IllegalArgumentException("Invalid resident quest reward or stock snapshot.");
+        }
         return database.transaction(connection -> {
             try (var statement = connection.prepareStatement("""
                     INSERT INTO resident_quest_submissions (
-                        player_uuid, resident_npc_id, quest_id, status, created_at, updated_at, reputation_reward
+                        player_uuid, resident_npc_id, quest_id, status, created_at, updated_at,
+                        reputation_reward, stock_material, stock_amount, stock_capacity
                     )
-                    SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?, ?
+                    SELECT ?, ?, ?, 'IN_PROGRESS', ?, ?, ?, ?, ?, ?
                     WHERE EXISTS (
                         SELECT 1 FROM resident_quest_assignments
                         WHERE player_uuid = ? AND resident_npc_id = ? AND quest_id = ?
@@ -121,7 +137,10 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                         reason = NULL,
                         created_at = excluded.created_at,
                         updated_at = excluded.updated_at,
-                        reputation_reward = excluded.reputation_reward
+                        reputation_reward = excluded.reputation_reward,
+                        stock_material = excluded.stock_material,
+                        stock_amount = excluded.stock_amount,
+                        stock_capacity = excluded.stock_capacity
                     WHERE resident_quest_submissions.status = 'COMPLETED'
                       AND EXISTS (
                           SELECT 1 FROM resident_quest_assignments
@@ -138,9 +157,12 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 statement.setLong(4, now);
                 statement.setLong(5, now);
                 statement.setInt(6, reputationReward);
-                statement.setString(7, playerId.toString());
-                statement.setString(8, residentId.toString());
-                statement.setString(9, id);
+                statement.setString(7, material);
+                statement.setInt(8, stockAmount);
+                statement.setInt(9, stockCapacity);
+                statement.setString(10, playerId.toString());
+                statement.setString(11, residentId.toString());
+                statement.setString(12, id);
                 return statement.executeUpdate() == 1;
             }
         });
