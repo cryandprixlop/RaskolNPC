@@ -2,6 +2,7 @@ package ru.raskolnpc.guard;
 
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -86,7 +87,7 @@ class GuardCombatControllerTest {
 
         controller.tick();
 
-        verify(target, never()).damage(anyDouble(), any());
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
 
     @Test
