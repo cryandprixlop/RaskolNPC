@@ -303,6 +303,35 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(0, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
     }
 
+    @Test
+    void abandonedAssignmentReleasesReservedBusinessDemand() {
+        NpcRecord resident = createResident();
+        UUID firstPlayer = UUID.randomUUID();
+        UUID secondPlayer = UUID.randomUUID();
+
+        assertTrue(quests.accept(firstPlayer, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 32).join());
+        assertTrue(quests.abandon(firstPlayer, resident.id(), "miner_iron_delivery").join());
+        assertTrue(quests.findActiveForPlayer(firstPlayer).join().isEmpty());
+        assertTrue(quests.accept(secondPlayer, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 32).join());
+    }
+
+    @Test
+    void cannotAbandonSubmissionThatNeedsReview() {
+        NpcRecord resident = createResident();
+        UUID player = UUID.randomUUID();
+        assertTrue(quests.accept(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 32, 96).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), "miner_iron_delivery",
+                "IRON_INGOT", 5, 32, 96).join());
+        assertTrue(quests.markSubmissionForReview(player, resident.id(),
+                "miner_iron_delivery", "uncertain").join());
+
+        assertFalse(quests.abandon(player, resident.id(), "miner_iron_delivery").join());
+        assertEquals(1, quests.findReviews(10).join().size());
+    }
+
     private NpcRecord createResident() {
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
                 null, "town", "nation", "{}");
