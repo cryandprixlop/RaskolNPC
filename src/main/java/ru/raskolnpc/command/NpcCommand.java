@@ -1309,6 +1309,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission(PERMISSION) && args.length == 4
                 && args[0].equalsIgnoreCase("guard") && args[1].equalsIgnoreCase("squad")
                 && args[2].equalsIgnoreCase("delete")) return List.of();
+        if (args.length == 5 && args[0].equalsIgnoreCase("guard")
+                && args[1].equalsIgnoreCase("squad") && args[2].equalsIgnoreCase("order")) {
+            return startsWith(List.of("hold", "return", "defend", "escort", "patrol", "clear"), args[4]);
+        }
         if (args.length == 4 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("order")) {
             return startsWith(List.of("hold", "return", "defend", "escort", "patrol", "clear"), args[3]);
