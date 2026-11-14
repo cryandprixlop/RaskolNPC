@@ -70,5 +70,5 @@ A shared order is persisted as an individual order for each current squad member
 - A bounded shared task checks only a small batch of registered guards per pass.
 - Guards can attack only registered NPC entities with a verified hostile Towny/SiegeWar relationship; unknown and neutral relations are ignored.
 - If WorldGuard is installed, both the attacker and target locations must explicitly allow `MOB_DAMAGE`. Missing or failed WorldGuard checks deny the attack.
-- Detection radius, damage, batch size, attack cooldown, and maximum pursuit distance are configurable under `guards.combat`.
+- Detection radius, damage, batch size, attack cooldown, and maximum pursuit distance are configurable under `guards.combat`. Combat detection applies a true spherical distance check after Bukkit's nearby-entity query, so diagonal targets outside the configured radius are not attacked.
 - Pursuit only changes the movement target temporarily; it does not replace or rewrite the durable order. If the target disappears, dies, leaves range, or is no longer explicitly hostile, the guard returns to its saved order.
