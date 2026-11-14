@@ -38,3 +38,8 @@ resident-behavior:
   batch-size: 8
   # Maximum horizontal movement distance per processed resident, in blocks.
   movement-step: 0.8
+
+resident-business-stock:
+  # Percentage of each business stock capacity consumed at every in-game day boundary.
+  # Set to 0 to disable automatic consumption.
+  daily-consumption-percent: 10
