@@ -734,7 +734,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 5) {
-            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad order <UUID-отряда> <hold|return|defend|escort|patrol|clear>");
+            messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad order <UUID-отряда> <hold|return|defend|rally|escort|patrol|clear>");
             return;
         }
         UUID squadId = parseUuid(args[3]);
@@ -771,6 +771,11 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     var location = player.getLocation();
                     points = List.of(waypoint(player, location.getX(), location.getY(), location.getZ()));
                 }
+                case "rally" -> {
+                    type = GuardOrder.Type.RALLY;
+                    var location = player.getLocation();
+                    points = List.of(waypoint(player, location.getX(), location.getY(), location.getZ()));
+                }
                 case "patrol" -> {
                     if (args.length != 11) {
                         messages.sendRaw(sender, "&eИспользование: /raskolnpc guard squad order <UUID> patrol <x1> <y1> <z1> <x2> <y2> <z2>");
@@ -782,7 +787,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                             waypoint(player, Double.parseDouble(args[8]), Double.parseDouble(args[9]), Double.parseDouble(args[10])));
                 }
                 default -> {
-                    messages.sendRaw(sender, "&cНеизвестный приказ. Доступно: hold, return, defend, escort, patrol, clear.");
+                    messages.sendRaw(sender, "&cНеизвестный приказ. Доступно: hold, return, defend, rally, escort, patrol, clear.");
                     return;
                 }
             }
@@ -1311,7 +1316,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[2].equalsIgnoreCase("delete")) return List.of();
         if (args.length == 5 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("squad") && args[2].equalsIgnoreCase("order")) {
-            return startsWith(List.of("hold", "return", "defend", "escort", "patrol", "clear"), args[4]);
+            return startsWith(List.of("hold", "return", "defend", "rally", "escort", "patrol", "clear"), args[4]);
         }
         if (args.length == 4 && args[0].equalsIgnoreCase("guard")
                 && args[1].equalsIgnoreCase("order")) {
