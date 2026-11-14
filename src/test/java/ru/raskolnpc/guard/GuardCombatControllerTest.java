@@ -188,6 +188,22 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void doesNotDamageWhenGuardIsOutsideHiringNationEvenIfTargetIsInside() {
+        when(attacker.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(target.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setTerritoryAccess((location, nationId) ->
+                location.getX() < 1.0 && "nation-a".equals(nationId));
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
     void damagesTargetWhenBothGuardAndTargetAreInsideHiringNationTerritory() {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
