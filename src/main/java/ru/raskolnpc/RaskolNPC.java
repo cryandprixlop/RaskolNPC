@@ -108,6 +108,9 @@ public final class RaskolNPC extends JavaPlugin {
                 Math.max(1, getConfig().getInt("resident-behavior.batch-size", 8)),
                 Math.max(1L, getConfig().getLong("resident-behavior.interval-ticks", 10L)),
                 getConfig().getDouble("resident-behavior.movement-step", 0.8));
+        residentBehaviorService.setBusinessStockRepository(residentQuestRepository);
+        residentBehaviorService.setDailyStockConsumptionPercent(Math.max(0, Math.min(100,
+                getConfig().getInt("resident-business-stock.daily-consumption-percent", 10))));
 
         TownyIntegration townyIntegration = new TownyIntegration(this);
         boolean townyEnabled = townyIntegration.isAvailable()
