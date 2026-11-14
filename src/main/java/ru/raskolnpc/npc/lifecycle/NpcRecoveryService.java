@@ -151,7 +151,8 @@ public final class NpcRecoveryService {
                     NpcId id = taggedId.get();
                     if (!pending.contains(id)) {
                         var record = registry.get(id).orElse(null);
-                        if (record == null || (record.entityUuid() != null
+                        if (record == null || record.state() != NpcState.ACTIVE
+                                || (record.entityUuid() != null
                                 && !record.entityUuid().equals(entity.getUniqueId()))) {
                             entities.removeEntity(entity);
                             return CompletableFuture.completedFuture(null);
@@ -187,7 +188,8 @@ public final class NpcRecoveryService {
 
     private CompletableFuture<?> recoverRecordIfChunkLoaded(
             NpcRecord record, Chunk onlyChunk, Set<NpcId> pending) {
-        if (pending.contains(record.id()) || deathRecoveries.contains(record.id())
+        if (pending.contains(record.id()) || record.state() != NpcState.ACTIVE
+                || deathRecoveries.contains(record.id())
                 || !isSpawnedInChunk(record, onlyChunk)) {
             return CompletableFuture.completedFuture(null);
         }
