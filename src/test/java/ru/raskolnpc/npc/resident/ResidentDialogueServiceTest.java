@@ -110,6 +110,45 @@ class ResidentDialogueServiceTest {
     }
 
     @Test
+    void lowNeedsSelectContextualDialogueWithoutChangingHealthyResidents() throws Exception {
+        org.bukkit.configuration.file.YamlConfiguration yaml =
+                new org.bukkit.configuration.file.YamlConfiguration();
+        yaml.loadFromString("""
+                greetings:
+                  - "Привет."
+                needs:
+                  LOW_HUNGER:
+                    - "Я давно не ел, на рынке сейчас мало еды."
+                  LOW_ENERGY:
+                    - "Сегодня я очень устал."
+                traits: {}
+                professions: {}
+                """);
+        ResidentDialogueCatalog catalog = ResidentDialogueCatalog.from(yaml);
+        ResidentProfile healthy = profile(EnumSet.noneOf(ResidentProfile.ResidentTrait.class));
+        ResidentProfile tiredAndHungry = new ResidentProfile(
+                healthy.npcId(), healthy.age(), healthy.profession(), healthy.traits(),
+                20, 25, 25, 75, 75, 44, healthy.skills());
+
+        assertTrue(catalog.linesFor(tiredAndHungry).contains(
+                "Я давно не ел, на рынке сейчас мало еды."));
+        assertFalse(catalog.linesFor(healthy).contains(
+                "Я давно не ел, на рынке сейчас мало еды."));
+    }
+
+    @Test
+    void needDialogueIsOptionalForExistingCatalogs() {
+        ResidentDialogueCatalog catalog = new ResidentDialogueCatalog(
+                List.of("Привет."), Map.of(), Map.of());
+        ResidentProfile profile = new ResidentProfile(
+                NpcId.create(), 28, ResidentProfession.MINER, EnumSet.noneOf(
+                        ResidentProfile.ResidentTrait.class),
+                10, 10, 10, 10, 10, 10, Map.of());
+
+        assertEquals(List.of("Привет."), catalog.linesFor(profile));
+    }
+
+    @Test
     void reputationDialogueTiersAreOptionalForLegacyCatalogs() {
         ResidentDialogueCatalog catalog = new ResidentDialogueCatalog(
                 List.of("Привет."), Map.of(), Map.of());
