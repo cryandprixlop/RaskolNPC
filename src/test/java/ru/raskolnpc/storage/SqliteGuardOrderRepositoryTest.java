@@ -50,6 +50,7 @@ class SqliteGuardOrderRepositoryTest {
 
         assertTrue(orders.save(order).join());
         assertEquals(order, orders.find(guard.id()).join().orElseThrow());
+        assertEquals(List.of(order), orders.findAll().join());
     }
 
     @Test
