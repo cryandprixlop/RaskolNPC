@@ -54,9 +54,10 @@ class IntegrationCapabilitiesTest {
 
     private static Plugin plugin(String version, boolean enabled) {
         Plugin plugin = mock(Plugin.class);
-        when(plugin.getDescription()).thenReturn(
+        org.bukkit.plugin.PluginDescriptionFile description =
                 new org.bukkit.plugin.PluginDescriptionFile(
-                        "TestPlugin", version, "test.Plugin"));
+                        "TestPlugin", version, "test.Plugin");
+        when(plugin.getDescription()).thenReturn(description);
         when(plugin.isEnabled()).thenReturn(enabled);
         return plugin;
     }
