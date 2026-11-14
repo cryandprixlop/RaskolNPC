@@ -497,6 +497,10 @@ public final class DatabaseMigrations {
                     """);
             statement.execute("""
                     ALTER TABLE resident_quest_submissions
+                    ADD COLUMN stock_material TEXT
+                    """);
+            statement.execute("""
+                    ALTER TABLE resident_quest_submissions
                     ADD COLUMN stock_amount INTEGER
                     CHECK (stock_amount IS NULL OR stock_amount >= 0)
                     """);
