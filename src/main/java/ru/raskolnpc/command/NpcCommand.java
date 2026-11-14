@@ -224,6 +224,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                                     "&cЭтот житель не выдаёт такое поручение.");
                             case PROFILE_UNAVAILABLE -> messages.sendRaw(sender,
                                     "&cПрофиль жителя пока недоступен.");
+                            case NO_BUSINESS_DEMAND -> messages.sendRaw(sender,
+                                    "&eУ предприятия достаточно запасов. Сейчас это поручение не требуется.");
                         }
                     }));
             return;
