@@ -387,7 +387,7 @@ class GuardCombatControllerTest {
         when(eligibleTarget.isValid()).thenReturn(true);
         when(eligibleTarget.isDead()).thenReturn(false);
         when(eligibleTarget.getLocation()).thenReturn(new Location(world, 4.5, 64, 0.5));
-        when(target.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(target.getLocation()).thenReturn(new Location(world, 0.5, 64, 1.5));
         when(attacker.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(target, eligibleTarget));
         when(entities.getNpcId(eligibleTarget)).thenReturn(Optional.of(eligibleEnemy.id()));
@@ -397,7 +397,7 @@ class GuardCombatControllerTest {
         GuardCombatController controller = new GuardCombatController(
                 plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
         controller.setTerritoryAccess((location, nationId) ->
-                "nation-a".equals(nationId) && location.getX() < 2.0);
+                "nation-a".equals(nationId) && location.getZ() < 1.0);
 
         controller.tick();
 
