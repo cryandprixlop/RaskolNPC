@@ -75,7 +75,7 @@ Resources are removed from the player's inventory on the server thread. The assi
 ## Business stock and demand
 
 - Successful delivery adds the delivered quantity to business stock, capped at the configured stock target.
-- A quest is offered only when another full delivery fits below the target.
+- A quest is offered only when another full delivery fits below the target. Accepted active deliveries also reserve that demand capacity, preventing several players from overfilling the same business stock.
 - Business stock can be withdrawn atomically through the repository/service API for a future market integration; stock cannot become negative.
 - At each in-game day boundary, the shared resident scheduler applies the configured daily consumption percentage to stock rows. This gradually restores demand.
 - `resident-business-stock.daily-consumption-percent` defaults to 10. Set it to 0 to disable automatic consumption; valid values are 0–100.
