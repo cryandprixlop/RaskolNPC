@@ -154,6 +154,22 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
+    void removesLoadedEntityForAnIntentionallyUnloadedNpc() {
+        world.loadChunk(0, 0);
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = recordFor(loadedEntity).withState(NpcState.UNLOADED);
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(startup::join);
+
+        assertFalse(loadedEntity.isValid());
+        verifyNoInteractions(provider);
+    }
+
+    @Test
     void doesNotKeepUnloadedNpcInActiveEntityTracking() {
         Entity loadedEntity = createTrackedEntity();
         NpcRecord record = recordFor(loadedEntity);
