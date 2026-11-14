@@ -37,6 +37,7 @@ public final class ResidentBehaviorService {
     private final ResidentScheduleRepository repository;
     private final ResidentProfileRepository profileRepository;
     private final ResidentSchedulePlanner planner = new ResidentSchedulePlanner();
+    private final ResidentNeedsController needsController = new ResidentNeedsController();
     private final ResidentMovementController movement;
     private final ResidentWorkActionController workActions = new ResidentWorkActionController();
     private final int batchSize;
@@ -48,6 +49,9 @@ public final class ResidentBehaviorService {
     private int cursor;
     private int taskId = -1;
     private long behaviorTick;
+    private long lastNeedsDay = Long.MIN_VALUE;
+    private List<NpcRecord> needsQueue = List.of();
+    private int needsCursor;
 
     public ResidentBehaviorService(Plugin plugin, NpcRegistry registry,
             NpcEntityManager entities, ResidentScheduleRepository repository,
@@ -117,6 +121,13 @@ public final class ResidentBehaviorService {
         if (clockWorld == null) return;
 
         long dayNumber = Math.floorDiv(clockWorld.getFullTime(), 24000L);
+        if (lastNeedsDay == Long.MIN_VALUE) {
+            lastNeedsDay = dayNumber;
+        } else if (dayNumber != lastNeedsDay) {
+            lastNeedsDay = dayNumber;
+            needsQueue = residents;
+            needsCursor = 0;
+        }
         DayOfWeek day = DayOfWeek.of((int) Math.floorMod(dayNumber, 7L) + 1);
         int minute = (int) (clockWorld.getTime() * 1440L / 24000L);
 
@@ -161,6 +172,33 @@ public final class ResidentBehaviorService {
                 }
             }
         }
+        processNeedsBatch(day, minute);
+    }
+
+    /** Advances needs once per in-game day, processing only one configured batch per timer tick. */
+    private void processNeedsBatch(DayOfWeek day, int minute) {
+        int processed = 0;
+        while (processed < batchSize && needsCursor < needsQueue.size()) {
+            NpcRecord resident = needsQueue.get(needsCursor++);
+            processed++;
+            ResidentProfile current = profileCache.get(resident.id());
+            if (current == null) continue;
+            ResidentBehaviorData data = cache.get(resident.id());
+            ResidentSchedule.Entry active = data == null ? null
+                    : planner.findCurrent(data.schedule(), day, minute).orElse(null);
+            ResidentSchedule.Activity activity = active == null
+                    ? ResidentSchedule.Activity.REST : active.activity();
+            ResidentProfile updated = needsController.advance(current, activity);
+            profileCache.put(resident.id(), updated);
+            profileRepository.save(updated).whenComplete((ignored, error) -> {
+                if (error != null) plugin.getLogger().log(Level.WARNING,
+                        "Could not persist daily needs for resident " + resident.id(), error);
+            });
+        }
+        if (needsCursor >= needsQueue.size()) {
+            needsQueue = List.of();
+            needsCursor = 0;
+        }
     }
 
     /** Reloads schedules, destinations and profession profiles as one bulk snapshot. */
@@ -190,6 +228,9 @@ public final class ResidentBehaviorService {
         residents = List.of();
         cursor = 0;
         behaviorTick = 0;
+        lastNeedsDay = Long.MIN_VALUE;
+        needsQueue = List.of();
+        needsCursor = 0;
         loading.set(false);
     }
 
