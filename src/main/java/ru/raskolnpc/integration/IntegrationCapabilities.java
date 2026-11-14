@@ -26,6 +26,8 @@ public final class IntegrationCapabilities {
 
         Plugin worldGuard = plugins.getPlugin("WorldGuard");
         boolean worldGuardPresent = worldGuard != null && worldGuard.isEnabled();
+        Plugin siegeWar = plugins.getPlugin("SiegeWar");
+        boolean siegeWarPresent = siegeWar != null && siegeWar.isEnabled();
 
         return List.of(
                 new Capability("Towny", townyAvailable ? Status.AVAILABLE
@@ -43,7 +45,13 @@ public final class IntegrationCapabilities {
                         worldGuard == null ? null : worldGuard.getDescription().getVersion(),
                         worldGuardPresent
                                 ? "WorldGuard is installed, but this build has no verified adapter; no protection is claimed."
-                                : "No region-protection adapter is configured.")
+                                : "No region-protection adapter is configured."),
+                new Capability("SiegeWar diplomacy",
+                        siegeWarPresent ? Status.DETECTED_UNSUPPORTED : Status.NOT_CONFIGURED,
+                        siegeWar == null ? null : siegeWar.getDescription().getVersion(),
+                        siegeWarPresent
+                                ? "SiegeWar is installed, but no verified war-state adapter is available; unknown relations remain neutral."
+                                : "No SiegeWar diplomacy adapter is configured.")
         );
     }
 
