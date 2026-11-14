@@ -109,8 +109,13 @@ public final class GuardOrderController {
                 .toList();
         if (guards.isEmpty()) {
             cursor = 0;
+            patrolIndices.clear();
             return;
         }
+        java.util.Set<ru.raskolnpc.npc.model.NpcId> activeGuardIds = guards.stream()
+                .map(NpcRecord::id)
+                .collect(java.util.stream.Collectors.toSet());
+        patrolIndices.keySet().retainAll(activeGuardIds);
         Map<ru.raskolnpc.npc.model.NpcId, GuardOrder> activeOrders = new java.util.HashMap<>();
         for (GuardOrder order : orders.snapshot()) activeOrders.put(order.npcId(), order);
         int count = Math.min(batchSize, guards.size());
