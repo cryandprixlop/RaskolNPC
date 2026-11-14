@@ -16,6 +16,7 @@ import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
 import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
@@ -37,6 +38,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private volatile ResidentDialogueService residentDialogueService;
     private volatile ResidentQuestService residentQuestService;
     private volatile TownyKingdomGeneralService kingdomGeneralService;
+    private volatile IntegrationCapabilities integrationCapabilities;
 
     public NpcCommand(Plugin plugin, NpcCommandService service,
                       NpcCommandMessages messages) {
@@ -63,6 +65,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setKingdomGeneralService(TownyKingdomGeneralService service) {
         this.kingdomGeneralService = service;
+    }
+
+    public void setIntegrationCapabilities(IntegrationCapabilities capabilities) {
+        this.integrationCapabilities = capabilities;
     }
 
     @Override
@@ -111,6 +117,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
+            case "integrations" -> integrations(sender);
             case "create" -> create(sender, args);
             case "guard" -> guard(sender, args);
             case "resident" -> resident(sender, args);
@@ -129,6 +136,26 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             default -> help(sender, label);
         }
         return true;
+    }
+
+    private void integrations(CommandSender sender) {
+        IntegrationCapabilities capabilities = integrationCapabilities;
+        if (capabilities == null) {
+            messages.sendRaw(sender, "&cСведения об интеграциях недоступны.");
+            return;
+        }
+        messages.sendRaw(sender, "&6Возможности интеграций RaskolNPC:");
+        for (IntegrationCapabilities.Capability capability : capabilities.snapshot()) {
+            String color = switch (capability.status()) {
+                case AVAILABLE -> "&a";
+                case DETECTED_UNSUPPORTED -> "&e";
+                case DISABLED, NOT_INSTALLED, NOT_CONFIGURED -> "&c";
+            };
+            String version = capability.version() == null ? "" : " &7v" + capability.version();
+            messages.sendRaw(sender, color + capability.name() + " &7— "
+                    + capability.status() + version);
+            messages.sendRaw(sender, "&8" + capability.details());
+        }
     }
 
     private void create(CommandSender sender, String[] args) {
@@ -868,6 +895,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private void help(CommandSender sender, String label) {
         messages.sendRaw(sender, "&6Команды RaskolNPC:");
+        if (sender.hasPermission(PERMISSION)) {
+            messages.sendRaw(sender, "&e/" + label + " integrations &7— состояние интеграций");
+        }
         messages.sendRaw(sender, "&e/" + label + " create resident <имя> &7— создать жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest accept <UUID> <ID> &7— принять поручение жителя");
         messages.sendRaw(sender, "&e/" + label + " resident quest submit <UUID> <ID> &7— сдать ресурсы жителю");
@@ -914,7 +944,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 1) {
             java.util.ArrayList<String> values = new java.util.ArrayList<>();
-            if (sender.hasPermission(PERMISSION)) values.addAll(List.of("create", "list", "info", "delete"));
+            if (sender.hasPermission(PERMISSION)) values.addAll(List.of("create", "list", "info", "delete", "integrations"));
             if (sender.hasPermission(PERMISSION) || canAcceptResidentQuest) values.add("resident");
             if (canHireGuard || sender.hasPermission(PERMISSION)) values.add("guard");
             if (canCreateTownResident && !values.contains("create")) values.add("create");
