@@ -5,6 +5,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.Location;
+import java.util.function.BiPredicate;
 import org.bukkit.scheduler.BukkitTask;
 import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.integration.PlayerSubjectResolver;
@@ -34,6 +36,7 @@ public final class GuardCombatController {
     private final WorldGuardProtectionAdapter worldGuard;
     private final boolean worldGuardRequired;
     private final PlayerSubjectResolver playerSubjects;
+    private BiPredicate<Location, String> territoryAccess = (location, nationId) -> true;
     private final int batchSize;
     private final double detectionRadius;
     private final double damage;
@@ -137,7 +140,7 @@ public final class GuardCombatController {
                         candidate.getLocation().distanceSquared(attacker.getLocation())))
                 .orElse(null);
         if (!(target instanceof LivingEntity livingTarget)) return;
-        if (!mayDamage(attacker, livingTarget)) return;
+        if (!mayDamage(guard, attacker, livingTarget)) return;
 
         try {
             livingTarget.damage(damage, attacker);
@@ -166,12 +169,22 @@ public final class GuardCombatController {
         return relationships.mayTarget(actor, victim);
     }
 
-    private boolean mayDamage(LivingEntity attacker, LivingEntity target) {
+    /** Restricts combat actions to the hiring nation when a territory provider is configured. */
+    public void setTerritoryAccess(BiPredicate<Location, String> territoryAccess) {
+        requireMainThread();
+        this.territoryAccess = Objects.requireNonNull(territoryAccess, "territoryAccess");
+    }
+
+    private boolean mayDamage(NpcRecord guard, LivingEntity attacker, LivingEntity target) {
+        Location attackerLocation = attacker.getLocation();
+        Location targetLocation = target.getLocation();
+        if (!territoryAccess.test(attackerLocation, guard.nationId())
+                || !territoryAccess.test(targetLocation, guard.nationId())) return false;
         if (!worldGuardRequired) return true;
         if (worldGuard == null) return false;
-        return worldGuard.checkMobDamage(attacker.getLocation())
+        return worldGuard.checkMobDamage(attackerLocation)
                         == WorldGuardProtectionAdapter.Decision.ALLOWED
-                && worldGuard.checkMobDamage(target.getLocation())
+                && worldGuard.checkMobDamage(targetLocation)
                         == WorldGuardProtectionAdapter.Decision.ALLOWED;
     }
 

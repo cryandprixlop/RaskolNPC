@@ -167,8 +167,9 @@ public final class RaskolNPC extends JavaPlugin {
         relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
         PlayerSubjectResolver playerSubjects = townyEnabled
                 ? new TownyPlayerSubjectResolver() : PlayerSubjectResolver.none();
-        if (townyEnabled) {
-            TownyGuardTerritoryAccess territoryAccess = new TownyGuardTerritoryAccess();
+        TownyGuardTerritoryAccess territoryAccess = townyEnabled
+                ? new TownyGuardTerritoryAccess() : null;
+        if (territoryAccess != null) {
             guardOrderController.setTerritoryAccess(territoryAccess::apply);
         }
         guardOrderController.setPursuitPolicy(relationshipPolicy,
@@ -183,6 +184,9 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("guards.combat.damage", 2.0),
                 getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L),
                 playerSubjects);
+        if (territoryAccess != null) {
+            guardCombatController.setTerritoryAccess(territoryAccess::apply);
+        }
         townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
         TownyResidentService townyResidents = townyEnabled
                 ? townyIntegration.residents() : null;
