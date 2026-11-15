@@ -37,6 +37,13 @@ public interface ResidentQuestRepository {
     /** Returns immutable-quality stock batches in deterministic FIFO order. */
     CompletableFuture<List<ResidentBusinessStockBatch>> findBusinessStockBatches(
             NpcId residentId, String material);
+    /** Returns only batches of the requested quality, preserving deterministic FIFO order. */
+    default CompletableFuture<List<ResidentBusinessStockBatch>> findBusinessStockBatches(
+            NpcId residentId, String material, ResidentProductQuality quality) {
+        java.util.Objects.requireNonNull(quality, "quality");
+        return findBusinessStockBatches(residentId, material).thenApply(batches ->
+                batches.stream().filter(batch -> batch.quality() == quality).toList());
+    }
     /** Atomically removes stock for a business purchase or production use. */
     CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
     /**
