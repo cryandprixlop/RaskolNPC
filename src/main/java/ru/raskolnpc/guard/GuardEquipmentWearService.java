@@ -70,7 +70,7 @@ public final class GuardEquipmentWearService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onGuardAttack(EntityDamageByEntityEvent event) {
         requireMainThread();
-        if (weaponWearPerHit == 0 || event.getFinalDamage() <= 0
+        if (weaponWearPerHit == 0
                 || !(event.getDamager() instanceof LivingEntity attacker)) return;
         NpcId guardId = entities.getNpcId(attacker).orElse(null);
         if (!isGuard(guardId)) return;
@@ -85,7 +85,7 @@ public final class GuardEquipmentWearService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onGuardDamaged(EntityDamageEvent event) {
         requireMainThread();
-        if (armorWearPerHit == 0 || event.getFinalDamage() <= 0
+        if (armorWearPerHit == 0
                 || !(event.getEntity() instanceof LivingEntity guard)) return;
         NpcId guardId = entities.getNpcId(guard).orElse(null);
         if (!isGuard(guardId)) return;
