@@ -585,6 +585,16 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     public CompletableFuture<Boolean> produceBusinessStock(
             NpcId residentId, java.util.Map<String, Integer> inputs,
             String outputMaterial, int outputAmount, int outputCapacity) {
+        return produceBusinessStock(residentId, inputs, outputMaterial, outputAmount,
+                outputCapacity, ResidentProductQuality.STANDARD);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> produceBusinessStock(
+            NpcId residentId, java.util.Map<String, Integer> inputs,
+            String outputMaterial, int outputAmount, int outputCapacity,
+            ResidentProductQuality outputQuality) {
+        java.util.Objects.requireNonNull(outputQuality, "outputQuality");
         if (residentId == null || inputs == null || inputs.isEmpty()) {
             throw new IllegalArgumentException("A resident and at least one recipe input are required.");
         }
@@ -659,7 +669,7 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 }
             }
             insertBusinessStockBatch(connection, business, output, outputAmount,
-                    ResidentProductQuality.STANDARD, System.currentTimeMillis(), "PRODUCTION", null);
+                    outputQuality, System.currentTimeMillis(), "PRODUCTION", null);
             return true;
         });
     }
