@@ -20,6 +20,10 @@ public interface ResidentTradeRepository {
     /** Atomically cancels an unpaid purchase and restores its exact quality batch. */
     CompletableFuture<Boolean> cancelAndRelease(String transactionId, String reason);
 
+    /** Atomically finalizes a confirmed refund and restores the exact reserved stock batch. */
+    CompletableFuture<Boolean> completeRefundAndRelease(
+            String transactionId, String providerReference, String detail);
+
     /** Applies an evidence-backed admin decision to a REVIEW_REQUIRED trade. */
     CompletableFuture<Boolean> resolveReview(String transactionId, ReviewResolution resolution, String evidence);
 
