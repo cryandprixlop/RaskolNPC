@@ -137,6 +137,14 @@ public final class RaskolNPC extends JavaPlugin {
                 new SqliteResidentQuestRepository(databaseManager);
         ResidentTradeRepository residentTradeRepository =
                 new SqliteResidentTradeRepository(databaseManager);
+        residentTradeRepository.recoverUnfinished().whenComplete((count, error) -> {
+            if (error != null) {
+                getLogger().log(Level.SEVERE, "Could not recover unfinished resident trades.", error);
+            } else if (count != null && count > 0) {
+                getLogger().warning("Moved " + count
+                        + " unfinished resident trade(s) to REVIEW_REQUIRED for reconciliation.");
+            }
+        });
         ResidentQuestService residentQuests = new ResidentQuestService(
                 this, residentProfileService, npcRegistry, residentQuestRepository);
         getServer().getPluginManager().registerEvents(
