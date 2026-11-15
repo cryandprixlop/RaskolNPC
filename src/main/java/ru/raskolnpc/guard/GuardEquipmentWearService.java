@@ -70,7 +70,8 @@ public final class GuardEquipmentWearService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onGuardAttack(EntityDamageByEntityEvent event) {
         requireMainThread();
-        if (weaponWearPerHit == 0 || !(event.getDamager() instanceof LivingEntity attacker)) return;
+        if (weaponWearPerHit == 0 || event.getFinalDamage() <= 0
+                || !(event.getDamager() instanceof LivingEntity attacker)) return;
         NpcId guardId = entities.getNpcId(attacker).orElse(null);
         if (!isGuard(guardId)) return;
         EntityEquipment equipment = attacker.getEquipment();
@@ -113,14 +114,15 @@ public final class GuardEquipmentWearService implements Listener {
     private static ItemStack applyWear(ItemStack item, int amount) {
         if (item == null || item.getType().isAir() || amount <= 0
                 || item.getType().getMaxDurability() <= 0) return item;
-        if (!(item.getItemMeta() instanceof Damageable damageable)) return item;
+        ItemStack updated = item.clone();
+        if (!(updated.getItemMeta() instanceof Damageable damageable)) return item;
 
-        int maximum = item.getType().getMaxDurability();
+        int maximum = updated.getType().getMaxDurability();
         int nextDamage = damageable.getDamage() + amount;
         if (nextDamage >= maximum) return new ItemStack(Material.AIR);
         damageable.setDamage(nextDamage);
-        item.setItemMeta(damageable);
-        return item;
+        updated.setItemMeta(damageable);
+        return updated;
     }
 
     private static void requireMainThread() {
