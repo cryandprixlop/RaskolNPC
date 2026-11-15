@@ -46,6 +46,13 @@ public interface ResidentQuestRepository {
     }
     /** Atomically removes stock for a business purchase or production use. */
     CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
+    /** Atomically removes only the requested quality tier from business stock. */
+    default CompletableFuture<Boolean> withdrawBusinessStock(
+            NpcId residentId, String material, int amount, ResidentProductQuality quality) {
+        java.util.Objects.requireNonNull(quality, "quality");
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Quality-specific stock withdrawal is not implemented."));
+    }
     /**
      * Transfers one material from a source profession to a different profession
      * in the same town. The source debit and target capacity check are atomic.
