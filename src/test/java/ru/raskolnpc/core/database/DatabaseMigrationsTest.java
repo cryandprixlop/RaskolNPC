@@ -35,8 +35,8 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_skills", "experience");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(16, schemaVersion(connection));
-            assertEquals(16, migrationCount(connection));
+            assertEquals(17, schemaVersion(connection));
+            assertEquals(17, migrationCount(connection));
         }
     }
 
