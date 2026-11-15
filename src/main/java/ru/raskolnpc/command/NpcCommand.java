@@ -845,7 +845,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return;
         }
         try {
-            if (service.findVisibleGuard(player, parsedId.get()).isEmpty()) {
+            if (!player.hasPermission(PERMISSION)
+                    && service.findVisibleGuard(player, parsedId.get()).isEmpty()) {
                 messages.sendRaw(sender, "&cСтраж не найден или у вас нет полномочий управлять этой нацией.");
                 return;
             }
@@ -1364,7 +1365,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             return startsWith(List.of("HOME", "WORK", "MARKET", "COMMUNITY"), args[3]);
         if (args.length == 2 && args[0].equalsIgnoreCase("guard")) {
             return startsWith(sender.hasPermission(PERMISSION)
-                    ? List.of("hire", "rent", "list", "info", "general", "order", "squad")
+                    ? List.of("hire", "rent", "list", "info", "general", "order", "squad", "repair")
                     : List.of("hire", "list", "info", "general", "order", "repair"), args[1]);
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
