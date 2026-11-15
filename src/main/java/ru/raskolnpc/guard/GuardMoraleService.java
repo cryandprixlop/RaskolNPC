@@ -34,6 +34,9 @@ public final class GuardMoraleService implements Listener {
     private final NpcEntityManager entities;
     private final GuardConditionRepository repository;
     private final Map<NpcId, GuardCondition> conditions = new ConcurrentHashMap<>();
+    private final java.util.Set<NpcId> retreating = ConcurrentHashMap.newKeySet();
+    private int retreatThreshold = 20;
+    private int rallyThreshold = 35;
     private BukkitTask recoveryTask;
     private boolean listenerRegistered;
 
@@ -48,10 +51,12 @@ public final class GuardMoraleService implements Listener {
     public CompletableFuture<Void> load() {
         return repository.findAll().thenAccept(loaded -> {
             conditions.clear();
+            retreating.clear();
             for (GuardCondition condition : loaded) {
                 NpcRecord record = registry.get(condition.npcId()).orElse(null);
                 if (record != null && record.type() == NpcType.GUARD) {
                     conditions.put(condition.npcId(), condition);
+                    if (condition.morale() <= retreatThreshold) retreating.add(condition.npcId());
                 }
             }
         });
@@ -79,6 +84,26 @@ public final class GuardMoraleService implements Listener {
         }
     }
 
+    /** Configures hysteresis thresholds; rally must be above retreat. */
+    public void setRetreatThresholds(int retreatThreshold, int rallyThreshold) {
+        requireMainThread();
+        if (retreatThreshold < 0 || retreatThreshold > 100
+                || rallyThreshold <= retreatThreshold || rallyThreshold > 100) {
+            throw new IllegalArgumentException("Invalid guard morale retreat thresholds.");
+        }
+        this.retreatThreshold = retreatThreshold;
+        this.rallyThreshold = rallyThreshold;
+        for (GuardCondition condition : conditions.values()) {
+            if (condition.morale() <= retreatThreshold) retreating.add(condition.npcId());
+            else if (condition.morale() >= rallyThreshold) retreating.remove(condition.npcId());
+        }
+    }
+
+    /** True while the guard is routed; recovery must reach the rally threshold. */
+    public boolean isRetreating(NpcId guardId) {
+        return retreating.contains(guardId);
+    }
+
     public int morale(NpcId guardId) {
         GuardCondition condition = conditions.get(guardId);
         return condition == null ? 100 : condition.morale();
@@ -104,6 +129,7 @@ public final class GuardMoraleService implements Listener {
         GuardCondition changed = previous.withMorale(previous.morale() - loss,
                 System.currentTimeMillis(), System.currentTimeMillis());
         conditions.put(guardId, changed);
+        if (changed.morale() <= retreatThreshold) retreating.add(guardId);
         persist(changed);
     }
 
@@ -117,11 +143,15 @@ public final class GuardMoraleService implements Listener {
             NpcRecord record = registry.get(entry.getKey()).orElse(null);
             if (record == null || record.type() != NpcType.GUARD) {
                 conditions.remove(entry.getKey(), current);
+                retreating.remove(entry.getKey());
                 continue;
             }
             GuardCondition recovered = current.withMorale(current.morale() + 1,
                     current.lastCombatAt(), now);
-            if (conditions.replace(entry.getKey(), current, recovered)) persist(recovered);
+            if (conditions.replace(entry.getKey(), current, recovered)) {
+                if (recovered.morale() >= rallyThreshold) retreating.remove(entry.getKey());
+                persist(recovered);
+            }
         }
     }
 
