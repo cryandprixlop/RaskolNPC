@@ -17,12 +17,13 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(17, schemaVersion(connection));
+            assertEquals(18, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
             assertTableExists(connection, "resident_quest_assignments");
             assertTableExists(connection, "resident_business_stock");
+            assertTableExists(connection, "resident_business_stock_batches");
             assertTableExists(connection, "guard_rent_payments");
             assertTableExists(connection, "guard_hiring_payments");
             assertTableExists(connection, "guard_orders");
@@ -36,7 +37,7 @@ class DatabaseMigrationsTest {
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(17, schemaVersion(connection));
-            assertEquals(17, migrationCount(connection));
+            assertEquals(18, migrationCount(connection));
         }
     }
 
@@ -53,6 +54,14 @@ class DatabaseMigrationsTest {
                 statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY)");
                 statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id))");
                 statement.execute("CREATE TABLE resident_skills(npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id), profession TEXT NOT NULL, skill_level TEXT NOT NULL, PRIMARY KEY(npc_id, profession))");
+                statement.execute("""
+                        CREATE TABLE resident_business_stock (
+                            business_id TEXT NOT NULL, profession TEXT NOT NULL,
+                            material TEXT NOT NULL, amount INTEGER NOT NULL,
+                            capacity INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                            PRIMARY KEY (business_id, profession, material)
+                        )
+                        """);
                 statement.execute("""
                         CREATE TABLE guard_orders (
                             npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
@@ -105,6 +114,57 @@ class DatabaseMigrationsTest {
     }
 
     @Test
+    void versionSeventeenUpgradeBackfillsPositiveStockAsStandardBatches() throws Exception {
+        var file = temporaryDirectory.resolve("version-seventeen.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
+                for (int version = 1; version <= 17; version++) {
+                    statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
+                }
+                statement.execute("""
+                        CREATE TABLE resident_business_stock (
+                            business_id TEXT NOT NULL, profession TEXT NOT NULL,
+                            material TEXT NOT NULL, amount INTEGER NOT NULL,
+                            capacity INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                            PRIMARY KEY (business_id, profession, material)
+                        )
+                        """);
+                statement.execute("""
+                        INSERT INTO resident_business_stock(
+                            business_id, profession, material, amount, capacity, updated_at
+                        ) VALUES ('town:1', 'BLACKSMITH', 'IRON_INGOT', 24, 64, 12345)
+                        """);
+                statement.execute("""
+                        INSERT INTO resident_business_stock(
+                            business_id, profession, material, amount, capacity, updated_at
+                        ) VALUES ('town:1', 'BUILDER', 'STONE', 0, 64, 12346)
+                        """);
+            }
+
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(18, schemaVersion(connection));
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("""
+                         SELECT business_id, profession, material, amount, quality,
+                                created_at, source_type
+                         FROM resident_business_stock_batches
+                         """)) {
+                assertTrue(result.next());
+                assertEquals("town:1", result.getString("business_id"));
+                assertEquals("BLACKSMITH", result.getString("profession"));
+                assertEquals("IRON_INGOT", result.getString("material"));
+                assertEquals(24, result.getInt("amount"));
+                assertEquals("STANDARD", result.getString("quality"));
+                assertEquals(12345, result.getLong("created_at"));
+                assertEquals("LEGACY", result.getString("source_type"));
+                assertFalse(result.next(), "Zero-amount stock must not create an empty batch.");
+            }
+        }
+    }
+
+    @Test
     void refusesDatabaseCreatedByNewerPluginVersionWithoutChangingIt() throws Exception {
         var file = temporaryDirectory.resolve("future.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
@@ -117,7 +177,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(18, migrationCount(connection));
+            assertEquals(19, migrationCount(connection));
         }
     }
 
