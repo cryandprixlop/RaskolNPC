@@ -344,6 +344,19 @@ public final class ResidentQuestService {
                 Objects.requireNonNull(material, "material"), amount);
     }
 
+    /**
+     * Moves a material between different resident professions in the same town.
+     * Both sides are updated in one SQLite transaction.
+     */
+    public CompletableFuture<Boolean> transferBusinessStock(
+            NpcId sourceResidentId, NpcId targetResidentId,
+            String material, int amount, int targetCapacity) {
+        return repository.transferBusinessStock(
+                Objects.requireNonNull(sourceResidentId, "sourceResidentId"),
+                Objects.requireNonNull(targetResidentId, "targetResidentId"),
+                Objects.requireNonNull(material, "material"), amount, targetCapacity);
+    }
+
     public CompletableFuture<Integer> reputation(UUID playerId) {
         return repository.getReputation(Objects.requireNonNull(playerId, "playerId"));
     }
