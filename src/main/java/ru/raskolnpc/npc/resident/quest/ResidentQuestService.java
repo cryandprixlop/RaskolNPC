@@ -14,6 +14,7 @@ import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
 import ru.raskolnpc.storage.ResidentQuestRepository;
+import ru.raskolnpc.storage.ResidentProductQuality;
 import ru.raskolnpc.storage.ResidentQuestReview;
 
 import java.io.File;
@@ -120,8 +121,10 @@ public final class ResidentQuestService {
             }
             int outputAmount = ResidentProductionEfficiency.outputAmount(
                     recipe.outputAmount(), profile.get().currentSkillLevel());
+            ResidentProductQuality quality =
+                    ResidentProductQuality.forSkillLevel(profile.get().currentSkillLevel());
             return repository.produceBusinessStock(residentId, recipe.inputs(),
-                    recipe.outputMaterial(), outputAmount, recipe.outputCapacity())
+                    recipe.outputMaterial(), outputAmount, recipe.outputCapacity(), quality)
                     .thenCompose(produced -> awardProductionExperience(residentId, profile.get().profession(), produced));
         });
     }
@@ -154,8 +157,9 @@ public final class ResidentQuestService {
         }
         int outputAmount = ResidentProductionEfficiency.outputAmount(
                 recipe.outputAmount(), skillLevel);
+        ResidentProductQuality quality = ResidentProductQuality.forSkillLevel(skillLevel);
         return repository.produceBusinessStock(residentId, recipe.inputs(),
-                recipe.outputMaterial(), outputAmount, recipe.outputCapacity())
+                recipe.outputMaterial(), outputAmount, recipe.outputCapacity(), quality)
                 .thenCompose(produced -> {
                     if (!Boolean.TRUE.equals(produced)) {
                         return tryProductionRecipe(residentId, recipes, skillLevel, index + 1);
