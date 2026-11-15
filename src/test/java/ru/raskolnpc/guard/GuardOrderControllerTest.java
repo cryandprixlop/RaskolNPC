@@ -769,4 +769,24 @@ class GuardOrderControllerTest {
     private GuardOrder.Waypoint point(double x) {
         return new GuardOrder.Waypoint(world.getUID(), x, 64, 0.5, 0, 0);
     }
+    @Test
+    void lowMoraleGuardRetreatsTowardItsPersistedPostInsteadOfPursuingEnemies() {
+        when(entity.getLocation()).thenReturn(new Location(world, 3.5, 64, 0.5));
+        GuardMoraleService morale = mock(GuardMoraleService.class);
+        when(morale.isRetreating(guard.id())).thenReturn(true);
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.setMoraleService(morale);
+
+        controller.tick();
+
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(entity).teleport(destination.capture());
+        assertTrue(destination.getValue().getX() < 3.5);
+        assertEquals(world.getUID(), destination.getValue().getWorld().getUID());
+        verify(entity, never()).getNearbyEntities(anyDouble(), anyDouble(), anyDouble());
+    }
+
+
 }
