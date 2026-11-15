@@ -114,7 +114,8 @@ public final class ResidentQuestService {
         ResidentProductionRecipe recipe = productionCatalog.find(recipeId).orElse(null);
         if (recipe == null) return CompletableFuture.completedFuture(false);
         return profiles.find(residentId).thenCompose(profile -> {
-            if (profile.isEmpty() || profile.get().profession() != recipe.profession()) {
+            if (profile.isEmpty() || profile.get().profession() != recipe.profession()
+                    || !meetsRecipeRequirement(recipe, profile.get().currentSkillLevel())) {
                 return CompletableFuture.completedFuture(false);
             }
             int outputAmount = ResidentProductionEfficiency.outputAmount(
@@ -148,6 +149,9 @@ public final class ResidentQuestService {
             ResidentSkillLevel skillLevel, int index) {
         if (index >= recipes.size()) return CompletableFuture.completedFuture(false);
         ResidentProductionRecipe recipe = recipes.get(index);
+        if (!meetsRecipeRequirement(recipe, skillLevel)) {
+            return tryProductionRecipe(residentId, recipes, skillLevel, index + 1);
+        }
         int outputAmount = ResidentProductionEfficiency.outputAmount(
                 recipe.outputAmount(), skillLevel);
         return repository.produceBusinessStock(residentId, recipe.inputs(),
@@ -161,6 +165,11 @@ public final class ResidentQuestService {
                 });
     }
 
+
+    private static boolean meetsRecipeRequirement(
+            ResidentProductionRecipe recipe, ResidentSkillLevel skillLevel) {
+        return skillLevel.ordinal() >= recipe.minimumSkillLevel().ordinal();
+    }
 
     private CompletableFuture<Boolean> awardProductionExperience(
             NpcId residentId, ru.raskolnpc.npc.resident.model.ResidentProfession profession,
