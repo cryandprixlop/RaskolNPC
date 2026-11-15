@@ -479,6 +479,18 @@ public final class ResidentQuestService {
                 Objects.requireNonNull(material, "material"), amount);
     }
 
+    /** Reserves only stock of the listed quality; insufficient matching stock is a safe no-op. */
+    public CompletableFuture<Boolean> withdrawBusinessStock(
+            NpcId residentId, String material, int amount, ResidentProductQuality quality) {
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(material, "material");
+        Objects.requireNonNull(quality, "quality");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return repository.withdrawBusinessStock(residentId, material, amount, quality);
+    }
+
     /**
      * Moves a material between different resident professions in the same town.
      * Both sides are updated in one SQLite transaction.
