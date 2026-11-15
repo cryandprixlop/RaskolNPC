@@ -4,6 +4,11 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.Location;
 import org.bukkit.scheduler.BukkitTask;
@@ -31,7 +36,7 @@ import java.util.logging.Level;
  * Towny/SiegeWar relationship can be attacked. Unknown relations and failed
  * WorldGuard queries are never treated as permission to damage.
  */
-public final class GuardCombatController {
+public final class GuardCombatController implements Listener {
     private final Plugin plugin;
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
@@ -47,6 +52,9 @@ public final class GuardCombatController {
     private final long attackCooldownMillis;
     private final Map<NpcId, Long> lastAttack = new ConcurrentHashMap<>();
     private final Map<UUID, Entity> squadTargets = new HashMap<>();
+    private final Map<NpcId, RetaliationTarget> retaliationTargets = new HashMap<>();
+    private static final long RETALIATION_WINDOW_MILLIS = 10_000L;
+    private boolean listenerRegistered;
     private GuardSquadService squadService;
     private BukkitTask task;
     private int cursor;
@@ -117,6 +125,10 @@ public final class GuardCombatController {
     public void start() {
         requireMainThread();
         if (task != null) return;
+        if (!listenerRegistered) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+            listenerRegistered = true;
+        }
         task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 10L);
     }
 
@@ -127,6 +139,11 @@ public final class GuardCombatController {
         }
         lastAttack.clear();
         squadTargets.clear();
+        retaliationTargets.clear();
+        if (listenerRegistered) {
+            HandlerList.unregisterAll(this);
+            listenerRegistered = false;
+        }
     }
 
     /** Enables shared target selection using the preloaded squad-membership snapshot. */
@@ -164,6 +181,9 @@ public final class GuardCombatController {
                 .map(NpcRecord::id)
                 .collect(java.util.stream.Collectors.toSet());
         lastAttack.keySet().retainAll(activeGuardIds);
+        retaliationTargets.keySet().retainAll(activeGuardIds);
+        long now = System.currentTimeMillis();
+        retaliationTargets.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
         int count = Math.min(batchSize, guards.size());
         int start = Math.floorMod(cursor, guards.size());
         for (int offset = 0; offset < count; offset++) {
@@ -198,6 +218,14 @@ public final class GuardCombatController {
      * shared target while it remains valid and within their own detection radius.
      */
     private Entity selectTarget(NpcRecord guard, LivingEntity attacker) {
+        RetaliationTarget retaliation = retaliationTargets.get(guard.id());
+        if (retaliation != null) {
+            if (retaliation.expiresAtMillis() > System.currentTimeMillis()
+                    && isTargetEligible(guard, attacker, retaliation.target())) {
+                return retaliation.target();
+            }
+            retaliationTargets.remove(guard.id());
+        }
         if (squadService == null) return nearestHostile(guard, attacker);
         UUID squadId = squadService.squadIdFor(guard.id()).orElse(null);
         if (squadId == null) return nearestHostile(guard, attacker);
@@ -222,6 +250,29 @@ public final class GuardCombatController {
         squadTargets.put(squadId, selected);
         return isTargetEligible(guard, attacker, selected) ? selected : null;
     }
+
+    /**
+     * Records a short retaliation priority only for a verified hostile attacker.
+     * Projectile, environmental, unknown, and unauthorized damage never create a target.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onGuardDamaged(EntityDamageByEntityEvent event) {
+        requireMainThread();
+        NpcId guardId = entities.getNpcId(event.getEntity()).orElse(null);
+        if (guardId == null) return;
+        NpcRecord guard = registry.get(guardId).orElse(null);
+        if (guard == null || guard.type() != NpcType.GUARD) return;
+        if (!(event.getEntity() instanceof LivingEntity victim)
+                || !victim.isValid() || victim.isDead()
+                || !(event.getDamager() instanceof LivingEntity damager)
+                || !damager.isValid() || damager.isDead()) return;
+        if (!isTargetEligible(guard, victim, damager)
+                || !mayDamage(guard, victim, damager)) return;
+        retaliationTargets.put(guardId,
+                new RetaliationTarget(damager, System.currentTimeMillis() + RETALIATION_WINDOW_MILLIS));
+    }
+
+    private record RetaliationTarget(Entity target, long expiresAtMillis) { }
 
     private Entity nearestHostile(NpcRecord guard, LivingEntity attacker) {
         Location origin = attacker.getLocation();
