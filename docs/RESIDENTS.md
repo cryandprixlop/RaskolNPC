@@ -111,3 +111,8 @@ SQLite migrations currently cover NPC identity, resident profiles, schedules, qu
 - Daily needs are processed in batches and persisted asynchronously.
 - Business stock consumption is one database update per in-game day boundary.
 - The intended global load ceiling is 150 NPCs; an in-server acceptance/load test remains part of release preparation.
+
+
+## Resident production recipes
+
+The repository exposes an atomic production operation for a resident business. A recipe consumes every configured input from that resident profession's town stock and credits its output in the same SQLite transaction. If any input is missing or the output would exceed its existing stock capacity, the transaction leaves all stock unchanged. Recipe definitions and NPC schedules are intentionally separate from this persistence primitive.
