@@ -447,7 +447,7 @@ class SqliteResidentQuestRepositoryTest {
 
         assertTrue(quests.produceBusinessStock(blacksmith.id(),
                 java.util.Map.of("IRON_INGOT", 4, "COAL", 2),
-                "IRON_SWORD", 2, 16).join());
+                "IRON_SWORD", 2, 16, ResidentProductQuality.FINE).join());
 
         assertEquals(8, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
         assertEquals(6, quests.getBusinessStock(blacksmith.id(), "COAL").join());
@@ -460,7 +460,7 @@ class SqliteResidentQuestRepositoryTest {
                 quests.findBusinessStockBatches(blacksmith.id(), "IRON_SWORD").join();
         assertEquals(1, outputBatches.size());
         assertEquals(2, outputBatches.get(0).amount());
-        assertEquals(ResidentProductQuality.STANDARD, outputBatches.get(0).quality());
+        assertEquals(ResidentProductQuality.FINE, outputBatches.get(0).quality());
     }
 
     @Test
