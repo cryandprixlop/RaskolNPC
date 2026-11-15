@@ -41,7 +41,7 @@ class ResidentQuestServiceTest {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-mastery-recipe-test"));
-        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\n");
         Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), """
                 recipes:
                   expert_sword:
