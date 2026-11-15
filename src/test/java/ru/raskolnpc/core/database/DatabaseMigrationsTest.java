@@ -30,10 +30,12 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_squads");
             assertTableExists(connection, "guard_squad_members");
             assertTableExists(connection, "guard_conditions");
+            assertColumnExists(connection, "guard_conditions", "injury_severity");
+            assertColumnExists(connection, "guard_conditions", "last_injury_recovery_at");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(15, schemaVersion(connection));
-            assertEquals(15, migrationCount(connection));
+            assertEquals(17, migrationCount(connection));
         }
     }
 
@@ -159,6 +161,17 @@ class DatabaseMigrationsTest {
             assertTrue(result.next());
             return result.getInt(1);
         }
+    }
+
+    private static void assertColumnExists(java.sql.Connection connection, String table, String column)
+            throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (result.next()) {
+                if (column.equals(result.getString("name"))) return;
+            }
+        }
+        fail("Expected column to exist: " + table + "." + column);
     }
 
     private static void assertTableExists(java.sql.Connection connection, String table)
