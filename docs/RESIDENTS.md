@@ -142,6 +142,9 @@ recipes:
 - `output.material` must be a valid Bukkit item material; `output.amount` is 1–2304.
 - `output.capacity` is the maximum stored amount for the output material and cannot be lower than the produced amount.
 - Recipe execution is available through the resident production service API. It verifies the resident type and profession, then consumes all inputs and credits output in the existing atomic SQLite transaction.
-- Recipes are definitions, not a timer: automatic work scheduling and in-game production cadence are a later stage. No production is run automatically merely because a recipe exists.
+- During a resident's scheduled `WORK` activity, the shared behavior timer attempts production when the resident has reached its configured `WORK` destination. Recipes are tried in stable ID order; the first recipe with sufficient inputs and output capacity succeeds.
+- Each resident has a work-action cooldown, and an in-flight guard prevents overlapping asynchronous production attempts. Production is bounded by the existing resident behavior batch size; it does not create a task per NPC.
+- A recipe is not run outside a `WORK` schedule entry or when the resident is not at its work destination. If no recipe can be completed, no stock is changed and a later work cycle may retry.
+- Production stock is persisted in SQLite, so successful output survives server restarts. No offline catch-up production is simulated: only work cycles processed while the server is running can produce goods.
 
 The shipped file includes example recipes for a blacksmith, cook, and builder. Extend it with server-specific recipes after checking material names and stock capacities.
