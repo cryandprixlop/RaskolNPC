@@ -34,6 +34,9 @@ public interface ResidentQuestRepository {
             UUID playerId, NpcId residentId, String questId, String reason);
     CompletableFuture<Integer> getReputation(UUID playerId);
     CompletableFuture<Integer> getBusinessStock(NpcId residentId, String material);
+    /** Returns immutable-quality stock batches in deterministic FIFO order. */
+    CompletableFuture<List<ResidentBusinessStockBatch>> findBusinessStockBatches(
+            NpcId residentId, String material);
     /** Atomically removes stock for a business purchase or production use. */
     CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
     /**
