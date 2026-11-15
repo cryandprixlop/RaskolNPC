@@ -554,6 +554,17 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         });
         return database.transaction(connection -> {
             BusinessIdentity business = businessIdentity(connection, residentId);
+            int existingOutput = readBusinessStock(connection, business, output);
+            Integer existingCapacity = readBusinessStockCapacity(connection, business, output);
+            int effectiveCapacity = existingCapacity == null ? outputCapacity : existingCapacity;
+            if ((long) existingOutput + outputAmount > effectiveCapacity) return false;
+
+            // Validate every input before mutating any row. A normal false return commits
+            // the transaction, so insufficient inputs must be detected before the first debit.
+            for (var input : normalizedInputs.entrySet()) {
+                int available = readBusinessStock(connection, business, input.getKey());
+                if (available < input.getValue()) return false;
+            }
             for (var input : normalizedInputs.entrySet()) {
                 try (var debit = connection.prepareStatement("""
                         UPDATE resident_business_stock
@@ -567,13 +578,11 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                     debit.setString(4, business.profession());
                     debit.setString(5, input.getKey());
                     debit.setInt(6, input.getValue());
-                    if (debit.executeUpdate() != 1) return false;
+                    if (debit.executeUpdate() != 1) {
+                        throw new SQLException("Production input changed during transaction; transaction rolled back.");
+                    }
                 }
             }
-            int existingOutput = readBusinessStock(connection, business, output);
-            Integer existingCapacity = readBusinessStockCapacity(connection, business, output);
-            int effectiveCapacity = existingCapacity == null ? outputCapacity : existingCapacity;
-            if ((long) existingOutput + outputAmount > effectiveCapacity) return false;
             try (var credit = connection.prepareStatement("""
                     INSERT INTO resident_business_stock(
                         business_id, profession, material, amount, capacity, updated_at
