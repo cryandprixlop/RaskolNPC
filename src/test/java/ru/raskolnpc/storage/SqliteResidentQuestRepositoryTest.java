@@ -310,6 +310,22 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void qualitySpecificWithdrawalCannotConsumeAnotherQualityTier() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 32, 96);
+
+        assertFalse(quests.withdrawBusinessStock(resident.id(), "IRON_INGOT", 8,
+                ResidentProductQuality.FINE).join());
+        assertEquals(32, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+
+        assertTrue(quests.withdrawBusinessStock(resident.id(), "IRON_INGOT", 8,
+                ResidentProductQuality.STANDARD).join());
+        assertEquals(24, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(24, quests.findBusinessStockBatches(resident.id(), "IRON_INGOT")
+                .join().stream().mapToInt(ResidentBusinessStockBatch::amount).sum());
+    }
+
+    @Test
     void businessStockTransfersAtomicallyBetweenProfessionsInSameTown() {
         NpcRecord miner = createResident(ResidentProfession.MINER, "town");
         NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
