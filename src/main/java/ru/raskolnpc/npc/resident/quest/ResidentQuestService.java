@@ -458,6 +458,18 @@ public final class ResidentQuestService {
         return repository.findBusinessStockBatches(residentId, material);
     }
 
+    /** Returns only the requested quality tier for a future market listing. */
+    public CompletableFuture<List<ru.raskolnpc.storage.ResidentBusinessStockBatch>> businessStockBatches(
+            NpcId residentId, String material, ResidentProductQuality quality) {
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(material, "material");
+        Objects.requireNonNull(quality, "quality");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Resident not found."));
+        }
+        return repository.findBusinessStockBatches(residentId, material, quality);
+    }
+
     /** Used by a future market adapter to reserve goods without allowing negative stock. */
     public CompletableFuture<Boolean> withdrawBusinessStock(
             NpcId residentId, String material, int amount) {
