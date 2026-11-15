@@ -28,6 +28,11 @@ guards:
     rally-threshold: 35
     # Nearby guards from the same nation lose this many morale points when a guard dies.
     allied-death-penalty: 8
+  equipment:
+    # Native item durability lost per successful direct melee hit / received hit.
+    # Set either value to 0 to disable that kind of wear.
+    weapon-wear-per-hit: 1
+    armor-wear-per-hit: 1
   injury:
     # A single hit at this damage or above causes a light injury.
     light-damage: 4.0
