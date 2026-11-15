@@ -85,6 +85,10 @@ public final class ResidentBehaviorService {
         this.questRepository = Objects.requireNonNull(repository, "repository");
     }
 
+    public void setWorkActionIntervalTicks(long ticks) {
+        workActions.setActionIntervalTicks(ticks);
+    }
+
     public void setProductionService(ResidentQuestService service) {
         this.productionService = Objects.requireNonNull(service, "service");
     }
