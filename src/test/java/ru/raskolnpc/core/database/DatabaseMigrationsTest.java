@@ -81,7 +81,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(14, schemaVersion(connection));
+            assertEquals(15, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
@@ -112,7 +112,27 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(15, migrationCount(connection));
+            assertEquals(16, migrationCount(connection));
+        }
+    }
+
+    @Test
+    void guardMoraleIsBoundedAndDeletedWithItsNpc() throws Exception {
+        var file = temporaryDirectory.resolve("guard-morale.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
+                DatabaseMigrations.migrate(connection);
+                statement.execute("INSERT INTO npcs(id, type, name, state) VALUES ('guard-1', 'GUARD', 'Guard', 'ACTIVE')");
+                statement.execute("INSERT INTO guard_conditions(npc_id, morale, last_combat_at, updated_at) VALUES ('guard-1', 75, 1000, 1000)");
+                assertThrows(SQLException.class, () -> statement.execute(
+                        "UPDATE guard_conditions SET morale = 101 WHERE npc_id = 'guard-1'"));
+                statement.execute("DELETE FROM npcs WHERE id = 'guard-1'");
+                try (var result = statement.executeQuery("SELECT COUNT(*) FROM guard_conditions")) {
+                    assertTrue(result.next());
+                    assertEquals(0, result.getInt(1));
+                }
+            }
         }
     }
 
