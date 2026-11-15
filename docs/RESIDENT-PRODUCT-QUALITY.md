@@ -19,7 +19,9 @@ Design decision for the next resident-economy increment. This document defines t
 - Batch reads are available in deterministic FIFO order.
 - Quest deposits, withdrawals, profession transfers, production input/output, and daily consumption now update batches in the same transaction as the aggregate stock projection.
 - Withdrawals and daily consumption consume FIFO; profession transfers preserve the quality split across moved batches.
-- Newly deposited and currently produced goods use `STANDARD` quality until skill-based production quality is wired in a later increment.
+- Newly deposited goods use `STANDARD` quality.
+- Newly produced goods receive deterministic quality from persisted profession mastery: `APPRENTICE → BASIC`, `NOVICE → STANDARD`, `SPECIALIST → FINE`, `EXPERT/MASTER → MASTERWORK`.
+- The existing quantity-only production API remains compatible and defaults to `STANDARD`; quality-aware callers use the overload that supplies an explicit tier.
 - Gameplay presentation remains disabled; the compatibility and transactional test suite is being expanded.
 
 ## Problem
