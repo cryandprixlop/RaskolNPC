@@ -37,6 +37,47 @@ class ResidentQuestServiceTest {
     @TempDir Path temporaryDirectory;
 
     @Test
+    void lockedProductionRecipeDoesNotConsumeBusinessStock() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-mastery-recipe-test"));
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), """
+                recipes:
+                  expert_sword:
+                    profession: BLACKSMITH
+                    minimum-skill-level: EXPERT
+                    inputs:
+                      IRON_INGOT: 4
+                    output:
+                      material: IRON_SWORD
+                      amount: 1
+                      capacity: 32
+                """);
+
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Smith",
+                null, "town", "nation", "{}");
+        NpcRegistry registry = new NpcRegistry();
+        registry.register(resident);
+        ResidentProfile profile = new ResidentProfile(resident.id(), 35,
+                ResidentProfession.BLACKSMITH, Set.of(), 75, 75, 75, 75, 75, 75,
+                Map.of(ResidentProfession.BLACKSMITH,
+                        ru.raskolnpc.npc.resident.model.ResidentSkillLevel.NOVICE));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        when(profiles.find(resident.id()))
+                .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
+        ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
+
+        ResidentQuestService service = new ResidentQuestService(
+                plugin, profiles, registry, repository);
+
+        assertFalse(service.produce(resident.id(), "expert_sword").join());
+        verify(repository, never()).produceBusinessStock(
+                any(), anyMap(), anyString(), anyInt(), anyInt());
+        verify(profiles, never()).addSkillExperience(any(), any(), anyInt());
+    }
+
+    @Test
     void acceptsOnlyQuestMatchingResidentsProfession() throws Exception {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
