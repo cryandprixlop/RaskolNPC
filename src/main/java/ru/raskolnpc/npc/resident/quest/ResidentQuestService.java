@@ -120,6 +120,34 @@ public final class ResidentQuestService {
         });
     }
 
+    /**
+     * Attempts the profession's configured recipes in stable ID order.
+     * The first recipe whose inputs and output capacity fit is committed atomically.
+     */
+    public CompletableFuture<Boolean> produceAvailable(NpcId residentId) {
+        Objects.requireNonNull(residentId, "residentId");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return profiles.find(residentId).thenCompose(profile -> {
+            if (profile.isEmpty()) return CompletableFuture.completedFuture(false);
+            List<ResidentProductionRecipe> recipes =
+                    productionCatalog.forProfession(profile.get().profession());
+            return tryProductionRecipe(residentId, recipes, 0);
+        });
+    }
+
+    private CompletableFuture<Boolean> tryProductionRecipe(
+            NpcId residentId, List<ResidentProductionRecipe> recipes, int index) {
+        if (index >= recipes.size()) return CompletableFuture.completedFuture(false);
+        ResidentProductionRecipe recipe = recipes.get(index);
+        return repository.produceBusinessStock(residentId, recipe.inputs(),
+                recipe.outputMaterial(), recipe.outputAmount(), recipe.outputCapacity())
+                .thenCompose(produced -> Boolean.TRUE.equals(produced)
+                        ? CompletableFuture.completedFuture(true)
+                        : tryProductionRecipe(residentId, recipes, index + 1));
+    }
+
     public List<ResidentQuest> availableFor(ResidentProfile profile) {
         Objects.requireNonNull(profile, "profile");
         return catalog.forProfession(profile.profession());
