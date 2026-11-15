@@ -274,6 +274,49 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void businessStockTransfersAtomicallyBetweenProfessionsInSameTown() {
+        NpcRecord miner = createResident(ResidentProfession.MINER, "town");
+        NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
+        deliverStock(miner, "miner_iron_delivery", "IRON_INGOT", 32, 96);
+
+        assertTrue(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 64).join());
+
+        assertEquals(16, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+        assertEquals(16, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
+    }
+
+    @Test
+    void businessStockTransferRejectsDifferentTownsAndSameProfession() {
+        NpcRecord miner = createResident(ResidentProfession.MINER, "town");
+        NpcRecord otherTownBlacksmith = createResident(ResidentProfession.BLACKSMITH, "other-town");
+        NpcRecord secondMiner = createResident(ResidentProfession.MINER, "town");
+        deliverStock(miner, "miner_iron_delivery", "IRON_INGOT", 32, 96);
+
+        assertFalse(quests.transferBusinessStock(
+                miner.id(), otherTownBlacksmith.id(), "IRON_INGOT", 16, 64).join());
+        assertFalse(quests.transferBusinessStock(
+                miner.id(), secondMiner.id(), "IRON_INGOT", 16, 64).join());
+        assertEquals(32, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+        assertEquals(0, quests.getBusinessStock(otherTownBlacksmith.id(), "IRON_INGOT").join());
+    }
+
+    @Test
+    void businessStockTransferRejectsInsufficientSourceAndFullTarget() {
+        NpcRecord miner = createResident(ResidentProfession.MINER, "town");
+        NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
+        deliverStock(miner, "miner_iron_delivery", "IRON_INGOT", 32, 96);
+        deliverStock(blacksmith, "blacksmith_iron_delivery", "IRON_INGOT", 16, 64);
+
+        assertFalse(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 17, 64).join());
+        assertFalse(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 24).join());
+        assertEquals(32, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+        assertEquals(16, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
+    }
+
+    @Test
     void dailyBusinessConsumptionReopensDemandWithoutNegativeStock() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
@@ -333,11 +376,24 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     private NpcRecord createResident() {
-        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Miner",
-                null, "town", "nation", "{}");
+        return createResident(ResidentProfession.MINER, "town");
+    }
+
+    private NpcRecord createResident(ResidentProfession profession, String townId) {
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, profession.name(),
+                null, townId, "nation", "{}");
         npcs.insert(resident).join();
-        profiles.save(new ResidentProfile(resident.id(), 30, ResidentProfession.MINER,
+        profiles.save(new ResidentProfile(resident.id(), 30, profession,
                 Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
         return resident;
+    }
+
+    private void deliverStock(NpcRecord resident, String questId,
+            String material, int amount, int capacity) {
+        UUID player = UUID.randomUUID();
+        assertTrue(quests.accept(player, resident.id(), questId, material, amount, capacity).join());
+        assertTrue(quests.reserveSubmission(player, resident.id(), questId,
+                material, 5, amount, capacity).join());
+        assertTrue(quests.completeSubmission(player, resident.id(), questId, 5).join());
     }
 }
