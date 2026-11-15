@@ -272,6 +272,35 @@ class ResidentQuestServiceTest {
     }
 
     @Test
+    void exposesQualityAwareStockBatchesOnlyForResidents() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-stock-batch-api-test"));
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\\n");
+
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Merchant",
+                null, "town", "nation", "{}");
+        NpcRegistry registry = new NpcRegistry();
+        registry.register(resident);
+        ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
+        var batch = new ru.raskolnpc.storage.ResidentBusinessStockBatch(
+                "batch-1", "town", "BLACKSMITH", "IRON_INGOT", 12,
+                ru.raskolnpc.storage.ResidentProductQuality.FINE, 100L, "PRODUCTION", "recipe-1");
+        when(repository.findBusinessStockBatches(resident.id(), "IRON_INGOT"))
+                .thenReturn(CompletableFuture.completedFuture(java.util.List.of(batch)));
+
+        ResidentQuestService service = new ResidentQuestService(
+                plugin, mock(ResidentProfileService.class), registry, repository);
+
+        assertEquals(java.util.List.of(batch),
+                service.businessStockBatches(resident.id(), "IRON_INGOT").join());
+        verify(repository).findBusinessStockBatches(resident.id(), "IRON_INGOT");
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> service.businessStockBatches(NpcId.create(), "IRON_INGOT").join());
+    }
+
+    @Test
     void automaticProductionDoesNotRunForMissingOrWrongTypeNpc() throws Exception {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
