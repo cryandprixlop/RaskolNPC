@@ -105,3 +105,15 @@ amounts, and detects total-value overflow. These are initial balancing
 defaults, not a substitute for per-material pricing configuration or a
 market adapter. No currency is charged or credited by this helper.
 
+## Quality-specific stock reservation
+
+The repository exposes an atomic quality-filtered withdrawal operation for market
+adapters. It selects only batches matching the requested quality, in FIFO order
+within that tier, and updates the aggregate stock projection in the same SQLite
+transaction. If the requested tier does not contain the full quantity, the
+operation returns `false` without changing any stock. The resident quest service
+validates that the target NPC is a resident before exposing this operation.
+
+This is a stock reservation primitive, not a complete player trade: currency
+debit/credit and inventory delivery remain outside this increment until an
+idempotent transaction coordinator and economy adapter are implemented.
