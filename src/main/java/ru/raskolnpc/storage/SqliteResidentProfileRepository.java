@@ -5,6 +5,8 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgress;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgression;
 import ru.raskolnpc.npc.resident.model.ResidentProfile.ResidentTrait;
 
 import java.sql.ResultSet;
@@ -67,13 +69,9 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             }
 
             try (var traits = connection.prepareStatement(
-                    "DELETE FROM resident_traits WHERE npc_id = ?");
-                 var skills = connection.prepareStatement(
-                    "DELETE FROM resident_skills WHERE npc_id = ?")) {
+                    "DELETE FROM resident_traits WHERE npc_id = ?")) {
                 traits.setString(1, profile.npcId().toString());
                 traits.executeUpdate();
-                skills.setString(1, profile.npcId().toString());
-                skills.executeUpdate();
             }
 
             try (var statement = connection.prepareStatement(
@@ -87,8 +85,10 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             }
 
             try (var statement = connection.prepareStatement("""
-                    INSERT INTO resident_skills(npc_id, profession, skill_level)
-                    VALUES (?, ?, ?)
+                    INSERT INTO resident_skills(npc_id, profession, skill_level, experience)
+                    VALUES (?, ?, ?, 0)
+                    ON CONFLICT(npc_id, profession) DO UPDATE SET
+                        skill_level = excluded.skill_level
                     """)) {
                 for (var skill : profile.skills().entrySet()) {
                     statement.setString(1, profile.npcId().toString());
@@ -222,6 +222,51 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             List<ResidentProfile> result = new ArrayList<>(profiles.size());
             profiles.values().forEach(profile -> result.add(profile.build()));
             return List.copyOf(result);
+        });
+    }
+
+
+    @Override
+    public CompletableFuture<ResidentSkillProgress> addSkillExperience(
+            NpcId npcId, ResidentProfession profession, int amount) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
+        return database.transaction(connection -> {
+            try (var check = connection.prepareStatement(
+                    "SELECT 1 FROM resident_profiles WHERE npc_id = ?")) {
+                check.setString(1, npcId.toString());
+                try (ResultSet result = check.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+            try (var ensure = connection.prepareStatement(
+                    "INSERT OR IGNORE INTO resident_skills(npc_id, profession, skill_level, experience) VALUES (?, ?, 'APPRENTICE', 0)")) {
+                ensure.setString(1, npcId.toString());
+                ensure.setString(2, profession.name());
+                ensure.executeUpdate();
+            }
+            int current;
+            try (var read = connection.prepareStatement(
+                    "SELECT experience FROM resident_skills WHERE npc_id = ? AND profession = ?")) {
+                read.setString(1, npcId.toString());
+                read.setString(2, profession.name());
+                try (ResultSet result = read.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Could not load resident skill progress");
+                    current = result.getInt(1);
+                }
+            }
+            int updated = (int) Math.min(Integer.MAX_VALUE, (long) current + amount);
+            ResidentSkillProgress progress = ResidentSkillProgression.fromTotalExperience(updated);
+            try (var update = connection.prepareStatement(
+                    "UPDATE resident_skills SET experience = ?, skill_level = ? WHERE npc_id = ? AND profession = ?")) {
+                update.setInt(1, updated);
+                update.setString(2, progress.level().name());
+                update.setString(3, npcId.toString());
+                update.setString(4, profession.name());
+                update.executeUpdate();
+            }
+            return progress;
         });
     }
 
