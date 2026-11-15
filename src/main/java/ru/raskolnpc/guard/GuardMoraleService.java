@@ -227,11 +227,13 @@ public final class GuardMoraleService implements Listener {
                 injuryRecoveryAt = recoveredInjury > 0 ? now : 0;
             }
 
-            Entity entity = entities.find(entry.getKey()).orElse(null);
-            if (entity instanceof LivingEntity living && living.isValid() && !living.isDead()) {
+            if (now - current.lastCombatAt() >= injuryRecoveryMillis) {
+                Entity entity = entities.find(entry.getKey()).orElse(null);
+                if (entity instanceof LivingEntity living && living.isValid() && !living.isDead()) {
                 double maximum = living.getMaxHealth();
                 if (Double.isFinite(maximum) && maximum > 0 && living.getHealth() < maximum) {
                     living.setHealth(Math.min(maximum, living.getHealth() + 1.0));
+                    }
                 }
             }
 
