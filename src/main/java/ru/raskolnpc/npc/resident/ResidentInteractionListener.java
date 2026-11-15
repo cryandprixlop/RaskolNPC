@@ -15,6 +15,7 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.quest.ResidentQuest;
 import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 import ru.raskolnpc.storage.ResidentQuestReview;
@@ -131,6 +132,9 @@ public final class ResidentInteractionListener implements Listener {
                     }
                     dialogues.speak(player, conversation.profile(), residentName,
                             conversation.reputation());
+                    if (conversation.profile().profession() == ResidentProfession.BLACKSMITH) {
+                        sendNearbyGuardRepairActions(player, residentName);
+                    }
                     sendQuestActions(player, npcId, residentName, conversation);
                 });
             } catch (RuntimeException schedulingError) {
@@ -138,6 +142,39 @@ public final class ResidentInteractionListener implements Listener {
                         + schedulingError.getMessage());
             }
         });
+    }
+
+    /**
+     * A blacksmith can direct the player to the existing, authority-checked guard repair
+     * workflow. Only loaded guards in repair range are offered; the command performs
+     * the authoritative kingdom visibility check again before consuming materials.
+     */
+    private void sendNearbyGuardRepairActions(Player player, String residentName) {
+        List<NpcRecord> nearbyGuards = registry.all().stream()
+                .filter(record -> record.type() == NpcType.GUARD)
+                .filter(record -> entities.find(record.id())
+                        .filter(org.bukkit.entity.LivingEntity.class::isInstance)
+                        .map(org.bukkit.entity.LivingEntity.class::cast)
+                        .filter(guard -> guard.getWorld().equals(player.getWorld())
+                                && guard.getLocation().distanceSquared(player.getLocation()) <= 36.0)
+                        .isPresent())
+                .limit(5)
+                .toList();
+
+        Component prefix = Component.text("[" + residentName + "] ");
+        if (nearbyGuards.isEmpty()) {
+            player.sendMessage(prefix.append(Component.text(
+                    "Поблизости нет загруженных стражей, которым нужен ремонт.")));
+            return;
+        }
+        player.sendMessage(prefix.append(Component.text(
+                "Могу помочь с ремонтом снаряжения. Выбери стража:")));
+        for (NpcRecord guard : nearbyGuards) {
+            Component action = Component.text("  » Отремонтировать " + guard.name())
+                    .clickEvent(ClickEvent.runCommand(
+                            "/raskolnpc guard repair " + guard.id()));
+            player.sendMessage(prefix.append(action));
+        }
     }
 
     private void sendQuestActions(Player player, NpcId residentId, String residentName,
