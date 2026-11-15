@@ -45,6 +45,8 @@ import ru.raskolnpc.npc.resident.ResidentInteractionListener;
 import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 import ru.raskolnpc.storage.ResidentQuestRepository;
 import ru.raskolnpc.storage.SqliteResidentQuestRepository;
+import ru.raskolnpc.storage.ResidentTradeRepository;
+import ru.raskolnpc.storage.SqliteResidentTradeRepository;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardOrderRepository;
@@ -133,6 +135,8 @@ public final class RaskolNPC extends JavaPlugin {
         ResidentDialogueService residentDialogues = new ResidentDialogueService(this);
         ResidentQuestRepository residentQuestRepository =
                 new SqliteResidentQuestRepository(databaseManager);
+        ResidentTradeRepository residentTradeRepository =
+                new SqliteResidentTradeRepository(databaseManager);
         ResidentQuestService residentQuests = new ResidentQuestService(
                 this, residentProfileService, npcRegistry, residentQuestRepository);
         getServer().getPluginManager().registerEvents(
@@ -343,6 +347,13 @@ public final class RaskolNPC extends JavaPlugin {
                 .thenCompose(reviewCount -> {
                     if (reviewCount > 0) {
                         getLogger().warning("Resident quest submissions requiring review: " + reviewCount);
+                    }
+                    return residentTradeRepository.recoverUnfinished();
+                })
+                .thenCompose(tradeReviewCount -> {
+                    if (tradeReviewCount > 0) {
+                        getLogger().warning("Resident trades requiring payment/delivery reconciliation: "
+                                + tradeReviewCount);
                     }
                     return npcLifecycleService.loadAll();
                 })
