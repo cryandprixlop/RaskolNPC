@@ -117,3 +117,18 @@ validates that the target NPC is a resident before exposing this operation.
 This is a stock reservation primitive, not a complete player trade: currency
 debit/credit and inventory delivery remain outside this increment until an
 idempotent transaction coordinator and economy adapter are implemented.
+
+## Resident trade offers
+
+The resident quest service can expose a read-only market view grouped by product
+quality. Each offer contains the resident, normalized material key, quality,
+available quantity, unit price, and total value in the economy's smallest
+currency unit. Quantities are aggregated from persisted batches of that exact
+quality, and prices use the quality valuation rules above.
+
+Offer creation does not reserve or remove stock. A purchase flow must still
+perform a fresh atomic quality-specific withdrawal immediately before delivery
+and must coordinate that operation with the economy provider using a durable,
+idempotent trade state. The supplied base price is intentionally provided by
+the caller; this module does not assume a universal material price list or
+silently couple market prices to Towny's guard-rent economy adapter.
