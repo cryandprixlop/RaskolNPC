@@ -45,7 +45,10 @@ public final class ResidentQuestService {
     private final NpcRegistry registry;
     private final ResidentQuestRepository repository;
     private final File catalogFile;
+    private final File productionCatalogFile;
     private volatile ResidentQuestCatalog catalog = new ResidentQuestCatalog(java.util.Map.of());
+    private volatile ResidentProductionCatalog productionCatalog =
+            new ResidentProductionCatalog(java.util.Map.of());
 
     public ResidentQuestService(Plugin plugin, ResidentProfileService profiles,
             NpcRegistry registry, ResidentQuestRepository repository) {
@@ -58,11 +61,14 @@ public final class ResidentQuestService {
             throw new IllegalStateException("Could not create plugin data directory.");
         }
         this.catalogFile = new File(folder, "resident-quests.yml");
+        this.productionCatalogFile = new File(folder, "production-recipes.yml");
         if (!catalogFile.exists()) plugin.saveResource("resident-quests.yml", false);
+        if (!productionCatalogFile.exists()) plugin.saveResource("production-recipes.yml", false);
         try {
             reload();
+            reloadProductionRecipes();
         } catch (IOException | InvalidConfigurationException exception) {
-            throw new IllegalStateException("Could not load resident-quests.yml.", exception);
+            throw new IllegalStateException("Could not load resident quest or production YAML.", exception);
         }
     }
 
@@ -70,6 +76,38 @@ public final class ResidentQuestService {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.load(catalogFile);
         catalog = ResidentQuestCatalog.from(yaml);
+    }
+
+    /** Validates the complete recipe file before atomically replacing the active catalog. */
+    public synchronized void reloadProductionRecipes()
+            throws IOException, InvalidConfigurationException {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.load(productionCatalogFile);
+        ResidentProductionCatalog loaded = ResidentProductionCatalog.from(yaml);
+        productionCatalog = loaded;
+    }
+
+    public List<ResidentProductionRecipe> productionRecipesFor(ResidentProfile profile) {
+        Objects.requireNonNull(profile, "profile");
+        return productionCatalog.forProfession(profile.profession());
+    }
+
+    /** Executes a named YAML recipe only for a resident with the matching profession. */
+    public CompletableFuture<Boolean> produce(NpcId residentId, String recipeId) {
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(recipeId, "recipeId");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        ResidentProductionRecipe recipe = productionCatalog.find(recipeId).orElse(null);
+        if (recipe == null) return CompletableFuture.completedFuture(false);
+        return profiles.find(residentId).thenCompose(profile -> {
+            if (profile.isEmpty() || profile.get().profession() != recipe.profession()) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return repository.produceBusinessStock(residentId, recipe.inputs(),
+                    recipe.outputMaterial(), recipe.outputAmount(), recipe.outputCapacity());
+        });
     }
 
     public List<ResidentQuest> availableFor(ResidentProfile profile) {
