@@ -67,7 +67,11 @@ public final class ResidentQuestService {
             plugin.saveResource("production-recipes.yml", false);
             // Keep lightweight test/plugin hosts functional when saveResource is a no-op.
             if (!productionCatalogFile.exists()) {
-                java.nio.file.Files.writeString(productionCatalogFile.toPath(), "recipes: {}\n");
+                try {
+                    java.nio.file.Files.writeString(productionCatalogFile.toPath(), "recipes: {}\n");
+                } catch (IOException exception) {
+                    throw new IllegalStateException("Could not create production-recipes.yml.", exception);
+                }
             }
         }
         try {
