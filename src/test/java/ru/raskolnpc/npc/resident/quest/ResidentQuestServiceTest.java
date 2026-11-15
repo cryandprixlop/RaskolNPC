@@ -183,4 +183,63 @@ class ResidentQuestServiceTest {
                 "A submission with no inventory change could not release its reservation: database unavailable");
         verify(inventory, never()).removeItem(any(ItemStack.class));
     }
+
+    @Test
+    void automaticProductionUsesFirstAvailableProfessionRecipe() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-auto-production-test"));
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), """
+                recipes:
+                  blacksmith_sword:
+                    profession: BLACKSMITH
+                    inputs:
+                      IRON_INGOT: 4
+                      COAL: 2
+                    output:
+                      material: IRON_SWORD
+                      amount: 1
+                      capacity: 32
+                """);
+
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Blacksmith",
+                null, "town", "nation", "{}");
+        NpcRegistry registry = new NpcRegistry();
+        registry.register(resident);
+        ResidentProfile profile = new ResidentProfile(resident.id(), 30,
+                ResidentProfession.BLACKSMITH, Set.of(), 75, 75, 75, 75, 75, 75, Map.of());
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        when(profiles.find(resident.id()))
+                .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
+        ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
+        when(repository.produceBusinessStock(resident.id(),
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 1, 32))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        ResidentQuestService service = new ResidentQuestService(
+                plugin, profiles, registry, repository);
+
+        assertTrue(service.produceAvailable(resident.id()).join());
+        verify(repository).produceBusinessStock(resident.id(),
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 1, 32);
+    }
+
+    @Test
+    void automaticProductionDoesNotRunForMissingOrWrongTypeNpc() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-auto-production-negative-test"));
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\\n");
+
+        NpcRegistry registry = new NpcRegistry();
+        ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
+        ResidentQuestService service = new ResidentQuestService(
+                plugin, mock(ResidentProfileService.class), registry, repository);
+
+        assertFalse(service.produceAvailable(NpcId.random()).join());
+        verifyNoInteractions(repository);
+    }
+
 }
