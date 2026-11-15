@@ -63,7 +63,7 @@ class GuardEquipmentRepairServiceTest {
         assertEquals(5, result.materialsConsumed().get(Material.IRON_INGOT));
         assertEquals(0, damage(guard.getEquipment().getItemInMainHand()));
         assertEquals(0, damage(guard.getEquipment().getHelmet()));
-        assertEquals(0, player.getInventory().all(Material.IRON_INGOT).stream()
+        assertEquals(0, player.getInventory().all(Material.IRON_INGOT).values().stream()
                 .mapToInt(ItemStack::getAmount).sum());
     }
 
