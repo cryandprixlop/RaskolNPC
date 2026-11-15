@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 
 /** Durable, idempotent persistence boundary for resident market purchases. */
 public interface ResidentTradeRepository {
+    enum ReviewResolution { DELIVERED, CANCELLED_UNPAID, REFUNDED_NOT_DELIVERED }
     CompletableFuture<Optional<ResidentTradeTransaction>> reserve(
             String idempotencyKey, UUID buyerId, NpcId residentId, String material,
             ResidentProductQuality quality, int amount, long unitPriceMinor);
@@ -18,6 +19,9 @@ public interface ResidentTradeRepository {
 
     /** Atomically cancels an unpaid purchase and restores its exact quality batch. */
     CompletableFuture<Boolean> cancelAndRelease(String transactionId, String reason);
+
+    /** Applies an evidence-backed admin decision to a REVIEW_REQUIRED trade. */
+    CompletableFuture<Boolean> resolveReview(String transactionId, ReviewResolution resolution, String evidence);
 
     CompletableFuture<Optional<ResidentTradeTransaction>> find(String transactionId);
 
