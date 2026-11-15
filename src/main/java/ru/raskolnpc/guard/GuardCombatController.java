@@ -253,14 +253,15 @@ public final class GuardCombatController implements Listener {
                 .filter(candidate -> isVerifiedHostile(guard, candidate))
                 .count();
         long allies = 1;
-        for (NpcRecord candidate : registry.all()) {
-            if (candidate.type() != NpcType.GUARD || candidate.id().equals(guard.id())
-                    || !Objects.equals(candidate.nationId(), guard.nationId())) continue;
-            Entity ally = entities.find(candidate.id()).orElse(null);
-            if (!(ally instanceof LivingEntity living) || !living.isValid() || living.isDead()) continue;
-            Location location = living.getLocation();
-            if (location.getWorld() != null && location.getWorld().equals(origin.getWorld())
-                    && location.distanceSquared(origin) <= radiusSquared) allies++;
+        for (Entity nearby : entity.getNearbyEntities(detectionRadius, detectionRadius, detectionRadius)) {
+            if (!(nearby instanceof LivingEntity living) || !living.isValid() || living.isDead()
+                    || !living.getWorld().equals(origin.getWorld())
+                    || living.getLocation().distanceSquared(origin) > radiusSquared) continue;
+            NpcId allyId = entities.getNpcId(nearby).orElse(null);
+            if (allyId == null || allyId.equals(guard.id())) continue;
+            NpcRecord ally = registry.get(allyId).orElse(null);
+            if (ally != null && ally.type() == NpcType.GUARD
+                    && Objects.equals(ally.nationId(), guard.nationId())) allies++;
         }
         if (hostiles >= allies + 2) {
             lastPressurePenalty.put(guard.id(), now);
