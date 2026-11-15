@@ -29,6 +29,29 @@ class GuardConditionTest {
     }
 
     @Test
+    void injuriesReduceCombatOutputAndRecoverInStages() {
+        NpcId id = NpcId.create();
+        GuardCondition light = new GuardCondition(id, 100, 1, 1, 1, 100);
+        GuardCondition severe = new GuardCondition(id, 100, 1, 1, 2, 100);
+        assertEquals(0.85, light.damageMultiplier());
+        assertEquals(0.60, severe.damageMultiplier());
+
+        GuardCondition recovering = severe.withRecovery(100, 1, 200, 300);
+        assertEquals(1, recovering.injurySeverity());
+        assertEquals(200, recovering.lastInjuryRecoveryAt());
+        assertEquals(0.85, recovering.damageMultiplier());
+    }
+
+    @Test
+    void rejectsInvalidInjurySeverityAndTimestamp() {
+        NpcId id = NpcId.create();
+        assertThrows(IllegalArgumentException.class,
+                () -> new GuardCondition(id, 100, 1, 1, 3, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> new GuardCondition(id, 100, 1, 1, 1, -1));
+    }
+
+    @Test
     void rejectsOutOfRangeMoraleAndInvalidTimestamps() {
         NpcId id = NpcId.create();
         assertThrows(IllegalArgumentException.class,
