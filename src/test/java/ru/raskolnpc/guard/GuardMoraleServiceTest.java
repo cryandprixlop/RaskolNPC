@@ -81,6 +81,30 @@ class GuardMoraleServiceTest {
     }
 
     @Test
+    void heavyDamageCreatesSevereInjuryAndReducesCombatDamage() {
+        EntityDamageEvent event = mock(EntityDamageEvent.class);
+        when(event.getEntity()).thenReturn(guardEntity);
+        when(event.getFinalDamage()).thenReturn(8.0);
+
+        service.onGuardDamaged(event);
+
+        assertEquals(2, service.injurySeverity(guard.id()));
+        assertEquals(0.60 * service.morale(guard.id()) / 100.0 + 0.30, service.damageMultiplier(guard.id()), 0.0001);
+    }
+
+    @Test
+    void moderateDamageCreatesLightInjury() {
+        EntityDamageEvent event = mock(EntityDamageEvent.class);
+        when(event.getEntity()).thenReturn(guardEntity);
+        when(event.getFinalDamage()).thenReturn(4.0);
+
+        service.onGuardDamaged(event);
+
+        assertEquals(1, service.injurySeverity(guard.id()));
+        assertEquals(0.85 * 0.96, service.damageMultiplier(guard.id()), 0.0001);
+    }
+
+    @Test
     void retreatThresholdsMustHaveAValidHysteresisRange() {
         assertThrows(IllegalArgumentException.class,
                 () -> service.setRetreatThresholds(35, 35));
