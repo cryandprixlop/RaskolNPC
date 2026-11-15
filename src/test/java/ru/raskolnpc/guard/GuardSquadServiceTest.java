@@ -3,10 +3,13 @@ package ru.raskolnpc.guard;
 import org.junit.jupiter.api.Test;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.guard.model.GuardSquad;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardSquadRepository;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,13 +22,21 @@ class GuardSquadServiceTest {
         NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
         registry.register(guard);
         GuardSquadRepository repository = mock(GuardSquadRepository.class);
-        when(repository.create(any(), eq("Watch"), any(), anyLong()))
-                .thenReturn(CompletableFuture.completedFuture(true));
+        UUID creator = UUID.randomUUID();
+        AtomicReference<UUID> createdSquadId = new AtomicReference<>();
+        when(repository.create(any(), eq("Watch"), eq(creator), anyLong()))
+                .thenAnswer(invocation -> {
+                    createdSquadId.set(invocation.getArgument(0));
+                    return CompletableFuture.completedFuture(true);
+                });
         when(repository.addMember(any(), eq(guard.id()), eq(8)))
                 .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.findAll()).thenAnswer(invocation ->
+                CompletableFuture.completedFuture(List.of(new GuardSquad(
+                        createdSquadId.get(), "Watch", creator, 100L, List.of(guard.id())))));
         GuardSquadService service = new GuardSquadService(registry, repository, 8);
 
-        UUID squadId = service.create(" Watch ", UUID.randomUUID()).join();
+        UUID squadId = service.create(" Watch ", creator).join();
         assertTrue(service.add(squadId, guard.id()).join());
         verify(repository).addMember(squadId, guard.id(), 8);
     }
