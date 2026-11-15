@@ -143,7 +143,7 @@ class GuardRentServiceTest {
             GuardRentPayment paid = paidPayment(registry, "paid-without-towny");
             NpcRecord failedRecord = NpcRecord.create(NpcType.GUARD, "Failed guard",
                     null, "town-id", null,
-                    "{\\"dailyRent\\":10,\\"overdueDays\\":0,\\"nextRentAt\\":100}");
+                    "{\"dailyRent\":10,\"overdueDays\":0,\"nextRentAt\":100}");
             registry.put(failedRecord);
             GuardRentPayment failed = new GuardRentPayment(
                     "failed-without-towny", failedRecord.id(), 100, "town-id", 10,
