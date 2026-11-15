@@ -83,6 +83,10 @@ Resources are removed from the player's inventory on the server thread. The assi
 
 No currency is awarded by resident quests. A player-facing money economy or market provider has not been selected and is intentionally not assumed.
 
+## Blacksmith interaction
+
+When a resident's profession is `BLACKSMITH`, the conversation offers repair actions for up to five loaded guards within six blocks that currently have damaged equipment. Selecting an action invokes the standard `/raskolnpc guard repair <UUID>` workflow; kingdom authorization, distance, supported item recipes, and the player's material inventory are validated again by the repair service. Guards with no damaged equipment are not offered. The blacksmith interaction does not bypass guard permissions or provide free repairs.
+
 ## Dialogue configuration
 
 `resident-dialogues.yml` supports:
