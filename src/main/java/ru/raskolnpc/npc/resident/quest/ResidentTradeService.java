@@ -51,7 +51,8 @@ public final class ResidentTradeService {
     }
 
     private CompletableFuture<Result> charge(ResidentTradeTransaction trade) {
-        return safe(() -> payments.charge(trade)).thenCompose(payment -> {
+        return safe(() -> payments.charge(withStatus(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING)))
+                .thenCompose(payment -> {
             if (payment == null || payment.outcome() == ResidentTradePaymentProvider.Outcome.UNKNOWN) {
                 return markReview(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING,
                         payment == null ? "Payment provider returned no result."
@@ -81,7 +82,8 @@ public final class ResidentTradeService {
     }
 
     private CompletableFuture<Result> deliver(ResidentTradeTransaction trade) {
-        return safe(() -> delivery.deliver(trade)).thenCompose(result -> {
+        return safe(() -> delivery.deliver(withStatus(trade, ResidentTradeTransaction.Status.PAID)))
+                .thenCompose(result -> {
             if (result == null || result.outcome() == ResidentTradeDeliveryProvider.Outcome.UNKNOWN) {
                 return markReview(trade, ResidentTradeTransaction.Status.PAID,
                         result == null ? "Delivery provider returned no result." : result.detail());
@@ -105,7 +107,8 @@ public final class ResidentTradeService {
     }
 
     private CompletableFuture<Result> refund(ResidentTradeTransaction trade) {
-        return safe(() -> payments.refund(trade)).thenCompose(refund -> {
+        return safe(() -> payments.refund(withStatus(trade, ResidentTradeTransaction.Status.REFUND_PENDING)))
+                .thenCompose(refund -> {
             if (refund == null || refund.outcome() != ResidentTradePaymentProvider.Outcome.REFUNDED) {
                 return markReview(trade, ResidentTradeTransaction.Status.REFUND_PENDING,
                         refund == null ? "Refund provider returned no result." : refund.detail());
@@ -135,6 +138,15 @@ public final class ResidentTradeService {
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
+    }
+
+    private static ResidentTradeTransaction withStatus(ResidentTradeTransaction trade,
+            ResidentTradeTransaction.Status status) {
+        return new ResidentTradeTransaction(trade.transactionId(), trade.idempotencyKey(),
+                trade.buyerId(), trade.residentId(), trade.material(), trade.quality(),
+                trade.amount(), trade.unitPriceMinor(), trade.totalPriceMinor(), status,
+                trade.providerReference(), trade.lastError(), trade.createdAt(),
+                Math.max(trade.updatedAt(), System.currentTimeMillis()));
     }
 
     private static String safeMessage(Throwable error) {
