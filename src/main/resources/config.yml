@@ -21,6 +21,11 @@ guards:
   movement-step: 0.6
   # Hard cap for administrator-managed persistent guard squads.
   squad-max-members: 10
+  morale:
+    # At or below this value, guards retreat toward their persisted post and stop attacking.
+    retreat-threshold: 20
+    # Retreat ends only after morale reaches this value (must exceed retreat-threshold).
+    rally-threshold: 35
 
   # Basic combat only targets registered NPCs whose diplomacy is explicitly hostile.
   # Unknown relationships are ignored; WorldGuard checks fail closed when installed.
