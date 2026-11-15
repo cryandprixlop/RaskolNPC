@@ -93,7 +93,7 @@ class GuardEquipmentWearServiceTest {
         equipment.setItemInMainHand(sword);
 
         service.onGuardAttack(new EntityDamageByEntityEvent(
-                mock(Entity.class), guard, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
+                guard, mock(Entity.class), EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
 
         assertTrue(equipment.getItemInMainHand().getType().isAir());
     }
