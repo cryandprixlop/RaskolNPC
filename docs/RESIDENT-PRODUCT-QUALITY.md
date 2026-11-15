@@ -23,6 +23,7 @@ Design decision for the next resident-economy increment. This document defines t
 - Newly produced goods receive deterministic quality from persisted profession mastery: `APPRENTICE → BASIC`, `NOVICE → STANDARD`, `SPECIALIST → FINE`, `EXPERT/MASTER → MASTERWORK`.
 - The existing quantity-only production API remains compatible and defaults to `STANDARD`; quality-aware callers use the overload that supplies an explicit tier.
 - Gameplay presentation remains disabled; the compatibility and transactional test suite is being expanded.
+- `ResidentQuestService.businessStockBatches(...)` exposes persisted batches to future market adapters while rejecting missing/non-resident NPCs; it does not assign prices or mutate stock.
 
 ## Problem
 
