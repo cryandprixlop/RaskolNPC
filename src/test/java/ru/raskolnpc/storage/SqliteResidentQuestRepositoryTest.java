@@ -633,6 +633,39 @@ class SqliteResidentQuestRepositoryTest {
                 trades.find(trade.transactionId()).join().orElseThrow().status());
     }
 
+    @Test
+    void evidenceBackedReviewResolutionRestoresStockOnlyWhenNothingWasDelivered() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 12, 64);
+        ResidentTradeTransaction refunded = trades.reserve("purchase-review-refund",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 5, 100).join().orElseThrow();
+        assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(1, trades.recoverUnfinished().join());
+
+        assertTrue(trades.resolveReview(refunded.transactionId(),
+                ResidentTradeRepository.ReviewResolution.REFUNDED_NOT_DELIVERED,
+                "Economy provider confirms refund REF-123; inventory audit confirms no delivery.").join());
+        assertFalse(trades.resolveReview(refunded.transactionId(),
+                ResidentTradeRepository.ReviewResolution.REFUNDED_NOT_DELIVERED,
+                "duplicate admin action").join());
+        assertEquals(12, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(ResidentTradeTransaction.Status.REFUNDED,
+                trades.find(refunded.transactionId()).join().orElseThrow().status());
+
+        ResidentTradeTransaction delivered = trades.reserve("purchase-review-delivered",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 4, 100).join().orElseThrow();
+        assertEquals(8, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(1, trades.recoverUnfinished().join());
+        assertTrue(trades.resolveReview(delivered.transactionId(),
+                ResidentTradeRepository.ReviewResolution.DELIVERED,
+                "Inventory audit confirms transaction delivery.").join());
+        assertEquals(8, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(ResidentTradeTransaction.Status.DELIVERED,
+                trades.find(delivered.transactionId()).join().orElseThrow().status());
+    }
+
     private NpcRecord createResident() {
         return createResident(ResidentProfession.MINER, "town");
     }
