@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 15;
+    private static final int CURRENT_SCHEMA_VERSION = 16;
 
     private DatabaseMigrations() {
     }
@@ -41,7 +41,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 12)) applyGuardOrderSchema(connection);
         if (!isApplied(connection, 13)) applyGuardSquadSchema(connection);
         if (!isApplied(connection, 14)) applyGuardRallyOrderSchema(connection);
-        if (!isApplied(connection, 15)) applyGuardMoraleSchema(connection);
+        if (!isApplied(connection, 15)) applyGuardMoraleSchema(connection);\n        if (!isApplied(connection, 16)) applyGuardInjurySchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
