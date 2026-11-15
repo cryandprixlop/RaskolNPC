@@ -118,6 +118,7 @@ public final class RaskolNPC extends JavaPlugin {
                 Math.max(1, getConfig().getInt("guards.order-batch-size", 6)),
                 Math.min(1.5, Math.max(0.1,
                         getConfig().getDouble("guards.movement-step", 0.6))));
+        guardOrderController.setSquadService(guardSquadService);
         npcRecoveryService = new NpcRecoveryService(
                 this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
@@ -350,7 +351,9 @@ public final class RaskolNPC extends JavaPlugin {
                                         }
                                         npcLifecycleService.markReady();
                                         residentBehaviorService.start();
-                                        guardOrderController.start().whenComplete((started, orderError) -> {
+                                        guardSquadService.refreshMemberships()
+                                                .thenCompose(ignored -> guardOrderController.start())
+                                                .whenComplete((started, orderError) -> {
                                             if (!isEnabled()) return;
                                             scheduleStartupStep(() -> {
                                                 if (!isEnabled()) return;
