@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class GuardMoraleService implements Listener {
     private static final long RECOVERY_INTERVAL_TICKS = 1200L;
     private static final long RECOVERY_DELAY_MILLIS = 120_000L;
+    private static final long DEFAULT_INJURY_RECOVERY_MILLIS = 300_000L;
 
     private final Plugin plugin;
     private final NpcRegistry registry;
@@ -42,6 +43,9 @@ public final class GuardMoraleService implements Listener {
     private int retreatThreshold = 20;
     private int rallyThreshold = 35;
     private int alliedDeathPenalty = 8;
+    private double lightInjuryDamage = 4.0;
+    private double severeInjuryDamage = 8.0;
+    private long injuryRecoveryMillis = DEFAULT_INJURY_RECOVERY_MILLIS;
     private BukkitTask recoveryTask;
     private boolean listenerRegistered;
 
@@ -124,6 +128,17 @@ public final class GuardMoraleService implements Listener {
         persist(changed);
     }
 
+    public void setInjuryPolicy(double lightDamage, double severeDamage, long recoveryMillis) {
+        requireMainThread();
+        if (!Double.isFinite(lightDamage) || !Double.isFinite(severeDamage)
+                || lightDamage <= 0 || severeDamage <= lightDamage || recoveryMillis < 60_000L) {
+            throw new IllegalArgumentException("Invalid guard injury policy.");
+        }
+        lightInjuryDamage = lightDamage;
+        severeInjuryDamage = severeDamage;
+        injuryRecoveryMillis = recoveryMillis;
+    }
+
     public void setAlliedDeathPenalty(int penalty) {
         requireMainThread();
         if (penalty < 0 || penalty > 50) throw new IllegalArgumentException("allied death penalty must be between 0 and 50.");
@@ -174,9 +189,13 @@ public final class GuardMoraleService implements Listener {
 
         GuardCondition previous = conditions.getOrDefault(guardId,
                 new GuardCondition(guardId, 100, 0, Math.max(1, System.currentTimeMillis())));
-        int loss = Math.max(1, (int) Math.ceil(event.getFinalDamage() * 2.0));
-        GuardCondition changed = previous.withMorale(previous.morale() - loss,
-                System.currentTimeMillis(), System.currentTimeMillis());
+        double finalDamage = event.getFinalDamage();
+        int loss = Math.max(1, (int) Math.ceil(finalDamage * 2.0));
+        int injuryIncrease = finalDamage >= severeInjuryDamage ? 2
+                : finalDamage >= lightInjuryDamage ? 1 : 0;
+        int severity = Math.min(2, previous.injurySeverity() + injuryIncrease);
+        long now = System.currentTimeMillis();
+        GuardCondition changed = previous.withCombatState(previous.morale() - loss, severity, now);
         conditions.put(guardId, changed);
         if (changed.morale() <= retreatThreshold) retreating.add(guardId);
         persist(changed);
@@ -187,16 +206,34 @@ public final class GuardMoraleService implements Listener {
         long now = System.currentTimeMillis();
         for (Map.Entry<NpcId, GuardCondition> entry : conditions.entrySet()) {
             GuardCondition current = entry.getValue();
-            if (current.morale() >= 100
-                    || now - current.lastCombatAt() < RECOVERY_DELAY_MILLIS) continue;
             NpcRecord record = registry.get(entry.getKey()).orElse(null);
             if (record == null || record.type() != NpcType.GUARD) {
                 conditions.remove(entry.getKey(), current);
                 retreating.remove(entry.getKey());
                 continue;
             }
-            GuardCondition recovered = current.withMorale(current.morale() + 1,
-                    current.lastCombatAt(), now);
+            if (now - current.lastCombatAt() < RECOVERY_DELAY_MILLIS) continue;
+
+            int recoveredMorale = Math.min(100, current.morale() + 1);
+            int recoveredInjury = current.injurySeverity();
+            long injuryRecoveryAt = current.lastInjuryRecoveryAt();
+            if (recoveredInjury > 0 && now - injuryRecoveryAt >= injuryRecoveryMillis) {
+                recoveredInjury--;
+                injuryRecoveryAt = recoveredInjury > 0 ? now : 0;
+            }
+
+            Entity entity = entities.find(entry.getKey()).orElse(null);
+            if (entity instanceof LivingEntity living && living.isValid() && !living.isDead()) {
+                double maximum = living.getMaxHealth();
+                if (Double.isFinite(maximum) && maximum > 0 && living.getHealth() < maximum) {
+                    living.setHealth(Math.min(maximum, living.getHealth() + 1.0));
+                }
+            }
+
+            if (recoveredMorale == current.morale()
+                    && recoveredInjury == current.injurySeverity()) continue;
+            GuardCondition recovered = current.withRecovery(
+                    recoveredMorale, recoveredInjury, injuryRecoveryAt, now);
             if (conditions.replace(entry.getKey(), current, recovered)) {
                 if (recovered.morale() >= rallyThreshold) retreating.remove(entry.getKey());
                 persist(recovered);
