@@ -52,6 +52,7 @@ public final class ResidentBehaviorService {
     private final long intervalTicks;
     private final Map<NpcId, ResidentBehaviorData> cache = new HashMap<>();
     private final Map<NpcId, ResidentProfile> profileCache = new HashMap<>();
+    private final Set<NpcId> productionInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final AtomicBoolean loading = new AtomicBoolean();
     private List<NpcRecord> residents = List.of();
     private int cursor;
@@ -203,19 +204,20 @@ public final class ResidentBehaviorService {
                     && entity.getLocation().distanceSquared(target) <= 2.25) {
                 ResidentProfile profile = profileCache.get(resident.id());
                 if (profile != null) {
-                    if (workActions.performIfReady(resident.id(), entity, profile, behaviorTick)) {
-                        ResidentQuestService production = productionService;
-                        if (production != null) {
-                            production.produceAvailable(resident.id()).whenComplete((produced, error) -> {
-                                if (error != null) {
-                                    plugin.getLogger().log(Level.WARNING,
-                                            "Resident production cycle failed for " + resident.id(), error);
-                                } else if (Boolean.TRUE.equals(produced)) {
-                                    plugin.getLogger().fine(
-                                            "Resident " + resident.id() + " completed a production recipe.");
-                                }
-                            });
-                        }
+                    ResidentQuestService production = productionService;
+                    if (production != null && !productionInFlight.contains(resident.id())
+                            && workActions.performIfReady(resident.id(), entity, profile, behaviorTick)) {
+                        productionInFlight.add(resident.id());
+                        production.produceAvailable(resident.id()).whenComplete((produced, error) -> {
+                            productionInFlight.remove(resident.id());
+                            if (error != null) {
+                                plugin.getLogger().log(Level.WARNING,
+                                        "Resident production cycle failed for " + resident.id(), error);
+                            } else if (Boolean.TRUE.equals(produced)) {
+                                plugin.getLogger().fine(
+                                        "Resident " + resident.id() + " completed a production recipe.");
+                            }
+                        });
                     }
                 }
             }
@@ -293,6 +295,7 @@ public final class ResidentBehaviorService {
         cache.clear();
         profileCache.clear();
         workActions.clear();
+        productionInFlight.clear();
         residents = List.of();
         cursor = 0;
         behaviorTick = 0;
