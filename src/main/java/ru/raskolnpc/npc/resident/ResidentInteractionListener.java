@@ -8,6 +8,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
@@ -157,7 +160,8 @@ public final class ResidentInteractionListener implements Listener {
                         .filter(org.bukkit.entity.LivingEntity.class::isInstance)
                         .map(org.bukkit.entity.LivingEntity.class::cast)
                         .filter(guard -> guard.getWorld().equals(player.getWorld())
-                                && guard.getLocation().distanceSquared(player.getLocation()) <= 36.0)
+                                && guard.getLocation().distanceSquared(player.getLocation()) <= 36.0
+                                && hasDamagedEquipment(guard))
                         .isPresent())
                 .limit(5)
                 .toList();
@@ -176,6 +180,24 @@ public final class ResidentInteractionListener implements Listener {
                             "/raskolnpc guard repair " + guard.id()));
             player.sendMessage(prefix.append(action));
         }
+    }
+
+    private static boolean hasDamagedEquipment(org.bukkit.entity.LivingEntity guard) {
+        EntityEquipment equipment = guard.getEquipment();
+        if (equipment == null) return false;
+        ItemStack[] items = {
+                equipment.getItemInMainHand(), equipment.getItemInOffHand(),
+                equipment.getHelmet(), equipment.getChestplate(),
+                equipment.getLeggings(), equipment.getBoots()
+        };
+        for (ItemStack item : items) {
+            if (item != null && !item.getType().isAir()
+                    && item.getItemMeta() instanceof Damageable damageable
+                    && damageable.getDamage() > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void sendQuestActions(Player player, NpcId residentId, String residentName,
