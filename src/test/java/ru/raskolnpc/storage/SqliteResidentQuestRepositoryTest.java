@@ -27,6 +27,7 @@ class SqliteResidentQuestRepositoryTest {
     private SqliteNpcRepository npcs;
     private SqliteResidentProfileRepository profiles;
     private SqliteResidentQuestRepository quests;
+    private SqliteResidentTradeRepository trades;
 
     @BeforeEach
     void setUp() {
@@ -38,6 +39,7 @@ class SqliteResidentQuestRepositoryTest {
         npcs = new SqliteNpcRepository(database);
         profiles = new SqliteResidentProfileRepository(database);
         quests = new SqliteResidentQuestRepository(database);
+        trades = new SqliteResidentTradeRepository(database);
     }
 
     @AfterEach
@@ -557,6 +559,57 @@ class SqliteResidentQuestRepositoryTest {
 
         assertFalse(quests.abandon(player, resident.id(), "miner_iron_delivery").join());
         assertEquals(1, quests.findReviews(10).join().size());
+    }
+
+    @Test
+    void tradeReservationIsAtomicAndIdempotentAndTransitionsUseCompareAndSet() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 20, 64);
+        UUID buyer = UUID.randomUUID();
+
+        ResidentTradeTransaction first = trades.reserve("purchase-001", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 7, 125).join().orElseThrow();
+        assertEquals(ResidentTradeTransaction.Status.STOCK_RESERVED, first.status());
+        assertEquals(875, first.totalPriceMinor());
+        assertEquals(13, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+
+        ResidentTradeTransaction retry = trades.reserve("purchase-001", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 7, 125).join().orElseThrow();
+        assertEquals(first.transactionId(), retry.transactionId());
+        assertEquals(13, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+
+        assertThrows(java.util.concurrent.CompletionException.class, () ->
+                trades.reserve("purchase-001", UUID.randomUUID(), resident.id(),
+                        "IRON_INGOT", ResidentProductQuality.STANDARD, 7, 125).join());
+        assertTrue(trades.transition(first.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, "provider-ref", null).join());
+        assertFalse(trades.transition(first.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.CANCELLED, null, "stale").join());
+        assertEquals(ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                trades.find(first.transactionId()).join().orElseThrow().status());
+    }
+
+    @Test
+    void tradeReservationDoesNotConsumeOtherQualityAndRestartRecoveryFlagsUncertainTrades() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 10, 64);
+        UUID buyer = UUID.randomUUID();
+
+        assertTrue(trades.reserve("purchase-fine", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.FINE, 1, 100).join().isEmpty());
+        assertEquals(10, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+
+        ResidentTradeTransaction trade = trades.reserve("purchase-standard", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 3, 100).join().orElseThrow();
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null).join());
+        assertEquals(1, trades.recoverUnfinished().join());
+        assertEquals(ResidentTradeTransaction.Status.REVIEW_REQUIRED,
+                trades.find(trade.transactionId()).join().orElseThrow().status());
+        assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
     }
 
     private NpcRecord createResident() {
