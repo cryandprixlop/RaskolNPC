@@ -634,6 +634,35 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void confirmedAutomaticRefundRestoresReservedQualityStockAtomically() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 12, 64);
+        ResidentTradeTransaction trade = trades.reserve("purchase-auto-refund",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 5, 100).join().orElseThrow();
+        assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.PAID, "PAY-1", null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.REFUND_PENDING, null, "delivery failed").join());
+
+        assertTrue(trades.completeRefundAndRelease(trade.transactionId(),
+                "REFUND-1", "Provider confirmed refund.").join());
+        assertFalse(trades.completeRefundAndRelease(trade.transactionId(),
+                "REFUND-1", "duplicate callback").join());
+        assertEquals(12, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(ResidentTradeTransaction.Status.REFUNDED,
+                trades.find(trade.transactionId()).join().orElseThrow().status());
+        assertTrue(quests.findBusinessStockBatches(resident.id(), "IRON_INGOT").join().stream()
+                .allMatch(batch -> batch.quality() == ResidentProductQuality.STANDARD));
+    }
+
+    @Test
     void evidenceBackedReviewResolutionRestoresStockOnlyWhenNothingWasDelivered() {
         NpcRecord resident = createResident();
         deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 12, 64);
