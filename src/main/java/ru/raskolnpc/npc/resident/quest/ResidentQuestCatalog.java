@@ -19,6 +19,7 @@ public final class ResidentQuestCatalog {
     public ResidentQuestCatalog(Map<String, ResidentQuest> quests) {
         Objects.requireNonNull(quests, "quests");
         Map<String, ResidentQuest> copy = new HashMap<>();
+        java.util.Set<String> stockKeys = new java.util.HashSet<>();
         quests.forEach((key, quest) -> {
             Objects.requireNonNull(quest, "quest");
             String normalized = normalizeId(key);
@@ -27,6 +28,14 @@ public final class ResidentQuestCatalog {
             }
             if (copy.putIfAbsent(normalized, quest) != null) {
                 throw new IllegalArgumentException("Duplicate resident quest id: " + normalized);
+            }
+            if (quest.stockTarget() > 0) {
+                String stockKey = quest.profession().name() + ":" + quest.requiredMaterial();
+                if (!stockKeys.add(stockKey)) {
+                    throw new IllegalArgumentException(
+                            "Only one stock-gated quest may target each profession/material pair: "
+                                    + stockKey);
+                }
             }
         });
         this.quests = Map.copyOf(copy);
