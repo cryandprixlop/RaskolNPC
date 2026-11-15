@@ -201,6 +201,7 @@ public final class GuardCombatController implements Listener {
     }
 
     private void attackNearestHostile(NpcRecord guard) {
+        if (moraleService != null && moraleService.isRetreating(guard.id())) return;
         Entity guardEntity = entities.find(guard.id()).orElse(null);
         if (!(guardEntity instanceof LivingEntity attacker)
                 || !attacker.isValid() || attacker.isDead()) return;
