@@ -7,8 +7,12 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardSquadRepository;
 
+import org.bukkit.Location;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -19,6 +23,7 @@ public final class GuardSquadService {
     private final NpcRegistry registry;
     private final GuardSquadRepository repository;
     private final int maximumMembers;
+    private volatile Map<NpcId, FormationSlot> formationSlots = Map.of();
 
     public GuardSquadService(NpcRegistry registry, GuardSquadRepository repository, int maximumMembers) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -46,20 +51,90 @@ public final class GuardSquadService {
         if (registry.get(guardId).filter(record -> record.type() == NpcType.GUARD).isEmpty()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Selected NPC is not a registered guard."));
         }
-        return repository.addMember(squadId, guardId, maximumMembers);
+        return repository.addMember(squadId, guardId, maximumMembers)
+                .thenCompose(changed -> changed
+                        ? refreshMemberships().thenApply(ignored -> true)
+                        : CompletableFuture.completedFuture(false));
     }
 
     public CompletableFuture<Boolean> remove(NpcId guardId) {
         Objects.requireNonNull(guardId, "guardId");
-        return repository.removeMember(guardId);
+        return repository.removeMember(guardId)
+                .thenCompose(changed -> changed
+                        ? refreshMemberships().thenApply(ignored -> true)
+                        : CompletableFuture.completedFuture(false));
     }
 
     public CompletableFuture<Boolean> delete(UUID squadId) {
-        return repository.delete(Objects.requireNonNull(squadId, "squadId"));
+        return repository.delete(Objects.requireNonNull(squadId, "squadId"))
+                .thenCompose(changed -> changed
+                        ? refreshMemberships().thenApply(ignored -> true)
+                        : CompletableFuture.completedFuture(false));
     }
 
     public CompletableFuture<List<GuardSquad>> list() {
         return repository.findAll();
+    }
+
+    /**
+     * Loads persisted squad membership into an immutable in-memory snapshot.
+     * Movement reads this snapshot only; it never performs database work per tick.
+     */
+    public CompletableFuture<Void> refreshMemberships() {
+        return repository.findAll().thenAccept(squads -> {
+            Map<NpcId, FormationSlot> refreshed = new HashMap<>();
+            for (GuardSquad squad : squads) {
+                List<NpcId> members = squad.members().stream()
+                        .sorted(Comparator.comparing(NpcId::toString))
+                        .toList();
+                for (int index = 0; index < members.size(); index++) {
+                    refreshed.put(members.get(index), new FormationSlot(index, members.size()));
+                }
+            }
+            formationSlots = Map.copyOf(refreshed);
+        });
+    }
+
+    /**
+     * Resolves a deterministic wedge formation around a shared destination.
+     * Rally orders already persist individual spread destinations and are not offset again.
+     */
+    public Location formationTarget(NpcId guardId, Location sharedTarget, GuardOrder.Type orderType) {
+        Objects.requireNonNull(guardId, "guardId");
+        Objects.requireNonNull(sharedTarget, "sharedTarget");
+        Objects.requireNonNull(orderType, "orderType");
+        Location target = sharedTarget.clone();
+        if (orderType == GuardOrder.Type.RALLY || orderType == GuardOrder.Type.HOLD_POSITION) {
+            return target;
+        }
+        FormationSlot slot = formationSlots.get(guardId);
+        if (slot == null || slot.memberCount() < 2 || slot.index() == 0) return target;
+
+        int row = 1;
+        int firstIndexInRow = 1;
+        while (slot.index() >= firstIndexInRow + row) {
+            firstIndexInRow += row;
+            row++;
+        }
+        int positionInRow = slot.index() - firstIndexInRow;
+        double lateral = (positionInRow - (row - 1) / 2.0) * 2.0;
+        double backward = row * 1.5;
+        double yaw = Math.toRadians(target.getYaw());
+        double sideX = Math.cos(yaw);
+        double sideZ = Math.sin(yaw);
+        double backX = Math.sin(yaw);
+        double backZ = -Math.cos(yaw);
+        target.add(sideX * lateral + backX * backward, 0,
+                sideZ * lateral + backZ * backward);
+        return target;
+    }
+
+    public record FormationSlot(int index, int memberCount) {
+        public FormationSlot {
+            if (memberCount < 1 || index < 0 || index >= memberCount) {
+                throw new IllegalArgumentException("Invalid squad formation slot.");
+            }
+        }
     }
 
     /** Persists the same individual order for every member and reports partial failures. */
