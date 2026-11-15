@@ -166,6 +166,7 @@ public final class GuardCombatController implements Listener {
             cursor = 0;
             lastAttack.clear();
             squadTargets.clear();
+            retaliationTargets.clear();
             return;
         }
         if (squadService == null) {
