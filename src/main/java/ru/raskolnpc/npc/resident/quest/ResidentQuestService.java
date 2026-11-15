@@ -467,7 +467,8 @@ public final class ResidentQuestService {
         if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Resident not found."));
         }
-        return repository.findBusinessStockBatches(residentId, material, quality);
+        return repository.findBusinessStockBatches(residentId, material).thenApply(batches ->
+                batches.stream().filter(batch -> batch.quality() == quality).toList());
     }
 
     /** Used by a future market adapter to reserve goods without allowing negative stock. */
