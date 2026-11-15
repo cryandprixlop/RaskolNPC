@@ -319,6 +319,7 @@ public final class RaskolNPC extends JavaPlugin {
                 })
                 .thenCompose(records -> residentProfileService.ensureProfiles(records)
                         .thenApply(ignored -> records))
+                .thenCompose(records -> guardMoraleService.load().thenApply(ignored -> records))
                 .whenComplete((records, error) -> {
                     if (!isEnabled()) return;
                     scheduleStartupStep(() -> {
