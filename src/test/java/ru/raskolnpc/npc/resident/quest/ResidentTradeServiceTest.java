@@ -34,7 +34,7 @@ class ResidentTradeServiceTest {
                 null, null, now, now);
         when(repository.reserve(anyString(), any(), any(), anyString(), any(),
                 anyInt(), anyLong())).thenReturn(CompletableFuture.completedFuture(Optional.of(trade)));
-        when(repository.transition(anyString(), any(), any(), any(), anyString()))
+        when(repository.transition(anyString(), any(), any(), nullable(String.class), nullable(String.class)))
                 .thenReturn(CompletableFuture.completedFuture(true));
     }
 
