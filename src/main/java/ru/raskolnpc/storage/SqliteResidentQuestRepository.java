@@ -483,21 +483,27 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         }
         return database.transaction(connection -> {
             BusinessIdentity business = businessIdentity(connection, residentId);
+            long now = System.currentTimeMillis();
             try (var update = connection.prepareStatement("""
                     UPDATE resident_business_stock
                     SET amount = amount - ?, updated_at = ?
                     WHERE business_id = ? AND profession = ? AND material = ?
                       AND amount >= ?
                     """)) {
-                long now = System.currentTimeMillis();
                 update.setInt(1, amount);
                 update.setLong(2, now);
                 update.setString(3, business.businessId());
                 update.setString(4, business.profession());
                 update.setString(5, normalizedMaterial);
                 update.setInt(6, amount);
-                return update.executeUpdate() == 1;
+                if (update.executeUpdate() != 1) return false;
             }
+            List<ResidentBusinessStockBatch> consumed =
+                    consumeBusinessStockBatches(connection, business, normalizedMaterial, amount);
+            if (consumed == null) {
+                throw new SQLException("Business stock batches do not match the aggregate balance.");
+            }
+            return true;
         });
     }
 
@@ -542,6 +548,11 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 debit.setInt(6, amount);
                 if (debit.executeUpdate() != 1) return false;
             }
+            List<ResidentBusinessStockBatch> moved =
+                    consumeBusinessStockBatches(connection, source, normalizedMaterial, amount);
+            if (moved == null) {
+                throw new SQLException("Source business stock batches do not match the aggregate balance.");
+            }
 
             try (var credit = connection.prepareStatement("""
                     INSERT INTO resident_business_stock(
@@ -561,6 +572,10 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 if (credit.executeUpdate() != 1) {
                     throw new SQLException("Target business stock changed during transfer; transaction rolled back.");
                 }
+            }
+            for (ResidentBusinessStockBatch batch : moved) {
+                insertBusinessStockBatch(connection, target, normalizedMaterial, batch.amount(),
+                        batch.quality(), batch.createdAt(), "TRANSFER", batch.batchId());
             }
             return true;
         });
@@ -731,6 +746,8 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         if (material == null || amount == null || capacity == null
                 || amount <= 0 || capacity <= 0) return;
         BusinessIdentity business = businessIdentity(connection, residentId);
+        String normalizedMaterial = normalizeMaterial(material);
+        int before = readBusinessStock(connection, business, normalizedMaterial);
         try (var update = connection.prepareStatement("""
                 INSERT INTO resident_business_stock(
                     business_id, profession, material, amount, capacity, updated_at
@@ -742,12 +759,97 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                 """)) {
             update.setString(1, business.businessId());
             update.setString(2, business.profession());
-            update.setString(3, normalizeMaterial(material));
+            update.setString(3, normalizedMaterial);
             update.setInt(4, amount);
             update.setInt(5, capacity);
             update.setInt(6, capacity);
             update.setLong(7, now);
             update.executeUpdate();
+        }
+        int credited = Math.max(0, Math.min(amount, capacity - before));
+        if (credited > 0) {
+            insertBusinessStockBatch(connection, business, normalizedMaterial, credited,
+                    ResidentProductQuality.STANDARD, now, "QUEST_DELIVERY", null);
+        }
+    }
+
+    private static List<ResidentBusinessStockBatch> consumeBusinessStockBatches(
+            Connection connection, BusinessIdentity business, String material, int amount)
+            throws SQLException {
+        List<ResidentBusinessStockBatch> selected = new ArrayList<>();
+        try (var query = connection.prepareStatement("""
+                SELECT batch_id, business_id, profession, material, amount,
+                       quality, created_at, source_type, source_ref
+                FROM resident_business_stock_batches
+                WHERE business_id = ? AND profession = ? AND material = ?
+                ORDER BY created_at, batch_id
+                """)) {
+            query.setString(1, business.businessId());
+            query.setString(2, business.profession());
+            query.setString(3, material);
+            try (ResultSet result = query.executeQuery()) {
+                int remaining = amount;
+                while (result.next() && remaining > 0) {
+                    int available = result.getInt("amount");
+                    int taken = Math.min(available, remaining);
+                    selected.add(new ResidentBusinessStockBatch(
+                            result.getString("batch_id"),
+                            result.getString("business_id"),
+                            result.getString("profession"),
+                            result.getString("material"),
+                            taken,
+                            ResidentProductQuality.valueOf(result.getString("quality")),
+                            result.getLong("created_at"),
+                            result.getString("source_type"),
+                            result.getString("source_ref")));
+                    remaining -= taken;
+                }
+                if (remaining > 0) return null;
+            }
+        }
+
+        for (ResidentBusinessStockBatch batch : selected) {
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock_batches
+                    SET amount = amount - ?
+                    WHERE batch_id = ? AND amount >= ?
+                    """)) {
+                update.setInt(1, batch.amount());
+                update.setString(2, batch.batchId());
+                update.setInt(3, batch.amount());
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Stock batch changed during FIFO consumption.");
+                }
+            }
+            try (var delete = connection.prepareStatement(
+                    "DELETE FROM resident_business_stock_batches WHERE batch_id = ? AND amount = 0")) {
+                delete.setString(1, batch.batchId());
+                delete.executeUpdate();
+            }
+        }
+        return List.copyOf(selected);
+    }
+
+    private static void insertBusinessStockBatch(Connection connection, BusinessIdentity business,
+            String material, int amount, ResidentProductQuality quality, long createdAt,
+            String sourceType, String sourceRef) throws SQLException {
+        if (amount < 1) return;
+        try (var insert = connection.prepareStatement("""
+                INSERT INTO resident_business_stock_batches(
+                    batch_id, business_id, profession, material, amount,
+                    quality, created_at, source_type, source_ref
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)) {
+            insert.setString(1, UUID.randomUUID().toString());
+            insert.setString(2, business.businessId());
+            insert.setString(3, business.profession());
+            insert.setString(4, material);
+            insert.setInt(5, amount);
+            insert.setString(6, quality.name());
+            insert.setLong(7, createdAt);
+            insert.setString(8, sourceType);
+            insert.setString(9, sourceRef);
+            insert.executeUpdate();
         }
     }
 
