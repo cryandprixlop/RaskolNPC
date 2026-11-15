@@ -238,7 +238,7 @@ class ResidentQuestServiceTest {
         ResidentQuestService service = new ResidentQuestService(
                 plugin, mock(ResidentProfileService.class), registry, repository);
 
-        assertFalse(service.produceAvailable(NpcId.random()).join());
+        assertFalse(service.produceAvailable(NpcId.create()).join());
         verifyNoInteractions(repository);
     }
 
