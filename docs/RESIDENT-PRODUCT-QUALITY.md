@@ -195,3 +195,17 @@ the capacity conflict rather than silently overfill the business. Evidence is
 stored in the trade's audit/error field. This repository method is a persistence
 primitive; an authenticated permission-checked admin command/UI remains a
 separate integration task.
+
+## Provider-neutral purchase orchestration
+
+The trade orchestration layer is split into three contracts:
+
+- `ResidentTradeEconomyProvider` charges and refunds minor currency units. Every call receives the durable trade ID as its idempotency key.
+- `ResidentTradeDeliveryProvider` delivers the persisted transaction. A Paper implementation is responsible for running inventory reads/writes on the server thread and must report whether delivery is confirmed, rejected before delivery, or uncertain.
+- `ResidentTradeService` coordinates reservation, payment, delivery, and compensation without depending on Vault, Towny, or Bukkit.
+
+A confirmed payment is persisted as `PAID` before delivery. A confirmed delivery is then persisted as `DELIVERED`. A definitive delivery rejection triggers a refund attempt; a confirmed refund is finalized together with stock restoration. An uncertain payment, uncertain delivery, uncertain refund, or persistence failure is sent to `REVIEW_REQUIRED`. In particular, an uncertain delivery is never automatically refunded because the item may already have reached the player.
+
+The plugin now invokes journal recovery during startup. Any trade left in `STOCK_RESERVED`, `PAYMENT_PENDING`, `PAID`, or `REFUND_PENDING` by a previous process is moved to `REVIEW_REQUIRED` before gameplay can use it.
+
+These are orchestration contracts, not a live marketplace integration: no concrete player-economy provider, Paper inventory adapter, purchase GUI, or permission-checked administration command is enabled yet. Those must be implemented and tested against the actual server provider before player-money trading is advertised.
