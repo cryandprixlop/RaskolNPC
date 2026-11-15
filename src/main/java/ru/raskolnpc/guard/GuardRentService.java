@@ -61,13 +61,19 @@ public final class GuardRentService {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.entities = Objects.requireNonNull(entities, "entities");
-        this.economy = Objects.requireNonNull(economy, "economy");
+        // A null economy is recovery-only mode: the durable ledger can still be
+        // reconciled while Towny is unavailable, but no new withdrawals are allowed.
+        this.economy = economy;
         this.payments = Objects.requireNonNull(payments, "payments");
         this.maximumDebtDays = Math.max(1, Math.min(3, maximumDebtDays));
     }
 
     public void start() {
         requireMainThread();
+        if (economy == null) {
+            throw new IllegalStateException(
+                    "Cannot start guard rent collection because the Towny economy adapter is unavailable.");
+        }
         if (task != null) return;
         try {
             task = Bukkit.getScheduler().runTaskTimer(
@@ -144,6 +150,10 @@ public final class GuardRentService {
 
     public void checkDueGuards() {
         requireMainThread();
+        if (economy == null) {
+            throw new IllegalStateException(
+                    "Cannot collect guard rent because the Towny economy adapter is unavailable.");
+        }
         if (!lifecycle.isReady()) return;
         long now = Instant.now().getEpochSecond();
 
