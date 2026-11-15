@@ -63,7 +63,13 @@ public final class ResidentQuestService {
         this.catalogFile = new File(folder, "resident-quests.yml");
         this.productionCatalogFile = new File(folder, "production-recipes.yml");
         if (!catalogFile.exists()) plugin.saveResource("resident-quests.yml", false);
-        if (!productionCatalogFile.exists()) plugin.saveResource("production-recipes.yml", false);
+        if (!productionCatalogFile.exists()) {
+            plugin.saveResource("production-recipes.yml", false);
+            // Keep lightweight test/plugin hosts functional when saveResource is a no-op.
+            if (!productionCatalogFile.exists()) {
+                java.nio.file.Files.writeString(productionCatalogFile.toPath(), "recipes: {}\\n");
+            }
+        }
         try {
             reload();
             reloadProductionRecipes();
