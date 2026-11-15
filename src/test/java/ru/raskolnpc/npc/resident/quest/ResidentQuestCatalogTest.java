@@ -65,4 +65,44 @@ class ResidentQuestCatalogTest {
 
         assertThrows(IllegalArgumentException.class, () -> ResidentQuestCatalog.from(yaml));
     }
+
+    @Test
+    void rejectsMultipleStockGatedQuestsForTheSameBusinessMaterial() {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.set("quests.miner_iron_small.profession", "MINER");
+        yaml.set("quests.miner_iron_small.required-material", "IRON_INGOT");
+        yaml.set("quests.miner_iron_small.required-amount", 16);
+        yaml.set("quests.miner_iron_small.reputation-reward", 2);
+        yaml.set("quests.miner_iron_small.stock-target", 64);
+        yaml.set("quests.miner_iron_large.profession", "MINER");
+        yaml.set("quests.miner_iron_large.required-material", "IRON_INGOT");
+        yaml.set("quests.miner_iron_large.required-amount", 32);
+        yaml.set("quests.miner_iron_large.reputation-reward", 5);
+        yaml.set("quests.miner_iron_large.stock-target", 96);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> ResidentQuestCatalog.from(yaml));
+
+        assertTrue(error.getMessage().contains("profession/material pair"));
+    }
+
+    @Test
+    void allowsDifferentMaterialsForTheSameProfession() {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.set("quests.miner_iron.profession", "MINER");
+        yaml.set("quests.miner_iron.required-material", "IRON_INGOT");
+        yaml.set("quests.miner_iron.required-amount", 16);
+        yaml.set("quests.miner_iron.reputation-reward", 2);
+        yaml.set("quests.miner_iron.stock-target", 64);
+        yaml.set("quests.miner_coal.profession", "MINER");
+        yaml.set("quests.miner_coal.required-material", "COAL");
+        yaml.set("quests.miner_coal.required-amount", 16);
+        yaml.set("quests.miner_coal.reputation-reward", 2);
+        yaml.set("quests.miner_coal.stock-target", 64);
+
+        ResidentQuestCatalog catalog = ResidentQuestCatalog.from(yaml);
+
+        assertEquals(2, catalog.forProfession(ResidentProfession.MINER).size());
+    }
+
 }
