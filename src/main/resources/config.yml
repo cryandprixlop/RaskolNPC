@@ -26,6 +26,8 @@ guards:
     retreat-threshold: 20
     # Retreat ends only after morale reaches this value (must exceed retreat-threshold).
     rally-threshold: 35
+    # Nearby guards from the same nation lose this many morale points when a guard dies.
+    allied-death-penalty: 8
 
   # Basic combat only targets registered NPCs whose diplomacy is explicitly hostile.
   # Unknown relationships are ignored; WorldGuard checks fail closed when installed.
