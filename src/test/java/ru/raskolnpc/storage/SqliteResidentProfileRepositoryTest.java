@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
@@ -100,6 +101,48 @@ class SqliteResidentProfileRepositoryTest {
         assertEquals(2, loaded.size());
         assertTrue(loaded.contains(first));
         assertTrue(loaded.contains(second));
+    }
+
+    @Test
+    void professionExperienceLevelsUpAndSurvivesProfileSaveAndReload() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        ResidentProfile profile = new ResidentProfile(npc.id(), 31,
+                ResidentProfession.FARMER, java.util.Set.of(),
+                70, 70, 70, 70, 70, 70,
+                java.util.Map.of(ResidentProfession.FARMER, ResidentSkillLevel.APPRENTICE));
+        repository.save(profile).join();
+
+        var progress = repository.addSkillExperience(
+                npc.id(), ResidentProfession.FARMER, 300).join();
+        assertEquals(ResidentSkillLevel.SPECIALIST, progress.level());
+        assertEquals(300, progress.totalExperience());
+        assertEquals(0, progress.experienceIntoLevel());
+        assertEquals(400, progress.experienceToNextLevel());
+
+        repository.save(profile).join();
+        var loaded = repository.findByNpcId(npc.id()).join().orElseThrow();
+        assertEquals(ResidentSkillLevel.SPECIALIST, loaded.currentSkillLevel());
+    }
+
+    @Test
+    void experienceAccumulatesAndRejectsMissingProfilesAndInvalidAmounts() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Oren", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 25, ResidentProfession.MINER,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
+
+        assertEquals(100, repository.addSkillExperience(
+                npc.id(), ResidentProfession.MINER, 100).join().totalExperience());
+        assertEquals(150, repository.addSkillExperience(
+                npc.id(), ResidentProfession.MINER, 50).join().totalExperience());
+        assertThrows(IllegalArgumentException.class, () ->
+                repository.addSkillExperience(npc.id(), ResidentProfession.MINER, 0));
+        assertThrows(java.util.concurrent.CompletionException.class, () ->
+                repository.addSkillExperience(NpcId.fromString("missing-resident"),
+                        ResidentProfession.MINER, 10).join());
     }
 
     @Test
