@@ -287,15 +287,24 @@ class ResidentQuestServiceTest {
         var batch = new ru.raskolnpc.storage.ResidentBusinessStockBatch(
                 "batch-1", "town", "BLACKSMITH", "IRON_INGOT", 12,
                 ru.raskolnpc.storage.ResidentProductQuality.FINE, 100L, "PRODUCTION", "recipe-1");
+        var standardBatch = new ru.raskolnpc.storage.ResidentBusinessStockBatch(
+                "batch-2", "town", "BLACKSMITH", "IRON_INGOT", 5,
+                ru.raskolnpc.storage.ResidentProductQuality.STANDARD, 200L, "QUEST_DELIVERY", null);
         when(repository.findBusinessStockBatches(resident.id(), "IRON_INGOT"))
-                .thenReturn(CompletableFuture.completedFuture(java.util.List.of(batch)));
+                .thenReturn(CompletableFuture.completedFuture(java.util.List.of(batch, standardBatch)));
 
         ResidentQuestService service = new ResidentQuestService(
                 plugin, mock(ResidentProfileService.class), registry, repository);
 
-        assertEquals(java.util.List.of(batch),
+        assertEquals(java.util.List.of(batch, standardBatch),
                 service.businessStockBatches(resident.id(), "IRON_INGOT").join());
-        verify(repository).findBusinessStockBatches(resident.id(), "IRON_INGOT");
+        assertEquals(java.util.List.of(batch),
+                service.businessStockBatches(resident.id(), "IRON_INGOT",
+                        ru.raskolnpc.storage.ResidentProductQuality.FINE).join());
+        assertEquals(java.util.List.of(standardBatch),
+                service.businessStockBatches(resident.id(), "IRON_INGOT",
+                        ru.raskolnpc.storage.ResidentProductQuality.STANDARD).join());
+        verify(repository, times(3)).findBusinessStockBatches(resident.id(), "IRON_INGOT");
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> service.businessStockBatches(NpcId.create(), "IRON_INGOT").join());
     }
