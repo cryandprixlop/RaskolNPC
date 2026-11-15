@@ -54,13 +54,13 @@ class GuardEquipmentRepairServiceTest {
         ItemStack sword = damaged(Material.IRON_SWORD, 100);
         guard.getEquipment().setItemInMainHand(sword);
         guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
-        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 8));
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 5));
 
         var result = service.repair(player, record.id());
 
         assertTrue(result.repaired());
         assertEquals(2, result.repairedItems());
-        assertEquals(8, result.materialsConsumed().get(Material.IRON_INGOT));
+        assertEquals(5, result.materialsConsumed().get(Material.IRON_INGOT));
         assertEquals(0, damage(guard.getEquipment().getItemInMainHand()));
         assertEquals(0, damage(guard.getEquipment().getHelmet()));
         assertEquals(0, player.getInventory().all(Material.IRON_INGOT).stream()
@@ -70,13 +70,13 @@ class GuardEquipmentRepairServiceTest {
     @Test
     void doesNotConsumeAnyMaterialsWhenCostIsInsufficient() {
         guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
-        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 3));
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 2));
 
         var result = service.repair(player, record.id());
 
         assertFalse(result.repaired());
         assertEquals(100, damage(guard.getEquipment().getHelmet()));
-        assertEquals(3, player.getInventory().getItem(0).getAmount());
+        assertEquals(2, player.getInventory().getItem(0).getAmount());
     }
 
     @Test
