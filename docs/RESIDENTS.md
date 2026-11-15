@@ -143,6 +143,8 @@ recipes:
 - `output.capacity` is the maximum stored amount for the output material and cannot be lower than the produced amount.
 - Recipe execution is available through the resident production service API. It verifies the resident type and profession, then consumes all inputs and credits output in the existing atomic SQLite transaction.
 - During a resident's scheduled `WORK` activity, the shared behavior timer attempts production when the resident has reached its configured `WORK` destination. Recipes are tried in stable ID order; the first recipe with sufficient inputs and output capacity succeeds.
+- Production yield scales with the resident's persisted mastery tier for the current profession: APPRENTICE +0%, NOVICE +5%, SPECIALIST +10%, EXPERT +15%, MASTER +20%. Fractional bonus items are rounded down; recipe inputs are unchanged and the atomic stock operation still enforces output capacity.
+- Mastery tiers are already persisted per profession. Automatic skill XP accumulation and tier advancement are a separate follow-up; this stage applies the existing tier data to production rather than inventing an unbalanced progression curve.
 - Each resident has a work-action cooldown, and an in-flight guard prevents overlapping asynchronous production attempts. Production is bounded by the existing resident behavior batch size; it does not create a task per NPC.
 - The cooldown is configured by `resident-behavior.work-action-interval-ticks` in `config.yml` (default 60; valid range 1–24000 ticks).
 - A recipe is not run outside a `WORK` schedule entry or when the resident is not at its work destination. If no recipe can be completed, no stock is changed and a later work cycle may retry.
