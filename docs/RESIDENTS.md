@@ -68,6 +68,7 @@ quests:
 - `required-amount` is the number of items required.
 - `reputation-reward` is the reputation credited after confirmed delivery.
 - `stock-target` is the target business stock for that profession/material. A value of 0 disables stock gating. A non-zero target must be at least the delivery amount.
+- A stock-gated catalog may define only one quest per profession/material pair. This keeps active delivery reservations aligned with the shared stock key; use separate materials for separate simultaneous delivery lines.
 
 All 10 professions have sample quests in the shipped YAML. The business stock key is Town + Profession + Material. In standalone mode, stock is isolated per resident.
 
