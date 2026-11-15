@@ -240,6 +240,19 @@ public final class RaskolNPC extends JavaPlugin {
                         adapterError);
             }
         }
+        TownyTownBankEconomy guardRentEconomy = null;
+        if (townyEnabled) {
+            try {
+                guardRentEconomy = new TownyTownBankEconomy();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny economy adapter could not initialize. Guard rent collection is disabled; "
+                                + "the durable payment ledger will still be recovered.",
+                        adapterError);
+            }
+        }
+        final TownyTownBankEconomy availableGuardRentEconomy = guardRentEconomy;
+
         int residentsPerTown = Math.max(1,
                 getConfig().getInt("limits.residents-per-town", 15));
         int guardsPerNation = Math.max(1,
@@ -248,7 +261,7 @@ public final class RaskolNPC extends JavaPlugin {
                 this, npcLifecycleService, npcRegistry, npcEntityManager,
                 townyResidents, new TownyNpcLimitService(), residentsPerTown,
                 townyKingdomGuardAccess,
-                townyEnabled ? new TownyTownBankEconomy() : null,
+                availableGuardRentEconomy,
                 townyEnabled ? new KingdomGuardService() : null,
                 guardsPerNation,
                 getConfig().getDouble("guards.base-hire-cost", 100.0),
@@ -280,6 +293,13 @@ public final class RaskolNPC extends JavaPlugin {
                     getConfig().getString("guards.towny-general-rank", "general")));
         }
 
+        // Always construct the ledger service. Without Towny it operates in
+        // recovery/review-only mode and cannot schedule new bank withdrawals.
+        guardRentService = new GuardRentService(this, npcRegistry,
+                npcLifecycleService, npcEntityManager, availableGuardRentEconomy,
+                rentPayments, getConfig().getInt("guards.maximum-debt-days", 3));
+        commandHandler.setGuardRentService(guardRentService);
+
         databaseManager.initialize()
                 .thenCompose(ignored -> residentQuestRepository.recoverUnfinishedSubmissions())
                 .thenCompose(reviewCount -> {
@@ -300,18 +320,8 @@ public final class RaskolNPC extends JavaPlugin {
                             return;
                         }
 
-                        if (townyEnabled) {
-                            guardRentService = new GuardRentService(this, npcRegistry,
-                                    npcLifecycleService, npcEntityManager,
-                                    new TownyTownBankEconomy(), rentPayments,
-                                    getConfig().getInt("guards.maximum-debt-days", 3));
-                            commandHandler.setGuardRentService(guardRentService);
-                        }
-
                         java.util.concurrent.CompletableFuture<Void> rentRecovery =
-                                guardRentService == null
-                                        ? java.util.concurrent.CompletableFuture.completedFuture(null)
-                                        : guardRentService.recoverPendingPayments();
+                                guardRentService.recoverPendingPayments();
                         java.util.concurrent.CompletableFuture<Void> hiringRecovery = rentRecovery
                                 .thenCompose(ignored -> hiringPayments.moveUnfinishedToReview(
                                         "Server restarted while guard hiring or refund result was not finalized."))
@@ -351,7 +361,7 @@ public final class RaskolNPC extends JavaPlugin {
                                                     return;
                                                 }
                                                 guardCombatController.start();
-                                                if (guardRentService != null) {
+                                                if (availableGuardRentEconomy != null) {
                                                     try {
                                                         guardRentService.start();
                                                     } catch (RuntimeException startError) {
