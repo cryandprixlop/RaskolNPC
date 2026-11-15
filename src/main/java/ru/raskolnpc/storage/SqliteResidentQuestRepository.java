@@ -854,22 +854,28 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         }
 
         for (ResidentBusinessStockBatch batch : selected) {
-            try (var update = connection.prepareStatement("""
-                    UPDATE resident_business_stock_batches
-                    SET amount = amount - ?
-                    WHERE batch_id = ? AND amount >= ?
+            int deleted;
+            try (var delete = connection.prepareStatement("""
+                    DELETE FROM resident_business_stock_batches
+                    WHERE batch_id = ? AND amount = ?
                     """)) {
-                update.setInt(1, batch.amount());
-                update.setString(2, batch.batchId());
-                update.setInt(3, batch.amount());
-                if (update.executeUpdate() != 1) {
-                    throw new SQLException("Stock batch changed during FIFO consumption.");
-                }
-            }
-            try (var delete = connection.prepareStatement(
-                    "DELETE FROM resident_business_stock_batches WHERE batch_id = ? AND amount = 0")) {
                 delete.setString(1, batch.batchId());
-                delete.executeUpdate();
+                delete.setInt(2, batch.amount());
+                deleted = delete.executeUpdate();
+            }
+            if (deleted == 0) {
+                try (var update = connection.prepareStatement("""
+                        UPDATE resident_business_stock_batches
+                        SET amount = amount - ?
+                        WHERE batch_id = ? AND amount > ?
+                        """)) {
+                    update.setInt(1, batch.amount());
+                    update.setString(2, batch.batchId());
+                    update.setInt(3, batch.amount());
+                    if (update.executeUpdate() != 1) {
+                        throw new SQLException("Stock batch changed during FIFO consumption.");
+                    }
+                }
             }
         }
         return List.copyOf(selected);
