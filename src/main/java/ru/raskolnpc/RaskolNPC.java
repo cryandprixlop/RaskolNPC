@@ -8,6 +8,7 @@ import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardCombatController;
 import ru.raskolnpc.guard.GuardMoraleService;
 import ru.raskolnpc.guard.GuardEquipmentWearService;
+import ru.raskolnpc.guard.GuardEquipmentRepairService;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
 import ru.raskolnpc.guard.GuardSquadService;
@@ -312,6 +313,8 @@ public final class RaskolNPC extends JavaPlugin {
                 worldGuardProtectionAdapter != null));
         commandHandler.setGuardOrderService(guardOrderService);
         commandHandler.setGuardSquadService(guardSquadService);
+        commandHandler.setGuardEquipmentRepairService(
+                new GuardEquipmentRepairService(npcRegistry, npcEntityManager));
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
