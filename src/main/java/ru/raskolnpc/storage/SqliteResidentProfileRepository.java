@@ -87,8 +87,7 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             try (var statement = connection.prepareStatement("""
                     INSERT INTO resident_skills(npc_id, profession, skill_level, experience)
                     VALUES (?, ?, ?, 0)
-                    ON CONFLICT(npc_id, profession) DO UPDATE SET
-                        skill_level = excluded.skill_level
+                    ON CONFLICT(npc_id, profession) DO NOTHING
                     """)) {
                 for (var skill : profile.skills().entrySet()) {
                     statement.setString(1, profile.npcId().toString());
