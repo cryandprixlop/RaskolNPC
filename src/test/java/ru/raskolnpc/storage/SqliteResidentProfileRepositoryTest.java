@@ -140,9 +140,9 @@ class SqliteResidentProfileRepositoryTest {
                 npc.id(), ResidentProfession.MINER, 50).join().totalExperience());
         assertThrows(IllegalArgumentException.class, () ->
                 repository.addSkillExperience(npc.id(), ResidentProfession.MINER, 0));
-        assertThrows(java.util.concurrent.CompletionException.class, () ->
-                repository.addSkillExperience(NpcId.fromString("00000000-0000-0000-0000-000000000001"),
-                        ResidentProfession.MINER, 10).join());
+        assertTrue(repository.addSkillExperience(
+                NpcId.fromString("00000000-0000-0000-0000-000000000001"),
+                ResidentProfession.MINER, 10).handle((progress, error) -> error != null).join());
     }
 
     @Test
