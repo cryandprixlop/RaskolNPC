@@ -42,8 +42,8 @@ class GuardEquipmentWearServiceTest {
         entities = mock(NpcEntityManager.class);
         guardRecord = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
         registry.register(guardRecord);
-        guard = server.addSimpleWorld("equipment-wear").spawn(
-                new Location(server.addSimpleWorld("equipment-wear"), 0, 64, 0), Skeleton.class);
+        var world = server.addSimpleWorld("equipment-wear");
+        guard = world.spawn(new Location(world, 0, 64, 0), Skeleton.class);
         when(entities.getNpcId(guard)).thenReturn(Optional.of(guardRecord.id()));
         service = new GuardEquipmentWearService(plugin, registry, entities);
     }
@@ -59,7 +59,7 @@ class GuardEquipmentWearServiceTest {
         equipment.setItemInMainHand(new ItemStack(Material.IRON_SWORD));
 
         service.onGuardAttack(new EntityDamageByEntityEvent(
-                mock(Entity.class), guard, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
+                guard, mock(Entity.class), EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
 
         ItemStack weapon = equipment.getItemInMainHand();
         assertInstanceOf(Damageable.class, weapon.getItemMeta());
@@ -108,7 +108,7 @@ class GuardEquipmentWearServiceTest {
         other.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
 
         service.onGuardAttack(new EntityDamageByEntityEvent(
-                mock(Entity.class), other, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
+                other, mock(Entity.class), EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
         assertEquals(0, damage(other.getEquipment().getItemInMainHand()));
 
         service.setWearPerHit(0, 0);
