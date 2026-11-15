@@ -51,6 +51,8 @@ public final class GuardCombatController implements Listener {
     private final double damage;
     private final long attackCooldownMillis;
     private final Map<NpcId, Long> lastAttack = new ConcurrentHashMap<>();
+    private final Map<NpcId, Long> lastPressurePenalty = new ConcurrentHashMap<>();
+    private static final long PRESSURE_PENALTY_COOLDOWN_MILLIS = 5_000L;
     private final Map<UUID, Entity> squadTargets = new HashMap<>();
     private final Map<NpcId, RetaliationTarget> retaliationTargets = new HashMap<>();
     private static final long RETALIATION_WINDOW_MILLIS = 10_000L;
@@ -139,6 +141,7 @@ public final class GuardCombatController implements Listener {
             task = null;
         }
         lastAttack.clear();
+        lastPressurePenalty.clear();
         squadTargets.clear();
         retaliationTargets.clear();
         if (listenerRegistered) {
@@ -172,6 +175,7 @@ public final class GuardCombatController implements Listener {
         if (guards.isEmpty()) {
             cursor = 0;
             lastAttack.clear();
+            lastPressurePenalty.clear();
             squadTargets.clear();
             retaliationTargets.clear();
             return;
@@ -189,6 +193,7 @@ public final class GuardCombatController implements Listener {
                 .map(NpcRecord::id)
                 .collect(java.util.stream.Collectors.toSet());
         lastAttack.keySet().retainAll(activeGuardIds);
+        lastPressurePenalty.keySet().retainAll(activeGuardIds);
         retaliationTargets.keySet().retainAll(activeGuardIds);
         long now = System.currentTimeMillis();
         retaliationTargets.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
@@ -205,6 +210,7 @@ public final class GuardCombatController implements Listener {
         Entity guardEntity = entities.find(guard.id()).orElse(null);
         if (!(guardEntity instanceof LivingEntity attacker)
                 || !attacker.isValid() || attacker.isDead()) return;
+        evaluateNumericalPressure(guard, attacker);
         long now = System.currentTimeMillis();
         long previous = lastAttack.getOrDefault(guard.id(), 0L);
         if (now - previous < attackCooldownMillis) return;
@@ -228,6 +234,39 @@ public final class GuardCombatController implements Listener {
      * A squad's stable leader selects one verified target. Members only attack that
      * shared target while it remains valid and within their own detection radius.
      */
+    /** Penalizes morale only when at least two more verified hostiles than nearby allies are present. */
+    private void evaluateNumericalPressure(NpcRecord guard, LivingEntity entity) {
+        if (moraleService == null) return;
+        long now = System.currentTimeMillis();
+        long previous = lastPressurePenalty.getOrDefault(guard.id(), 0L);
+        if (now - previous < PRESSURE_PENALTY_COOLDOWN_MILLIS) return;
+        Location origin = entity.getLocation();
+        if (origin.getWorld() == null) return;
+        double radiusSquared = detectionRadius * detectionRadius;
+        long hostiles = entity.getNearbyEntities(detectionRadius, detectionRadius, detectionRadius).stream()
+                .filter(candidate -> candidate instanceof LivingEntity)
+                .filter(candidate -> candidate.isValid() && !candidate.isDead())
+                .filter(candidate -> candidate.getWorld().equals(origin.getWorld()))
+                .filter(candidate -> candidate.getLocation().distanceSquared(origin) <= radiusSquared)
+                .filter(candidate -> hasTerritoryAccess(candidate.getLocation(), guard.nationId()))
+                .filter(candidate -> isVerifiedHostile(guard, candidate))
+                .count();
+        long allies = 1;
+        for (NpcRecord candidate : registry.all()) {
+            if (candidate.type() != NpcType.GUARD || candidate.id().equals(guard.id())
+                    || !Objects.equals(candidate.nationId(), guard.nationId())) continue;
+            Entity ally = entities.find(candidate.id()).orElse(null);
+            if (!(ally instanceof LivingEntity living) || !living.isValid() || living.isDead()) continue;
+            Location location = living.getLocation();
+            if (location.getWorld() != null && location.getWorld().equals(origin.getWorld())
+                    && location.distanceSquared(origin) <= radiusSquared) allies++;
+        }
+        if (hostiles >= allies + 2) {
+            lastPressurePenalty.put(guard.id(), now);
+            moraleService.applyMoraleLoss(guard.id(), 1);
+        }
+    }
+
     private Entity selectTarget(NpcRecord guard, LivingEntity attacker) {
         RetaliationTarget retaliation = retaliationTargets.get(guard.id());
         if (retaliation != null) {
