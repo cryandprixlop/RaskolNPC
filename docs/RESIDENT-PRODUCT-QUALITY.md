@@ -132,3 +132,24 @@ and must coordinate that operation with the economy provider using a durable,
 idempotent trade state. The supplied base price is intentionally provided by
 the caller; this module does not assume a universal material price list or
 silently couple market prices to Towny's guard-rent economy adapter.
+
+## Durable trade journal and reservations
+
+Schema migration 19 adds `resident_trade_transactions`, a durable purchase journal
+with a unique idempotency key, buyer/resident identity, material, quality,
+quantity, minor-unit prices, provider reference, status, and timestamps.
+
+`SqliteResidentTradeRepository.reserve` reserves the requested quality tier and
+inserts the journal row in the same SQLite transaction. Retrying an identical
+idempotency key returns the original transaction without a second stock debit;
+reusing the key with different purchase parameters is rejected. State changes
+use compare-and-set transitions, so stale callbacks cannot overwrite a newer
+payment state.
+
+The journal deliberately does not call an economy provider or deliver Bukkit
+items from a database worker. Integrations must move a transaction to
+`PAYMENT_PENDING` before invoking the provider, persist the provider outcome,
+and only then continue delivery. On restart, all unfinished states are moved
+to `REVIEW_REQUIRED` rather than guessed as paid, unpaid, or delivered. This
+prevents automatic duplicate charging or item delivery, but requires a later
+reconciliation workflow before unresolved trades can be completed.
