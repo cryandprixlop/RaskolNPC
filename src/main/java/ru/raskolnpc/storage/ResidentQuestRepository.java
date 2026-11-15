@@ -50,6 +50,13 @@ public interface ResidentQuestRepository {
     CompletableFuture<Boolean> produceBusinessStock(
             NpcId residentId, Map<String, Integer> inputs,
             String outputMaterial, int outputAmount, int outputCapacity);
+    /** Produces output with a persisted quality tier; legacy implementations retain STANDARD quality. */
+    default CompletableFuture<Boolean> produceBusinessStock(
+            NpcId residentId, Map<String, Integer> inputs, String outputMaterial,
+            int outputAmount, int outputCapacity, ResidentProductQuality quality) {
+        java.util.Objects.requireNonNull(quality, "quality");
+        return produceBusinessStock(residentId, inputs, outputMaterial, outputAmount, outputCapacity);
+    }
     /** Applies one configured daily consumption pass to all town business stock rows. */
     CompletableFuture<Integer> consumeBusinessStockDaily(int percentage);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
