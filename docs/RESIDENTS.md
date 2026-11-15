@@ -144,6 +144,7 @@ recipes:
 - Recipe execution is available through the resident production service API. It verifies the resident type and profession, then consumes all inputs and credits output in the existing atomic SQLite transaction.
 - During a resident's scheduled `WORK` activity, the shared behavior timer attempts production when the resident has reached its configured `WORK` destination. Recipes are tried in stable ID order; the first recipe with sufficient inputs and output capacity succeeds.
 - Each resident has a work-action cooldown, and an in-flight guard prevents overlapping asynchronous production attempts. Production is bounded by the existing resident behavior batch size; it does not create a task per NPC.
+- The cooldown is configured by `resident-behavior.work-action-interval-ticks` in `config.yml` (default 60; valid range 1–24000 ticks).
 - A recipe is not run outside a `WORK` schedule entry or when the resident is not at its work destination. If no recipe can be completed, no stock is changed and a later work cycle may retry.
 - Production stock is persisted in SQLite, so successful output survives server restarts. No offline catch-up production is simulated: only work cycles processed while the server is running can produce goods.
 
