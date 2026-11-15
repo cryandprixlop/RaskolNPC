@@ -231,10 +231,6 @@ public final class GuardCombatController implements Listener {
         }
     }
 
-    /**
-     * A squad's stable leader selects one verified target. Members only attack that
-     * shared target while it remains valid and within their own detection radius.
-     */
     /** Penalizes morale only when at least two more verified hostiles than nearby allies are present. */
     private void evaluateNumericalPressure(NpcRecord guard, LivingEntity entity) {
         if (moraleService == null) return;
@@ -260,7 +256,7 @@ public final class GuardCombatController implements Listener {
             NpcId allyId = entities.getNpcId(nearby).orElse(null);
             if (allyId == null || allyId.equals(guard.id())) continue;
             NpcRecord ally = registry.get(allyId).orElse(null);
-            if (ally != null && ally.type() == NpcType.GUARD
+            if (guard.nationId() != null && ally != null && ally.type() == NpcType.GUARD
                     && Objects.equals(ally.nationId(), guard.nationId())) allies++;
         }
         if (hostiles >= allies + 2) {
@@ -269,6 +265,10 @@ public final class GuardCombatController implements Listener {
         }
     }
 
+    /**
+     * A squad's stable leader selects one verified target. Members only attack that
+     * shared target while it remains valid and within their own detection radius.
+     */
     private Entity selectTarget(NpcRecord guard, LivingEntity attacker) {
         RetaliationTarget retaliation = retaliationTargets.get(guard.id());
         if (retaliation != null) {
