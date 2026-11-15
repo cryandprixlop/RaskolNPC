@@ -447,6 +447,17 @@ public final class ResidentQuestService {
                 Objects.requireNonNull(material, "material"));
     }
 
+    /** Returns immutable-quality batches for a resident business in deterministic FIFO order. */
+    public CompletableFuture<List<ru.raskolnpc.storage.ResidentBusinessStockBatch>> businessStockBatches(
+            NpcId residentId, String material) {
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(material, "material");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Resident not found."));
+        }
+        return repository.findBusinessStockBatches(residentId, material);
+    }
+
     /** Used by a future market adapter to reserve goods without allowing negative stock. */
     public CompletableFuture<Boolean> withdrawBusinessStock(
             NpcId residentId, String material, int amount) {
