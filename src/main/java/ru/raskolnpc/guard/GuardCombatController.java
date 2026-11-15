@@ -6,8 +6,8 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.Location;
-import java.util.function.BiPredicate;
 import org.bukkit.scheduler.BukkitTask;
+import java.util.function.BiPredicate;
 import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.integration.PlayerSubjectResolver;
 import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
@@ -180,7 +180,7 @@ public final class GuardCombatController {
         long previous = lastAttack.getOrDefault(guard.id(), 0L);
         if (now - previous < attackCooldownMillis) return;
 
-        Entity target = selectTarget(guard, attacker, now);
+        Entity target = selectTarget(guard, attacker);
         if (!(target instanceof LivingEntity livingTarget)) return;
         if (!mayDamage(guard, attacker, livingTarget)) return;
 
@@ -197,7 +197,7 @@ public final class GuardCombatController {
      * A squad's stable leader selects one verified target. Members only attack that
      * shared target while it remains valid and within their own detection radius.
      */
-    private Entity selectTarget(NpcRecord guard, LivingEntity attacker, long now) {
+    private Entity selectTarget(NpcRecord guard, LivingEntity attacker) {
         if (squadService == null) return nearestHostile(guard, attacker);
         UUID squadId = squadService.squadIdFor(guard.id()).orElse(null);
         if (squadId == null) return nearestHostile(guard, attacker);
