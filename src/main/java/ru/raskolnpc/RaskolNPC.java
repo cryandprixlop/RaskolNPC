@@ -238,6 +238,8 @@ public final class RaskolNPC extends JavaPlugin {
                         getConfig().getInt("guards.morale.rally-threshold", 35))));
         guardMoraleService.setRetreatThresholds(
                 moraleRetreatThreshold, moraleRallyThreshold);
+        guardMoraleService.setAlliedDeathPenalty(
+                Math.max(0, Math.min(50, getConfig().getInt("guards.morale.allied-death-penalty", 8))));
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
         }
