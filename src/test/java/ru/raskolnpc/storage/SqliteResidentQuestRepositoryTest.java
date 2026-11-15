@@ -357,6 +357,89 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void withdrawalConsumesOldestQualityBatchesFirst() {
+        NpcRecord resident = createResident(ResidentProfession.MINER, "town");
+        deliverStock(resident, "iron_delivery", "IRON_INGOT", 32, 64);
+        replaceStockBatches(resident, "IRON_INGOT",
+                List.of(new BatchSeed("old-fine", 10, "FINE", 100),
+                        new BatchSeed("new-masterwork", 22, "MASTERWORK", 200)));
+
+        assertTrue(quests.withdrawBusinessStock(resident.id(), "IRON_INGOT", 12).join());
+
+        List<ResidentBusinessStockBatch> remaining =
+                quests.findBusinessStockBatches(resident.id(), "IRON_INGOT").join();
+        assertEquals(1, remaining.size());
+        assertEquals("new-masterwork", remaining.get(0).batchId());
+        assertEquals(20, remaining.get(0).amount());
+        assertEquals(20, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+    }
+
+    @Test
+    void professionTransferPreservesQualityDistributionAcrossBatches() {
+        NpcRecord miner = createResident(ResidentProfession.MINER, "town");
+        NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
+        deliverStock(miner, "iron_delivery", "IRON_INGOT", 32, 64);
+        replaceStockBatches(miner, "IRON_INGOT",
+                List.of(new BatchSeed("old-fine", 8, "FINE", 100),
+                        new BatchSeed("new-masterwork", 24, "MASTERWORK", 200)));
+
+        assertTrue(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 64).join());
+
+        List<ResidentBusinessStockBatch> source =
+                quests.findBusinessStockBatches(miner.id(), "IRON_INGOT").join();
+        List<ResidentBusinessStockBatch> target =
+                quests.findBusinessStockBatches(blacksmith.id(), "IRON_INGOT").join();
+        assertEquals(1, source.size());
+        assertEquals(16, source.get(0).amount());
+        assertEquals(ResidentProductQuality.MASTERWORK, source.get(0).quality());
+        assertEquals(2, target.size());
+        assertEquals(8, target.get(0).amount());
+        assertEquals(ResidentProductQuality.FINE, target.get(0).quality());
+        assertEquals(8, target.get(1).amount());
+        assertEquals(ResidentProductQuality.MASTERWORK, target.get(1).quality());
+        assertEquals(16, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+        assertEquals(16, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
+    }
+
+    private record BatchSeed(String id, int amount, String quality, long createdAt) { }
+
+    private void replaceStockBatches(NpcRecord resident, String material, List<BatchSeed> seeds) {
+        database.transaction(connection -> {
+            try (var delete = connection.prepareStatement("""
+                    DELETE FROM resident_business_stock_batches
+                    WHERE business_id = 'town:town' AND profession = ? AND material = ?
+                    """)) {
+                delete.setString(1, residentProfession(resident).name());
+                delete.setString(2, material);
+                delete.executeUpdate();
+            }
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO resident_business_stock_batches(
+                        batch_id, business_id, profession, material, amount,
+                        quality, created_at, source_type, source_ref
+                    ) VALUES (?, 'town:town', ?, ?, ?, ?, ?, 'TEST', NULL)
+                    """)) {
+                for (BatchSeed seed : seeds) {
+                    insert.setString(1, seed.id());
+                    insert.setString(2, residentProfession(resident).name());
+                    insert.setString(3, material);
+                    insert.setInt(4, seed.amount());
+                    insert.setString(5, seed.quality());
+                    insert.setLong(6, seed.createdAt());
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            return null;
+        }).join();
+    }
+
+    private ResidentProfession residentProfession(NpcRecord resident) {
+        return profiles.find(resident.id()).join().orElseThrow().profession();
+    }
+
+    @Test
     void productionConsumesAllInputsAndCreditsOutputAtomically() {
         NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
         deliverStock(blacksmith, "iron_delivery", "IRON_INGOT", 12, 64);
