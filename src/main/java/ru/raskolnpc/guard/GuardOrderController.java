@@ -35,6 +35,7 @@ public final class GuardOrderController {
     private RelationshipPolicy relationships;
     private PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
     private double maxPursuitDistance;
+    private GuardSquadService squadService;
     private BiPredicate<Location, String> territoryAccess = (location, nationId) -> true;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
@@ -154,6 +155,12 @@ public final class GuardOrderController {
         this.territoryAccess = Objects.requireNonNull(territoryAccess, "territoryAccess");
     }
 
+    /** Supplies the preloaded squad snapshot used to keep members in formation. */
+    public void setSquadService(GuardSquadService squadService) {
+        requireMainThread();
+        this.squadService = Objects.requireNonNull(squadService, "squadService");
+    }
+
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
     public void tick() {
         requireMainThread();
@@ -203,6 +210,9 @@ public final class GuardOrderController {
             case ESCORT -> escortTarget(order);
         };
         if (target == null) return;
+        if (squadService != null && order != null) {
+            target = squadService.formationTarget(record.id(), target, order.type());
+        }
         moveOneStep(record, entity, target);
     }
 
