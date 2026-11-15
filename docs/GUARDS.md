@@ -62,7 +62,7 @@ Commands:
 - `/raskolnpc guard squad order <squad-uuid> patrol <x1> <y1> <z1> <x2> <y2> <z2>`
 - `/raskolnpc guard squad order <squad-uuid> clear`
 
-A shared order is persisted as an individual order for each current squad member. The command reports successful and failed member updates separately; a failed save for one guard does not hide successful saves for the others. A squad with no members produces a zero-member result. This is shared order assignment, not synchronized formation movement: members still advance through the existing bounded movement scheduler independently. Squads do not yet coordinate combat targets or rally automatically.
+A shared order is persisted as an individual order for each current squad member. The command reports successful and failed member updates separately; a failed save for one guard does not hide successful saves for the others. A squad with no members produces a zero-member result. For patrol, defend, escort, and return orders, the movement controller applies deterministic wedge slots around the shared destination, oriented by the destination's yaw. Each member keeps a stable slot based on its guard UUID. The rally command continues to persist separate radial destinations and is not offset a second time. Squad membership is loaded into an immutable in-memory snapshot during startup and refreshed after membership changes; the movement tick never queries SQLite. Guards still advance independently through the bounded movement scheduler, so this is coordinated destination formation rather than shared physics or group pathfinding. Squads do not yet coordinate combat targets or automatically select targets.
 
 
 ## Basic combat
