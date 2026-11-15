@@ -633,6 +633,10 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                         throw new SQLException("Production input changed during transaction; transaction rolled back.");
                     }
                 }
+                if (consumeBusinessStockBatches(connection, business, input.getKey(),
+                        input.getValue()) == null) {
+                    throw new SQLException("Production input batches do not match the aggregate balance.");
+                }
             }
             try (var credit = connection.prepareStatement("""
                     INSERT INTO resident_business_stock(
@@ -654,6 +658,8 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                     throw new SQLException("Production output could not be credited; transaction rolled back.");
                 }
             }
+            insertBusinessStockBatch(connection, business, output, outputAmount,
+                    ResidentProductQuality.STANDARD, System.currentTimeMillis(), "PRODUCTION", null);
             return true;
         });
     }
@@ -665,16 +671,51 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
         }
         if (percentage == 0) return CompletableFuture.completedFuture(0);
         return database.transaction(connection -> {
-            try (var update = connection.prepareStatement("""
-                    UPDATE resident_business_stock
-                    SET amount = MAX(0, amount - MAX(1, CAST(capacity * ? / 100 AS INTEGER))),
-                        updated_at = ?
+            record StockRow(String businessId, String profession, String material,
+                            int amount, int capacity) { }
+            List<StockRow> rows = new ArrayList<>();
+            try (var query = connection.prepareStatement("""
+                    SELECT business_id, profession, material, amount, capacity
+                    FROM resident_business_stock
                     WHERE amount > 0 AND capacity > 0
+                    ORDER BY business_id, profession, material
                     """)) {
-                update.setInt(1, percentage);
-                update.setLong(2, System.currentTimeMillis());
-                return update.executeUpdate();
+                try (ResultSet result = query.executeQuery()) {
+                    while (result.next()) {
+                        rows.add(new StockRow(result.getString("business_id"),
+                                result.getString("profession"), result.getString("material"),
+                                result.getInt("amount"), result.getInt("capacity")));
+                    }
+                }
             }
+            int affected = 0;
+            long now = System.currentTimeMillis();
+            for (StockRow row : rows) {
+                int consumed = Math.min(row.amount(),
+                        Math.max(1, (int) ((long) row.capacity() * percentage / 100)));
+                BusinessIdentity business = new BusinessIdentity(row.businessId(), row.profession());
+                try (var update = connection.prepareStatement("""
+                        UPDATE resident_business_stock
+                        SET amount = amount - ?, updated_at = ?
+                        WHERE business_id = ? AND profession = ? AND material = ?
+                          AND amount >= ?
+                        """)) {
+                    update.setInt(1, consumed);
+                    update.setLong(2, now);
+                    update.setString(3, row.businessId());
+                    update.setString(4, row.profession());
+                    update.setString(5, row.material());
+                    update.setInt(6, consumed);
+                    if (update.executeUpdate() != 1) {
+                        throw new SQLException("Daily stock changed during consumption; transaction rolled back.");
+                    }
+                }
+                if (consumeBusinessStockBatches(connection, business, row.material(), consumed) == null) {
+                    throw new SQLException("Daily stock batches do not match the aggregate balance.");
+                }
+                affected++;
+            }
+            return affected;
         });
     }
 
