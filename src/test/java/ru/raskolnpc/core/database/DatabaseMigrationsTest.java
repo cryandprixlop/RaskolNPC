@@ -129,6 +129,8 @@ class DatabaseMigrationsTest {
                 statement.execute("INSERT INTO guard_conditions(npc_id, morale, last_combat_at, updated_at) VALUES ('guard-1', 75, 1000, 1000)");
                 assertThrows(SQLException.class, () -> statement.execute(
                         "UPDATE guard_conditions SET morale = 101 WHERE npc_id = 'guard-1'"));
+                assertThrows(SQLException.class, () -> statement.execute(
+                        "UPDATE guard_conditions SET injury_severity = 3 WHERE npc_id = 'guard-1'"));
                 statement.execute("DELETE FROM npcs WHERE id = 'guard-1'");
                 try (var result = statement.executeQuery("SELECT COUNT(*) FROM guard_conditions")) {
                     assertTrue(result.next());
