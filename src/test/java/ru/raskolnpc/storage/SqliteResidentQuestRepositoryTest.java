@@ -306,13 +306,16 @@ class SqliteResidentQuestRepositoryTest {
         NpcRecord miner = createResident(ResidentProfession.MINER, "town");
         NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
         deliverStock(miner, "miner_iron_delivery", "IRON_INGOT", 32, 96);
-        deliverStock(blacksmith, "blacksmith_iron_delivery", "IRON_INGOT", 16, 64);
 
         assertFalse(quests.transferBusinessStock(
-                miner.id(), blacksmith.id(), "IRON_INGOT", 17, 64).join());
+                miner.id(), blacksmith.id(), "IRON_INGOT", 33, 64).join());
+        assertEquals(32, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+
+        assertTrue(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 64).join());
         assertFalse(quests.transferBusinessStock(
                 miner.id(), blacksmith.id(), "IRON_INGOT", 16, 24).join());
-        assertEquals(32, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
+        assertEquals(16, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
         assertEquals(16, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
     }
 
