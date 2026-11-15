@@ -471,6 +471,32 @@ public final class ResidentQuestService {
                 batches.stream().filter(batch -> batch.quality() == quality).toList());
     }
 
+    /**
+     * Builds one read-only offer per quality tier from the resident's current stock.
+     * Prices are supplied in the economy's smallest currency unit.
+     */
+    public CompletableFuture<List<ResidentTradeOffer>> tradeOffers(
+            NpcId residentId, String material, long basePriceMinor) {
+        Objects.requireNonNull(residentId, "residentId");
+        Objects.requireNonNull(material, "material");
+        if (basePriceMinor < 0) throw new IllegalArgumentException("Base price cannot be negative.");
+        if (registry.get(residentId).filter(record -> record.type() == NpcType.RESIDENT).isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Resident not found."));
+        }
+        return repository.findBusinessStockBatches(residentId, material).thenApply(batches -> {
+            java.util.ArrayList<ResidentTradeOffer> offers = new java.util.ArrayList<>();
+            for (ResidentProductQuality quality : ResidentProductQuality.values()) {
+                List<ru.raskolnpc.storage.ResidentBusinessStockBatch> tier = batches.stream()
+                        .filter(batch -> batch.quality() == quality).toList();
+                if (!tier.isEmpty()) {
+                    offers.add(ResidentTradeOffer.fromBatches(
+                            residentId, material, quality, basePriceMinor, tier));
+                }
+            }
+            return List.copyOf(offers);
+        });
+    }
+
     /** Used by a future market adapter to reserve goods without allowing negative stock. */
     public CompletableFuture<Boolean> withdrawBusinessStock(
             NpcId residentId, String material, int amount) {
