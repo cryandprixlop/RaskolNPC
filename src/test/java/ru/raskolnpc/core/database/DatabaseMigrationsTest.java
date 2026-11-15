@@ -51,6 +51,8 @@ class DatabaseMigrationsTest {
                     statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
                 }
                 statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY)");
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id))");
+                statement.execute("CREATE TABLE resident_skills(npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id), profession TEXT NOT NULL, skill_level TEXT NOT NULL, PRIMARY KEY(npc_id, profession))");
                 statement.execute("""
                         CREATE TABLE guard_orders (
                             npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
@@ -84,7 +86,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(16, schemaVersion(connection));
+            assertEquals(17, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
