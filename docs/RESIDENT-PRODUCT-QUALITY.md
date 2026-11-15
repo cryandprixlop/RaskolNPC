@@ -175,3 +175,23 @@ prevents automatic duplicate charging or item delivery, but a reconciliation
 workflow and concrete economy/inventory adapters are still required before
 player purchases can be enabled in gameplay. The Towny town-bank adapter remains
 reserved for guard payments and is not reused for player trading.
+
+## Evidence-backed reconciliation
+
+A trade moved to `REVIEW_REQUIRED` is not automatically retried. An administrator
+must first verify the external economy result and the player's inventory, then
+call the repository's reconciliation operation with an explicit resolution and
+an evidence note:
+
+- `DELIVERED`: confirms that items reached the player; reserved stock stays consumed.
+- `CANCELLED_UNPAID`: confirms that no charge and no delivery occurred; exact-quality stock is restored.
+- `REFUNDED_NOT_DELIVERED`: confirms that the charge was refunded and no items were delivered; exact-quality stock is restored.
+
+The resolution and any stock restoration run in one SQLite transaction and only
+apply while the trade is still `REVIEW_REQUIRED`. Repeated or stale admin
+actions return false. If the business stock capacity no longer has room for a
+release, the transaction fails without changing the journal; staff must resolve
+the capacity conflict rather than silently overfill the business. Evidence is
+stored in the trade's audit/error field. This repository method is a persistence
+primitive; an authenticated permission-checked admin command/UI remains a
+separate integration task.
