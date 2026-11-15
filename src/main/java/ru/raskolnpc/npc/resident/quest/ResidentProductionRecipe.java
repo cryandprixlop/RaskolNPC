@@ -2,6 +2,7 @@ package ru.raskolnpc.npc.resident.quest;
 
 import org.bukkit.Material;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
+import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
 
 import java.util.Map;
 import java.util.Objects;
@@ -14,13 +15,22 @@ public record ResidentProductionRecipe(
         Map<String, Integer> inputs,
         String outputMaterial,
         int outputAmount,
-        int outputCapacity
+        int outputCapacity,
+        ResidentSkillLevel minimumSkillLevel
 ) {
+    /** Backwards-compatible recipe constructor; existing recipes remain available to apprentices. */
+    public ResidentProductionRecipe(String id, ResidentProfession profession, Map<String, Integer> inputs,
+            String outputMaterial, int outputAmount, int outputCapacity) {
+        this(id, profession, inputs, outputMaterial, outputAmount, outputCapacity,
+                ResidentSkillLevel.APPRENTICE);
+    }
+
     public ResidentProductionRecipe {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(profession, "profession");
         Objects.requireNonNull(inputs, "inputs");
         Objects.requireNonNull(outputMaterial, "outputMaterial");
+        Objects.requireNonNull(minimumSkillLevel, "minimumSkillLevel");
         id = id.trim().toLowerCase(java.util.Locale.ROOT);
         if (!id.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
             throw new IllegalArgumentException("Recipe id must contain 1-64 lowercase letters, digits, '.', '_' or '-'.");
