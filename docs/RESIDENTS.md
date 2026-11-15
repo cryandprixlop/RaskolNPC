@@ -116,3 +116,32 @@ SQLite migrations currently cover NPC identity, resident profiles, schedules, qu
 ## Resident production recipes
 
 The repository exposes an atomic production operation for a resident business. A recipe consumes every configured input from that resident profession's town stock and credits its output in the same SQLite transaction. If any input is missing or the output would exceed its existing stock capacity, the transaction leaves all stock unchanged. Recipe definitions and NPC schedules are intentionally separate from this persistence primitive.
+
+
+## Production recipe configuration
+
+Production recipes are loaded from `plugins/RaskolNPC/production-recipes.yml`. The complete file is parsed and validated before the active catalog is replaced; an invalid reload leaves the previous catalog in memory.
+
+Example:
+
+```yaml
+recipes:
+  blacksmith_iron_sword:
+    profession: BLACKSMITH
+    inputs:
+      IRON_INGOT: 4
+      COAL: 2
+    output:
+      material: IRON_SWORD
+      amount: 1
+      capacity: 32
+```
+
+- Each recipe has a unique 1–64 character ID and one required profession.
+- `inputs` contains 1–16 valid Bukkit item material keys, each with an integer amount from 1 to 2304.
+- `output.material` must be a valid Bukkit item material; `output.amount` is 1–2304.
+- `output.capacity` is the maximum stored amount for the output material and cannot be lower than the produced amount.
+- Recipe execution is available through the resident production service API. It verifies the resident type and profession, then consumes all inputs and credits output in the existing atomic SQLite transaction.
+- Recipes are definitions, not a timer: automatic work scheduling and in-game production cadence are a later stage. No production is run automatically merely because a recipe exists.
+
+The shipped file includes example recipes for a blacksmith, cook, and builder. Extend it with server-specific recipes after checking material names and stock capacities.
