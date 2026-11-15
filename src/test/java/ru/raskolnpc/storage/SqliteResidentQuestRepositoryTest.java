@@ -452,6 +452,15 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(8, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
         assertEquals(6, quests.getBusinessStock(blacksmith.id(), "COAL").join());
         assertEquals(2, quests.getBusinessStock(blacksmith.id(), "IRON_SWORD").join());
+        assertEquals(8, quests.findBusinessStockBatches(blacksmith.id(), "IRON_INGOT")
+                .join().stream().mapToInt(ResidentBusinessStockBatch::amount).sum());
+        assertEquals(6, quests.findBusinessStockBatches(blacksmith.id(), "COAL")
+                .join().stream().mapToInt(ResidentBusinessStockBatch::amount).sum());
+        List<ResidentBusinessStockBatch> outputBatches =
+                quests.findBusinessStockBatches(blacksmith.id(), "IRON_SWORD").join();
+        assertEquals(1, outputBatches.size());
+        assertEquals(2, outputBatches.get(0).amount());
+        assertEquals(ResidentProductQuality.STANDARD, outputBatches.get(0).quality());
     }
 
     @Test
@@ -485,6 +494,8 @@ class SqliteResidentQuestRepositoryTest {
 
         assertEquals(1, quests.consumeBusinessStockDaily(10).join());
         assertEquals(23, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(23, quests.findBusinessStockBatches(resident.id(), "IRON_INGOT")
+                .join().stream().mapToInt(ResidentBusinessStockBatch::amount).sum());
         assertEquals(0, quests.consumeBusinessStockDaily(0).join());
         assertThrows(IllegalArgumentException.class,
                 () -> quests.consumeBusinessStockDaily(101));
