@@ -62,6 +62,10 @@ public final class ResidentTradeService {
                         payment.detail()).thenApply(released -> released
                         ? Result.PAYMENT_DECLINED : Result.REVIEW_REQUIRED);
             }
+            if (payment.outcome() != ResidentTradePaymentProvider.Outcome.PAID) {
+                return markReview(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                        "Payment provider returned an invalid charge outcome.");
+            }
             return repository.transition(trade.transactionId(),
                     ResidentTradeTransaction.Status.PAYMENT_PENDING,
                     ResidentTradeTransaction.Status.PAID,
@@ -102,7 +106,7 @@ public final class ResidentTradeService {
 
     private CompletableFuture<Result> refund(ResidentTradeTransaction trade) {
         return safe(() -> payments.refund(trade)).thenCompose(refund -> {
-            if (refund == null || refund.outcome() != ResidentTradePaymentProvider.Outcome.PAID) {
+            if (refund == null || refund.outcome() != ResidentTradePaymentProvider.Outcome.REFUNDED) {
                 return markReview(trade, ResidentTradeTransaction.Status.REFUND_PENDING,
                         refund == null ? "Refund provider returned no result." : refund.detail());
             }
