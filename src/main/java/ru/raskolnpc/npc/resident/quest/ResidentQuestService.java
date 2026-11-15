@@ -12,6 +12,7 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
 import ru.raskolnpc.storage.ResidentQuestRepository;
 import ru.raskolnpc.storage.ResidentQuestReview;
 
@@ -115,8 +116,10 @@ public final class ResidentQuestService {
             if (profile.isEmpty() || profile.get().profession() != recipe.profession()) {
                 return CompletableFuture.completedFuture(false);
             }
+            int outputAmount = ResidentProductionEfficiency.outputAmount(
+                    recipe.outputAmount(), profile.get().currentSkillLevel());
             return repository.produceBusinessStock(residentId, recipe.inputs(),
-                    recipe.outputMaterial(), recipe.outputAmount(), recipe.outputCapacity());
+                    recipe.outputMaterial(), outputAmount, recipe.outputCapacity());
         });
     }
 
@@ -133,19 +136,23 @@ public final class ResidentQuestService {
             if (profile.isEmpty()) return CompletableFuture.completedFuture(false);
             List<ResidentProductionRecipe> recipes =
                     productionCatalog.forProfession(profile.get().profession());
-            return tryProductionRecipe(residentId, recipes, 0);
+            return tryProductionRecipe(residentId, recipes,
+                    profile.get().currentSkillLevel(), 0);
         });
     }
 
     private CompletableFuture<Boolean> tryProductionRecipe(
-            NpcId residentId, List<ResidentProductionRecipe> recipes, int index) {
+            NpcId residentId, List<ResidentProductionRecipe> recipes,
+            ResidentSkillLevel skillLevel, int index) {
         if (index >= recipes.size()) return CompletableFuture.completedFuture(false);
         ResidentProductionRecipe recipe = recipes.get(index);
+        int outputAmount = ResidentProductionEfficiency.outputAmount(
+                recipe.outputAmount(), skillLevel);
         return repository.produceBusinessStock(residentId, recipe.inputs(),
-                recipe.outputMaterial(), recipe.outputAmount(), recipe.outputCapacity())
+                recipe.outputMaterial(), outputAmount, recipe.outputCapacity())
                 .thenCompose(produced -> Boolean.TRUE.equals(produced)
                         ? CompletableFuture.completedFuture(true)
-                        : tryProductionRecipe(residentId, recipes, index + 1));
+                        : tryProductionRecipe(residentId, recipes, skillLevel, index + 1));
     }
 
     public List<ResidentQuest> availableFor(ResidentProfile profile) {
