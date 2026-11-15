@@ -141,7 +141,7 @@ class SqliteResidentProfileRepositoryTest {
         assertThrows(IllegalArgumentException.class, () ->
                 repository.addSkillExperience(npc.id(), ResidentProfession.MINER, 0));
         assertThrows(java.util.concurrent.CompletionException.class, () ->
-                repository.addSkillExperience(NpcId.fromString("missing-resident"),
+                repository.addSkillExperience(NpcId.fromString("00000000-0000-0000-0000-000000000001"),
                         ResidentProfession.MINER, 10).join());
     }
 
