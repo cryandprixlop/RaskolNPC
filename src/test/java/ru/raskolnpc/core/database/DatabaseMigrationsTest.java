@@ -32,8 +32,8 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_conditions");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(14, schemaVersion(connection));
-            assertEquals(16, migrationCount(connection));
+            assertEquals(15, schemaVersion(connection));
+            assertEquals(15, migrationCount(connection));
         }
     }
 
