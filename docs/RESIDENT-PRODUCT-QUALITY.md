@@ -12,6 +12,16 @@ Design decision for the next resident-economy increment. This document defines t
 - Added a read-only repository query ordered by `created_at, batch_id`.
 - Existing mutation paths still write only the aggregate table. The batch table is therefore not yet the source of truth, and quality must not be exposed in gameplay until mutation routing and consistency checks are complete.
 
+## Implementation progress
+
+- Schema migration 18 creates `resident_business_stock_batches` and backfills positive legacy balances as `STANDARD` batches.
+- Domain types `ResidentProductQuality` and `ResidentBusinessStockBatch` are present.
+- Batch reads are available in deterministic FIFO order.
+- Quest deposits, withdrawals, profession transfers, production input/output, and daily consumption now update batches in the same transaction as the aggregate stock projection.
+- Withdrawals and daily consumption consume FIFO; profession transfers preserve the quality split across moved batches.
+- Newly deposited and currently produced goods use `STANDARD` quality until skill-based production quality is wired in a later increment.
+- Gameplay presentation remains disabled; the compatibility and transactional test suite is being expanded.
+
 ## Problem
 
 The current `resident_business_stock` table stores one aggregate quantity per business, profession, and material. Production, delivery deposits, withdrawals, inter-profession transfers, and daily consumption update that aggregate row directly. A single quality value on that row would be incorrect as soon as goods of different quality are combined.
