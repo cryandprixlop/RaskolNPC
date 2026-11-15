@@ -73,3 +73,7 @@ A shared order is persisted as an individual order for each current squad member
 - Detection radius, damage, batch size, attack cooldown, and maximum pursuit distance are configurable under `guards.combat`. Combat detection applies a true spherical distance check after Bukkit's nearby-entity query, so diagonal targets outside the configured radius are not attacked.
 - Pursuit only changes the movement target temporarily; it does not replace or rewrite the durable order. If the target disappears, dies, leaves range, or is no longer explicitly hostile, the guard returns to its saved order.
 - A guard that takes direct damage from a verified hostile entity prioritizes that attacker for up to 10 seconds. Projectiles and environmental damage do not trigger retaliation; all existing hostility, territory, range, and WorldGuard checks are repeated before an attack.
+
+## Morale and recovery
+
+Guard morale is stored in SQLite independently of the spawned entity and survives server restarts. A guard starts at 100 morale. Every point of final incoming damage removes two morale points (rounded up), down to 0. Outgoing combat damage scales linearly from 50% at 0 morale to 100% at 100 morale. Morale begins recovering after two minutes without damage, at one point per minute. The condition row is deleted automatically when its NPC record is deleted. This first increment intentionally models morale only; it does not yet add fleeing, surrender, injuries, equipment wear, or death policies.
