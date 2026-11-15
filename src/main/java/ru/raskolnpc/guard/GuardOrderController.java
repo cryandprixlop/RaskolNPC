@@ -36,6 +36,7 @@ public final class GuardOrderController {
     private PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
     private double maxPursuitDistance;
     private GuardSquadService squadService;
+    private GuardMoraleService moraleService;
     private BiPredicate<Location, String> territoryAccess = (location, nationId) -> true;
     private final Map<ru.raskolnpc.npc.model.NpcId, Integer> patrolIndices =
             new ConcurrentHashMap<>();
@@ -161,6 +162,12 @@ public final class GuardOrderController {
         this.squadService = Objects.requireNonNull(squadService, "squadService");
     }
 
+    /** Applies retreat-to-post movement while a guard is routed by low morale. */
+    public void setMoraleService(GuardMoraleService moraleService) {
+        requireMainThread();
+        this.moraleService = Objects.requireNonNull(moraleService, "moraleService");
+    }
+
     /** Public for deterministic MockBukkit tests; must be called on the server thread. */
     public void tick() {
         requireMainThread();
@@ -193,6 +200,13 @@ public final class GuardOrderController {
         Entity entity = entities.find(record.id()).orElse(null);
         if (!(entity instanceof LivingEntity livingEntity)
                 || !livingEntity.isValid() || livingEntity.isDead()) return;
+
+        if (moraleService != null && moraleService.isRetreating(record.id())) {
+            Location post = record.spawnLocation() == null
+                    ? null : record.spawnLocation().resolve();
+            if (post != null) moveOneStep(record, entity, post);
+            return;
+        }
 
         Location pursuitTarget = nearestVerifiedHostile(record, livingEntity);
         if (pursuitTarget != null) {
