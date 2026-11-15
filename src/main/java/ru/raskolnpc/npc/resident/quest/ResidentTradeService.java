@@ -113,9 +113,7 @@ public final class ResidentTradeService {
                 return markReview(trade, ResidentTradeTransaction.Status.REFUND_PENDING,
                         refund == null ? "Refund provider returned no result." : refund.detail());
             }
-            return repository.transition(trade.transactionId(),
-                    ResidentTradeTransaction.Status.REFUND_PENDING,
-                    ResidentTradeTransaction.Status.REFUNDED,
+            return repository.completeRefundAndRelease(trade.transactionId(),
                     refund.providerReference(), refund.detail())
                     .thenApply(changed -> changed
                             ? Result.DELIVERY_FAILED_REFUNDED : Result.REVIEW_REQUIRED);
