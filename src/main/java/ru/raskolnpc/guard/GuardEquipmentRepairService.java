@@ -83,7 +83,9 @@ public final class GuardEquipmentRepairService {
         }
 
         if (damagedItems == 0) {
-            return new RepairResult(false, "Экипировка не нуждается в ремонте.",
+            return new RepairResult(false, unsupportedItems > 0
+                            ? "Нет повреждённых предметов с поддерживаемым рецептом ремонта."
+                            : "Экипировка не нуждается в ремонте.",
                     0, 0, Map.of(), unsupportedItems);
         }
         for (Map.Entry<Material, Integer> entry : required.entrySet()) {
@@ -153,7 +155,7 @@ public final class GuardEquipmentRepairService {
             case LEGGINGS -> equipment.getLeggings();
             case BOOTS -> equipment.getBoots();
         };
-        if (!isDamaged(item)) return;
+        if (!isDamaged(item) || repairIngredient(item.getType()) == null) return;
         ItemStack repaired = item.clone();
         Damageable meta = (Damageable) repaired.getItemMeta();
         meta.setDamage(0);
