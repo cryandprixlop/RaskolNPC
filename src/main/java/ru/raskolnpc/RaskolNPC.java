@@ -47,7 +47,6 @@ import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardOrderRepository;
 import ru.raskolnpc.storage.GuardSquadRepository;
-import ru.raskolnpc.storage.GuardConditionRepository;
 import ru.raskolnpc.storage.SqliteGuardConditionRepository;
 import ru.raskolnpc.storage.SqliteGuardSquadRepository;
 import ru.raskolnpc.storage.SqliteGuardOrderRepository;
