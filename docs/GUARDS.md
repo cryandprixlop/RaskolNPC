@@ -41,6 +41,8 @@ The current movement layer is intentionally simple and does not yet perform full
 - `guards.combat.max-pursuit-distance` — maximum distance for pursuit of explicitly hostile registered NPCs and Towny-resolved players (default 16, maximum 32; set to 0 to disable).
 - `guards.base-hire-cost` and `guards.base-daily-rent` — level-one prices.
 - `guards.maximum-debt-days` — missed rent threshold before dismissal.
+- `guards.morale.retreat-threshold`, `guards.morale.rally-threshold`, and `guards.morale.allied-death-penalty` — morale routing and casualty response.
+- `guards.injury.light-damage`, `guards.injury.severe-damage`, and `guards.injury.recovery-delay-seconds` — injury thresholds and quiet-period recovery.
 
 ## Integration diagnostics
 
