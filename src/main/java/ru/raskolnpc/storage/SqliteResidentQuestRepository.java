@@ -508,6 +508,38 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> withdrawBusinessStock(
+            NpcId residentId, String material, int amount, ResidentProductQuality quality) {
+        java.util.Objects.requireNonNull(quality, "quality");
+        String normalizedMaterial = normalizeMaterial(material);
+        if (amount < 1 || amount > 1_000_000) {
+            throw new IllegalArgumentException("Stock withdrawal amount must be between 1 and 1000000.");
+        }
+        return database.transaction(connection -> {
+            BusinessIdentity business = businessIdentity(connection, residentId);
+            List<ResidentBusinessStockBatch> consumed =
+                    consumeBusinessStockBatches(connection, business, normalizedMaterial, amount, quality);
+            if (consumed == null) return false;
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET amount = amount - ?, updated_at = ?
+                    WHERE business_id = ? AND profession = ? AND material = ? AND amount >= ?
+                    """)) {
+                update.setInt(1, amount);
+                update.setLong(2, System.currentTimeMillis());
+                update.setString(3, business.businessId());
+                update.setString(4, business.profession());
+                update.setString(5, normalizedMaterial);
+                update.setInt(6, amount);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Aggregate stock changed during quality-specific withdrawal.");
+                }
+            }
+            return true;
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> transferBusinessStock(
             NpcId sourceResidentId, NpcId targetResidentId,
             String material, int amount, int targetCapacity) {
@@ -831,17 +863,25 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     private static List<ResidentBusinessStockBatch> consumeBusinessStockBatches(
             Connection connection, BusinessIdentity business, String material, int amount)
             throws SQLException {
+        return consumeBusinessStockBatches(connection, business, material, amount, null);
+    }
+
+    private static List<ResidentBusinessStockBatch> consumeBusinessStockBatches(
+            Connection connection, BusinessIdentity business, String material, int amount,
+            ResidentProductQuality quality)
+            throws SQLException {
         List<ResidentBusinessStockBatch> selected = new ArrayList<>();
+        String qualityClause = quality == null ? "" : " AND quality = ?";
         try (var query = connection.prepareStatement("""
                 SELECT batch_id, business_id, profession, material, amount,
                        quality, created_at, source_type, source_ref
                 FROM resident_business_stock_batches
                 WHERE business_id = ? AND profession = ? AND material = ?
-                ORDER BY created_at, batch_id
-                """)) {
+                """ + qualityClause + " ORDER BY created_at, batch_id")) {
             query.setString(1, business.businessId());
             query.setString(2, business.profession());
             query.setString(3, material);
+            if (quality != null) query.setString(4, quality.name());
             try (ResultSet result = query.executeQuery()) {
                 int remaining = amount;
                 while (result.next() && remaining > 0) {
