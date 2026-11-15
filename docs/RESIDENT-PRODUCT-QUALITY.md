@@ -2,28 +2,17 @@
 
 ## Status
 
-Design decision for the next resident-economy increment. This document defines the storage contract before quality is exposed to players or used by gameplay. It does not claim that product quality is implemented yet.
+Batch-backed stock and mastery-derived production quality are implemented on the active draft PR. Quality is available to internal service consumers but is not yet displayed to players or connected to a player-currency marketplace. No economy provider or price multiplier has been assumed.
 
 ## Implementation progress
 
-- Schema migration 18 creates `resident_business_stock_batches` with validated quality tiers and FIFO index.
-- Existing positive aggregate stock is backfilled as one `STANDARD` / `LEGACY` batch; zero balances are skipped.
-- Added `ResidentProductQuality` and immutable `ResidentBusinessStockBatch` domain types.
-- Added a read-only repository query ordered by `created_at, batch_id`.
-- Existing mutation paths still write only the aggregate table. The batch table is therefore not yet the source of truth, and quality must not be exposed in gameplay until mutation routing and consistency checks are complete.
-
-## Implementation progress
-
-- Schema migration 18 creates `resident_business_stock_batches` and backfills positive legacy balances as `STANDARD` batches.
-- Domain types `ResidentProductQuality` and `ResidentBusinessStockBatch` are present.
-- Batch reads are available in deterministic FIFO order.
-- Quest deposits, withdrawals, profession transfers, production input/output, and daily consumption now update batches in the same transaction as the aggregate stock projection.
-- Withdrawals and daily consumption consume FIFO; profession transfers preserve the quality split across moved batches.
-- Newly deposited goods use `STANDARD` quality.
-- Newly produced goods receive deterministic quality from persisted profession mastery: `APPRENTICE → BASIC`, `NOVICE → STANDARD`, `SPECIALIST → FINE`, `EXPERT/MASTER → MASTERWORK`.
-- The existing quantity-only production API remains compatible and defaults to `STANDARD`; quality-aware callers use the overload that supplies an explicit tier.
-- Gameplay presentation remains disabled; the compatibility and transactional test suite is being expanded.
-- `ResidentQuestService.businessStockBatches(...)` exposes persisted batches to future market adapters while rejecting missing/non-resident NPCs; it does not assign prices or mutate stock.
+- Schema migration 18 creates `resident_business_stock_batches`, validates quality tiers, adds a FIFO index, and backfills positive legacy stock as `STANDARD` / `LEGACY` batches.
+- Quest deposits, withdrawals, profession transfers, production inputs/outputs, and daily consumption update batches and aggregate stock in the same SQLite transaction.
+- Withdrawals and daily consumption consume FIFO; profession transfers preserve quality distribution.
+- Production quality follows persisted profession mastery: `APPRENTICE → BASIC`, `NOVICE → STANDARD`, `SPECIALIST → FINE`, `EXPERT/MASTER → MASTERWORK`.
+- The quantity-only production API remains compatible and defaults to `STANDARD`.
+- `ResidentQuestService.businessStockBatches(...)` exposes batches to internal consumers; its quality-filtered overload supports market listing queries without changing stock.
+- No public gameplay labels, sale prices, purchase operations, or player-currency rewards are enabled yet. A market adapter must define price policy and atomic quality-specific reservation before sales can be exposed.
 
 ## Problem
 
