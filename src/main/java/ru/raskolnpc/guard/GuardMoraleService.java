@@ -1,0 +1,141 @@
+package ru.raskolnpc.guard;
+
+import org.bukkit.Bukkit;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitTask;
+import ru.raskolnpc.guard.model.GuardCondition;
+import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.storage.GuardConditionRepository;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Tracks guard morale independently of entity lifetime. All Bukkit access is
+ * confined to the server thread; repository operations run on database workers.
+ */
+public final class GuardMoraleService implements Listener {
+    private static final long RECOVERY_INTERVAL_TICKS = 1200L;
+    private static final long RECOVERY_DELAY_MILLIS = 120_000L;
+
+    private final Plugin plugin;
+    private final NpcRegistry registry;
+    private final NpcEntityManager entities;
+    private final GuardConditionRepository repository;
+    private final Map<NpcId, GuardCondition> conditions = new ConcurrentHashMap<>();
+    private BukkitTask recoveryTask;
+    private boolean listenerRegistered;
+
+    public GuardMoraleService(Plugin plugin, NpcRegistry registry,
+            NpcEntityManager entities, GuardConditionRepository repository) {
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
+        this.registry = Objects.requireNonNull(registry, "registry");
+        this.entities = Objects.requireNonNull(entities, "entities");
+        this.repository = Objects.requireNonNull(repository, "repository");
+    }
+
+    public CompletableFuture<Void> load() {
+        return repository.findAll().thenAccept(loaded -> {
+            conditions.clear();
+            for (GuardCondition condition : loaded) {
+                NpcRecord record = registry.get(condition.npcId()).orElse(null);
+                if (record != null && record.type() == NpcType.GUARD) {
+                    conditions.put(condition.npcId(), condition);
+                }
+            }
+        });
+    }
+
+    public void start() {
+        requireMainThread();
+        if (recoveryTask != null) return;
+        if (!listenerRegistered) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+            listenerRegistered = true;
+        }
+        recoveryTask = Bukkit.getScheduler().runTaskTimer(
+                plugin, this::recoverMorale, RECOVERY_INTERVAL_TICKS, RECOVERY_INTERVAL_TICKS);
+    }
+
+    public void stop() {
+        if (recoveryTask != null) {
+            recoveryTask.cancel();
+            recoveryTask = null;
+        }
+        if (listenerRegistered) {
+            HandlerList.unregisterAll(this);
+            listenerRegistered = false;
+        }
+    }
+
+    public int morale(NpcId guardId) {
+        GuardCondition condition = conditions.get(guardId);
+        return condition == null ? 100 : condition.morale();
+    }
+
+    public double damageMultiplier(NpcId guardId) {
+        GuardCondition condition = conditions.get(guardId);
+        return condition == null ? 1.0 : condition.damageMultiplier();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onGuardDamaged(EntityDamageEvent event) {
+        requireMainThread();
+        NpcId guardId = entities.getNpcId(event.getEntity()).orElse(null);
+        if (guardId == null) return;
+        NpcRecord record = registry.get(guardId).orElse(null);
+        if (record == null || record.type() != NpcType.GUARD) return;
+        if (!Double.isFinite(event.getFinalDamage()) || event.getFinalDamage() <= 0) return;
+
+        GuardCondition previous = conditions.getOrDefault(guardId,
+                new GuardCondition(guardId, 100, 0, Math.max(1, System.currentTimeMillis())));
+        int loss = Math.max(1, (int) Math.ceil(event.getFinalDamage() * 2.0));
+        GuardCondition changed = previous.withMorale(previous.morale() - loss,
+                System.currentTimeMillis(), System.currentTimeMillis());
+        conditions.put(guardId, changed);
+        persist(changed);
+    }
+
+    private void recoverMorale() {
+        requireMainThread();
+        long now = System.currentTimeMillis();
+        for (Map.Entry<NpcId, GuardCondition> entry : conditions.entrySet()) {
+            GuardCondition current = entry.getValue();
+            if (current.morale() >= 100
+                    || now - current.lastCombatAt() < RECOVERY_DELAY_MILLIS) continue;
+            NpcRecord record = registry.get(entry.getKey()).orElse(null);
+            if (record == null || record.type() != NpcType.GUARD) {
+                conditions.remove(entry.getKey(), current);
+                continue;
+            }
+            GuardCondition recovered = current.withMorale(current.morale() + 1,
+                    current.lastCombatAt(), now);
+            if (conditions.replace(entry.getKey(), current, recovered)) persist(recovered);
+        }
+    }
+
+    private void persist(GuardCondition condition) {
+        repository.save(condition).exceptionally(error -> {
+            plugin.getLogger().warning("Could not persist guard morale for "
+                    + condition.npcId() + ": " + error.getMessage());
+            return null;
+        });
+    }
+
+    private void requireMainThread() {
+        if (!Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("Guard morale Bukkit operations must run on the main thread.");
+        }
+    }
+}
