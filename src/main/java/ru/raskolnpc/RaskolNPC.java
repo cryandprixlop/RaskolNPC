@@ -148,6 +148,8 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("resident-behavior.movement-step", 0.8));
         residentBehaviorService.setBusinessStockRepository(residentQuestRepository);
         residentBehaviorService.setProductionService(residentQuests);
+        residentBehaviorService.setWorkActionIntervalTicks(Math.max(1L, Math.min(24_000L,
+                getConfig().getLong("resident-behavior.work-action-interval-ticks", 60L))));
         residentBehaviorService.setDailyStockConsumptionPercent(Math.max(0, Math.min(100,
                 getConfig().getInt("resident-business-stock.daily-consumption-percent", 10))));
 
