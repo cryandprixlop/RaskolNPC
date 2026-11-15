@@ -7,6 +7,7 @@ import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardCombatController;
 import ru.raskolnpc.guard.GuardMoraleService;
+import ru.raskolnpc.guard.GuardEquipmentWearService;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
 import ru.raskolnpc.guard.GuardSquadService;
@@ -75,6 +76,7 @@ public final class RaskolNPC extends JavaPlugin {
     private GuardRentService guardRentService;
     private GuardCombatController guardCombatController;
     private GuardMoraleService guardMoraleService;
+    private GuardEquipmentWearService guardEquipmentWearService;
     private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
@@ -220,6 +222,11 @@ public final class RaskolNPC extends JavaPlugin {
                 playerSubjects);
         guardMoraleService = new GuardMoraleService(this, npcRegistry, npcEntityManager,
                 new SqliteGuardConditionRepository(databaseManager));
+        guardEquipmentWearService = new GuardEquipmentWearService(
+                this, npcRegistry, npcEntityManager);
+        guardEquipmentWearService.setWearPerHit(
+                Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.weapon-wear-per-hit", 1))),
+                Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.armor-wear-per-hit", 1))));
         guardCombatController = new GuardCombatController(
                 this, npcRegistry, npcEntityManager, relationshipPolicy,
                 worldGuardProtectionAdapter,
@@ -389,6 +396,7 @@ public final class RaskolNPC extends JavaPlugin {
                                                     return;
                                                 }
                                                 guardMoraleService.start();
+                                                guardEquipmentWearService.start();
                                                 guardCombatController.start();
                                                 if (availableGuardRentEconomy != null) {
                                                     try {
@@ -462,6 +470,7 @@ public final class RaskolNPC extends JavaPlugin {
         if (residentBehaviorService != null) residentBehaviorService.stop();
         if (guardOrderController != null) guardOrderController.stop();
         if (guardCombatController != null) guardCombatController.stop();
+        if (guardEquipmentWearService != null) guardEquipmentWearService.stop();
         if (guardMoraleService != null) guardMoraleService.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
