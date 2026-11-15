@@ -161,6 +161,14 @@ onto the main thread. A delivery provider must distinguish definitive failure
 from uncertain/possibly-partial delivery; only the former is automatically
 refunded.
 
+The first concrete delivery adapter, `BukkitResidentTradeDeliveryProvider`,
+uses a persistent item metadata marker containing the trade ID. It checks for
+previously delivered quantity and tops up only the missing amount, and simulates
+inventory capacity before mutating the real inventory. This makes retries
+idempotent and helps recover from partially persisted delivery. The adapter is
+not yet wired into the plugin runtime because a player-economy provider and
+admin reconciliation controls are still outstanding.
+
 Startup now runs trade recovery. All unfinished states are moved to
 `REVIEW_REQUIRED` rather than guessed as paid, unpaid, or delivered. This
 prevents automatic duplicate charging or item delivery, but a reconciliation
