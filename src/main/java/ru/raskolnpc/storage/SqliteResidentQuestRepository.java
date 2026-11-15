@@ -487,7 +487,9 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                     || source.profession().equals(target.profession())) return false;
 
             int targetStock = readBusinessStock(connection, target, normalizedMaterial);
-            if ((long) targetStock + amount > targetCapacity) return false;
+            Integer storedCapacity = readBusinessStockCapacity(connection, target, normalizedMaterial);
+            int effectiveCapacity = storedCapacity == null ? targetCapacity : storedCapacity;
+            if ((long) targetStock + amount > effectiveCapacity) return false;
 
             long now = System.currentTimeMillis();
             try (var debit = connection.prepareStatement("""
@@ -511,9 +513,8 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(business_id, profession, material) DO UPDATE SET
                         amount = resident_business_stock.amount + excluded.amount,
-                        capacity = excluded.capacity,
                         updated_at = excluded.updated_at
-                    WHERE resident_business_stock.amount + excluded.amount <= excluded.capacity
+                    WHERE resident_business_stock.amount + excluded.amount <= resident_business_stock.capacity
                     """)) {
                 credit.setString(1, target.businessId());
                 credit.setString(2, target.profession());
@@ -675,6 +676,21 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
             statement.setString(3, business.businessId());
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private static Integer readBusinessStockCapacity(
+            Connection connection, BusinessIdentity business, String material) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT capacity FROM resident_business_stock
+                WHERE business_id = ? AND profession = ? AND material = ?
+                """)) {
+            statement.setString(1, business.businessId());
+            statement.setString(2, business.profession());
+            statement.setString(3, normalizeMaterial(material));
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt("capacity") : null;
             }
         }
     }
