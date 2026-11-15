@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
  * those calls onto the server thread themselves.
  */
 public interface ResidentTradePaymentProvider {
-    enum Outcome { PAID, DECLINED, UNKNOWN }
+    enum Outcome { PAID, DECLINED, REFUNDED, UNKNOWN }
 
     record Result(Outcome outcome, String providerReference, String detail) {
         public Result {
