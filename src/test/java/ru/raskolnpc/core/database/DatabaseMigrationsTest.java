@@ -36,7 +36,7 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_skills", "experience");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(17, schemaVersion(connection));
+            assertEquals(18, schemaVersion(connection));
             assertEquals(18, migrationCount(connection));
         }
     }
@@ -95,7 +95,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(17, schemaVersion(connection));
+            assertEquals(18, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
