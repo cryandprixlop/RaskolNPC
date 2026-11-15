@@ -1,6 +1,8 @@
 package ru.raskolnpc.guard;
 
+import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,4 +89,46 @@ class GuardMoraleServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.setRetreatThresholds(20, 101));
     }
+
+    @Test
+    void nearbySameNationGuardsLoseMoraleWhenAnAllyDies() {
+        NpcRecord ally = NpcRecord.create(NpcType.GUARD, "Ally", null, "town", "nation", "{}");
+        registry.register(ally);
+        LivingEntity allyEntity = mock(LivingEntity.class);
+        when(entities.find(ally.id())).thenReturn(java.util.Optional.of(allyEntity));
+        when(allyEntity.isValid()).thenReturn(true);
+        when(allyEntity.isDead()).thenReturn(false);
+        when(allyEntity.getLocation()).thenReturn(new Location(server.addSimpleWorld("world"), 1, 64, 1));
+        when(guardEntity.getLocation()).thenReturn(new Location(server.getWorld("world"), 0, 64, 0));
+
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(guardEntity);
+
+        service.onGuardDeath(event);
+
+        assertEquals(92, service.morale(ally.id()));
+        verify(repository).save(argThat(condition ->
+                condition.npcId().equals(ally.id()) && condition.morale() == 92));
+    }
+
+    @Test
+    void alliedDeathDoesNotAffectGuardsWithoutKnownNation() {
+        NpcRecord unknownNationGuard = NpcRecord.create(
+                NpcType.GUARD, "Unknown", null, "town", null, "{}");
+        registry.register(unknownNationGuard);
+        LivingEntity unknownEntity = mock(LivingEntity.class);
+        when(entities.find(unknownNationGuard.id())).thenReturn(java.util.Optional.of(unknownEntity));
+        when(unknownEntity.isValid()).thenReturn(true);
+        when(unknownEntity.isDead()).thenReturn(false);
+        when(unknownEntity.getLocation()).thenReturn(new Location(server.addSimpleWorld("world"), 1, 64, 1));
+        when(guardEntity.getLocation()).thenReturn(new Location(server.getWorld("world"), 0, 64, 0));
+
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(guardEntity);
+
+        service.onGuardDeath(event);
+
+        assertEquals(100, service.morale(unknownNationGuard.id()));
+    }
+
 }
