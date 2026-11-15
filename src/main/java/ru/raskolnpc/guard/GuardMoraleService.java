@@ -206,7 +206,7 @@ public final class GuardMoraleService implements Listener {
         persist(changed);
     }
 
-    private void recoverMorale() {
+    void recoverMorale() {
         requireMainThread();
         long now = System.currentTimeMillis();
         for (Map.Entry<NpcId, GuardCondition> entry : conditions.entrySet()) {
