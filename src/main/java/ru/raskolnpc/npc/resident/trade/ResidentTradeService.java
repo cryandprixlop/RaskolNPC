@@ -52,6 +52,12 @@ public final class ResidentTradeService {
             }
             ResidentTradeTransaction trade = reserved.get();
             if (trade.status() != ResidentTradeTransaction.Status.STOCK_RESERVED) {
+                if (trade.status() == ResidentTradeTransaction.Status.PAYMENT_PENDING
+                        || trade.status() == ResidentTradeTransaction.Status.PAID
+                        || trade.status() == ResidentTradeTransaction.Status.REFUND_PENDING) {
+                    return review(trade, trade.status(),
+                            "Idempotent retry found an unfinished transaction; external outcome must be reconciled.");
+                }
                 return completed(statusOutcome(trade.status()), trade.transactionId(),
                         "Idempotent retry found an existing transaction in state " + trade.status() + ".");
             }
