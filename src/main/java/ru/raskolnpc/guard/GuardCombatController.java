@@ -18,7 +18,10 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -43,6 +46,8 @@ public final class GuardCombatController {
     private final double damage;
     private final long attackCooldownMillis;
     private final Map<NpcId, Long> lastAttack = new ConcurrentHashMap<>();
+    private final Map<UUID, Entity> squadTargets = new HashMap<>();
+    private GuardSquadService squadService;
     private BukkitTask task;
     private int cursor;
 
@@ -121,6 +126,14 @@ public final class GuardCombatController {
             task = null;
         }
         lastAttack.clear();
+        squadTargets.clear();
+    }
+
+    /** Enables shared target selection using the preloaded squad-membership snapshot. */
+    public void setSquadService(GuardSquadService squadService) {
+        requireMainThread();
+        this.squadService = Objects.requireNonNull(squadService, "squadService");
+        squadTargets.clear();
     }
 
     /** Processes at most batchSize registered guards per invocation. */
@@ -135,7 +148,17 @@ public final class GuardCombatController {
         if (guards.isEmpty()) {
             cursor = 0;
             lastAttack.clear();
+            squadTargets.clear();
             return;
+        }
+        if (squadService == null) {
+            squadTargets.clear();
+        } else {
+            Set<UUID> activeSquads = guards.stream()
+                    .map(record -> squadService.squadIdFor(record.id()).orElse(null))
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+            squadTargets.keySet().retainAll(activeSquads);
         }
         java.util.Set<NpcId> activeGuardIds = guards.stream()
                 .map(NpcRecord::id)
@@ -157,20 +180,7 @@ public final class GuardCombatController {
         long previous = lastAttack.getOrDefault(guard.id(), 0L);
         if (now - previous < attackCooldownMillis) return;
 
-        Entity target = attacker.getNearbyEntities(
-                        detectionRadius, detectionRadius, detectionRadius).stream()
-                .filter(candidate -> candidate instanceof LivingEntity)
-                .filter(candidate -> candidate.isValid() && !candidate.isDead())
-                .filter(candidate -> candidate.getLocation().getWorld() != null
-                        && candidate.getLocation().getWorld().equals(
-                                attacker.getLocation().getWorld()))
-                .filter(candidate -> candidate.getLocation().distanceSquared(attacker.getLocation())
-                        <= detectionRadius * detectionRadius)
-                .filter(candidate -> hasTerritoryAccess(candidate.getLocation(), guard.nationId()))
-                .filter(candidate -> isVerifiedHostile(guard, candidate))
-                .min(Comparator.comparingDouble(candidate ->
-                        candidate.getLocation().distanceSquared(attacker.getLocation())))
-                .orElse(null);
+        Entity target = selectTarget(guard, attacker, now);
         if (!(target instanceof LivingEntity livingTarget)) return;
         if (!mayDamage(guard, attacker, livingTarget)) return;
 
@@ -181,6 +191,67 @@ public final class GuardCombatController {
             plugin.getLogger().log(Level.FINE,
                     "Guard combat action failed for " + guard.id(), error);
         }
+    }
+
+    /**
+     * A squad's stable leader selects one verified target. Members only attack that
+     * shared target while it remains valid and within their own detection radius.
+     */
+    private Entity selectTarget(NpcRecord guard, LivingEntity attacker, long now) {
+        if (squadService == null) return nearestHostile(guard, attacker);
+        UUID squadId = squadService.squadIdFor(guard.id()).orElse(null);
+        if (squadId == null) return nearestHostile(guard, attacker);
+
+        NpcId leaderId = squadService.leaderFor(guard.id()).orElse(guard.id());
+        NpcRecord leaderRecord = registry.get(leaderId).orElse(guard);
+        Entity leaderEntity = entities.find(leaderId).orElse(null);
+        LivingEntity selector = leaderEntity instanceof LivingEntity living
+                && living.isValid() && !living.isDead() ? living : attacker;
+        NpcRecord selectorRecord = selector == attacker ? guard : leaderRecord;
+
+        Entity lockedTarget = squadTargets.get(squadId);
+        if (lockedTarget != null) {
+            if (isTargetEligible(selectorRecord, selector, lockedTarget)) {
+                return isTargetEligible(guard, attacker, lockedTarget) ? lockedTarget : null;
+            }
+            squadTargets.remove(squadId);
+        }
+
+        Entity selected = nearestHostile(selectorRecord, selector);
+        if (selected == null) return null;
+        squadTargets.put(squadId, selected);
+        return isTargetEligible(guard, attacker, selected) ? selected : null;
+    }
+
+    private Entity nearestHostile(NpcRecord guard, LivingEntity attacker) {
+        Location origin = attacker.getLocation();
+        if (origin.getWorld() == null) return null;
+        return attacker.getNearbyEntities(detectionRadius, detectionRadius, detectionRadius).stream()
+                .filter(candidate -> candidate instanceof LivingEntity)
+                .filter(candidate -> candidate.isValid() && !candidate.isDead())
+                .filter(candidate -> candidate.getLocation().getWorld() != null
+                        && candidate.getLocation().getWorld().equals(origin.getWorld()))
+                .filter(candidate -> candidate.getLocation().distanceSquared(origin)
+                        <= detectionRadius * detectionRadius)
+                .filter(candidate -> hasTerritoryAccess(candidate.getLocation(), guard.nationId()))
+                .filter(candidate -> isVerifiedHostile(guard, candidate))
+                .min(Comparator.comparingDouble(candidate ->
+                        candidate.getLocation().distanceSquared(origin)))
+                .orElse(null);
+    }
+
+    private boolean isTargetEligible(NpcRecord guard, LivingEntity attacker, Entity target) {
+        if (!(target instanceof LivingEntity livingTarget)
+                || !livingTarget.isValid() || livingTarget.isDead()) return false;
+        Location origin = attacker.getLocation();
+        Location targetLocation = livingTarget.getLocation();
+        if (origin.getWorld() == null || targetLocation.getWorld() == null
+                || !origin.getWorld().equals(targetLocation.getWorld())
+                || targetLocation.distanceSquared(origin) > detectionRadius * detectionRadius) {
+            return false;
+        }
+        return hasTerritoryAccess(targetLocation, guard.nationId())
+                && isVerifiedHostile(guard, target);
     }
 
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
