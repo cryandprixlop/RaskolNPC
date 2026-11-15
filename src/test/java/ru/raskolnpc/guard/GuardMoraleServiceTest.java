@@ -105,6 +105,27 @@ class GuardMoraleServiceTest {
     }
 
     @Test
+    void injuriesRecoverAfterQuietPeriodAndRestoreOneHealthPoint() {
+        GuardCondition persisted = new GuardCondition(guard.id(), 90,
+                1, 2, 2, 1);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(persisted)));
+        when(entities.find(guard.id())).thenReturn(java.util.Optional.of(guardEntity));
+        when(guardEntity.isValid()).thenReturn(true);
+        when(guardEntity.isDead()).thenReturn(false);
+        when(guardEntity.getHealth()).thenReturn(10.0);
+        when(guardEntity.getMaxHealth()).thenReturn(20.0);
+
+        service.load().join();
+        service.recoverMorale();
+
+        assertEquals(1, service.injurySeverity(guard.id()));
+        assertEquals(91, service.morale(guard.id()));
+        verify(guardEntity).setHealth(11.0);
+        verify(repository).save(argThat(condition ->
+                condition.injurySeverity() == 1 && condition.morale() == 91));
+    }
+
+    @Test
     void retreatThresholdsMustHaveAValidHysteresisRange() {
         assertThrows(IllegalArgumentException.class,
                 () -> service.setRetreatThresholds(35, 35));
