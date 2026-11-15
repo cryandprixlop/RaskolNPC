@@ -439,6 +439,42 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<List<ResidentBusinessStockBatch>> findBusinessStockBatches(
+            NpcId residentId, String material) {
+        String normalizedMaterial = normalizeMaterial(material);
+        return database.query(connection -> {
+            BusinessIdentity business = businessIdentity(connection, residentId);
+            List<ResidentBusinessStockBatch> batches = new ArrayList<>();
+            try (var statement = connection.prepareStatement("""
+                    SELECT batch_id, business_id, profession, material, amount,
+                           quality, created_at, source_type, source_ref
+                    FROM resident_business_stock_batches
+                    WHERE business_id = ? AND profession = ? AND material = ?
+                    ORDER BY created_at, batch_id
+                    """)) {
+                statement.setString(1, business.businessId());
+                statement.setString(2, business.profession());
+                statement.setString(3, normalizedMaterial);
+                try (ResultSet result = statement.executeQuery()) {
+                    while (result.next()) {
+                        batches.add(new ResidentBusinessStockBatch(
+                                result.getString("batch_id"),
+                                result.getString("business_id"),
+                                result.getString("profession"),
+                                result.getString("material"),
+                                result.getInt("amount"),
+                                ResidentProductQuality.valueOf(result.getString("quality")),
+                                result.getLong("created_at"),
+                                result.getString("source_type"),
+                                result.getString("source_ref")));
+                    }
+                }
+            }
+            return List.copyOf(batches);
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> withdrawBusinessStock(
             NpcId residentId, String material, int amount) {
         String normalizedMaterial = normalizeMaterial(material);
