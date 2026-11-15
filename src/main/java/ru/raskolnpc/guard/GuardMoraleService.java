@@ -173,6 +173,11 @@ public final class GuardMoraleService implements Listener {
         return condition == null ? 100 : condition.morale();
     }
 
+    public int injurySeverity(NpcId guardId) {
+        GuardCondition condition = conditions.get(guardId);
+        return condition == null ? 0 : condition.injurySeverity();
+    }
+
     public double damageMultiplier(NpcId guardId) {
         GuardCondition condition = conditions.get(guardId);
         return condition == null ? 1.0 : condition.damageMultiplier();
