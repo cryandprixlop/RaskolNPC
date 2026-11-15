@@ -466,6 +466,70 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> transferBusinessStock(
+            NpcId sourceResidentId, NpcId targetResidentId,
+            String material, int amount, int targetCapacity) {
+        String normalizedMaterial = normalizeMaterial(material);
+        if (amount < 1 || amount > 1_000_000) {
+            throw new IllegalArgumentException("Stock transfer amount must be between 1 and 1000000.");
+        }
+        if (targetCapacity < 1 || targetCapacity > 1_000_000 || amount > targetCapacity) {
+            throw new IllegalArgumentException("Target stock capacity must fit the transfer amount.");
+        }
+        if (sourceResidentId == null || targetResidentId == null
+                || sourceResidentId.equals(targetResidentId)) {
+            throw new IllegalArgumentException("Source and target must be different resident businesses.");
+        }
+        return database.transaction(connection -> {
+            BusinessIdentity source = businessIdentity(connection, sourceResidentId);
+            BusinessIdentity target = businessIdentity(connection, targetResidentId);
+            if (!source.businessId().equals(target.businessId())
+                    || source.profession().equals(target.profession())) return false;
+
+            int targetStock = readBusinessStock(connection, target, normalizedMaterial);
+            if ((long) targetStock + amount > targetCapacity) return false;
+
+            long now = System.currentTimeMillis();
+            try (var debit = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET amount = amount - ?, updated_at = ?
+                    WHERE business_id = ? AND profession = ? AND material = ?
+                      AND amount >= ?
+                    """)) {
+                debit.setInt(1, amount);
+                debit.setLong(2, now);
+                debit.setString(3, source.businessId());
+                debit.setString(4, source.profession());
+                debit.setString(5, normalizedMaterial);
+                debit.setInt(6, amount);
+                if (debit.executeUpdate() != 1) return false;
+            }
+
+            try (var credit = connection.prepareStatement("""
+                    INSERT INTO resident_business_stock(
+                        business_id, profession, material, amount, capacity, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(business_id, profession, material) DO UPDATE SET
+                        amount = resident_business_stock.amount + excluded.amount,
+                        capacity = excluded.capacity,
+                        updated_at = excluded.updated_at
+                    WHERE resident_business_stock.amount + excluded.amount <= excluded.capacity
+                    """)) {
+                credit.setString(1, target.businessId());
+                credit.setString(2, target.profession());
+                credit.setString(3, normalizedMaterial);
+                credit.setInt(4, amount);
+                credit.setInt(5, targetCapacity);
+                credit.setLong(6, now);
+                if (credit.executeUpdate() != 1) {
+                    throw new SQLException("Target business stock changed during transfer; transaction rolled back.");
+                }
+            }
+            return true;
+        });
+    }
+
+    @Override
     public CompletableFuture<Integer> consumeBusinessStockDaily(int percentage) {
         if (percentage < 0 || percentage > 100) {
             throw new IllegalArgumentException("Daily stock consumption must be between 0 and 100 percent.");
