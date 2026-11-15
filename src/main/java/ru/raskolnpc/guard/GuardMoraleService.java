@@ -6,6 +6,10 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.Location;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.raskolnpc.guard.model.GuardCondition;
@@ -37,6 +41,7 @@ public final class GuardMoraleService implements Listener {
     private final java.util.Set<NpcId> retreating = ConcurrentHashMap.newKeySet();
     private int retreatThreshold = 20;
     private int rallyThreshold = 35;
+    private int alliedDeathPenalty = 8;
     private BukkitTask recoveryTask;
     private boolean listenerRegistered;
 
@@ -102,6 +107,50 @@ public final class GuardMoraleService implements Listener {
     /** True while the guard is routed; recovery must reach the rally threshold. */
     public boolean isRetreating(NpcId guardId) {
         return retreating.contains(guardId);
+    }
+
+    /** Applies a bounded morale loss from a tactical event such as a nearby ally falling. */
+    public void applyMoraleLoss(NpcId guardId, int amount) {
+        requireMainThread();
+        if (amount <= 0) return;
+        NpcRecord record = registry.get(guardId).orElse(null);
+        if (record == null || record.type() != NpcType.GUARD) return;
+        long now = System.currentTimeMillis();
+        GuardCondition previous = conditions.getOrDefault(guardId,
+                new GuardCondition(guardId, 100, 0, Math.max(1, now)));
+        GuardCondition changed = previous.withMorale(previous.morale() - amount, now, now);
+        conditions.put(guardId, changed);
+        if (changed.morale() <= retreatThreshold) retreating.add(guardId);
+        persist(changed);
+    }
+
+    public void setAlliedDeathPenalty(int penalty) {
+        requireMainThread();
+        if (penalty < 0 || penalty > 50) throw new IllegalArgumentException("allied death penalty must be between 0 and 50.");
+        alliedDeathPenalty = penalty;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    void onGuardDeath(EntityDeathEvent event) {
+        requireMainThread();
+        if (alliedDeathPenalty == 0) return;
+        NpcId fallenId = entities.getNpcId(event.getEntity()).orElse(null);
+        NpcRecord fallen = fallenId == null ? null : registry.get(fallenId).orElse(null);
+        if (fallen == null || fallen.type() != NpcType.GUARD) return;
+        Location origin = event.getEntity().getLocation();
+        if (origin.getWorld() == null) return;
+        double radiusSquared = 12.0 * 12.0;
+        for (NpcRecord ally : registry.all()) {
+            if (ally.type() != NpcType.GUARD || ally.id().equals(fallenId)
+                    || !Objects.equals(ally.nationId(), fallen.nationId())) continue;
+            Entity entity = entities.find(ally.id()).orElse(null);
+            if (!(entity instanceof LivingEntity living) || !living.isValid() || living.isDead()) continue;
+            Location location = living.getLocation();
+            if (location.getWorld() != null && location.getWorld().equals(origin.getWorld())
+                    && location.distanceSquared(origin) <= radiusSquared) {
+                applyMoraleLoss(ally.id(), alliedDeathPenalty);
+            }
+        }
     }
 
     public int morale(NpcId guardId) {
