@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 18;
+    private static final int CURRENT_SCHEMA_VERSION = 19;
 
     private DatabaseMigrations() {
     }
@@ -45,6 +45,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 16)) applyGuardInjurySchema(connection);
         if (!isApplied(connection, 17)) applyResidentSkillExperienceSchema(connection);
         if (!isApplied(connection, 18)) applyResidentBusinessStockBatchSchema(connection);
+        if (!isApplied(connection, 19)) applyResidentTradeJournalSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -832,5 +833,60 @@ public final class DatabaseMigrations {
             }
         }
     }
+
+
+    private static void applyResidentTradeJournalSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE resident_trade_transactions (
+                        transaction_id TEXT PRIMARY KEY,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        buyer_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id) ON DELETE RESTRICT,
+                        material TEXT NOT NULL,
+                        quality TEXT NOT NULL CHECK (quality IN (
+                            'BASIC', 'STANDARD', 'FINE', 'MASTERWORK'
+                        )),
+                        amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 1000000),
+                        unit_price_minor INTEGER NOT NULL CHECK (unit_price_minor >= 0),
+                        total_price_minor INTEGER NOT NULL CHECK (total_price_minor >= 0),
+                        status TEXT NOT NULL CHECK (status IN (
+                            'STOCK_RESERVED', 'PAYMENT_PENDING', 'PAID', 'DELIVERED',
+                            'CANCELLED', 'REFUND_PENDING', 'REFUNDED', 'REVIEW_REQUIRED'
+                        )),
+                        provider_reference TEXT,
+                        last_error TEXT,
+                        created_at INTEGER NOT NULL CHECK (created_at > 0),
+                        updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+                        CHECK (total_price_minor = unit_price_minor * amount)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_buyer
+                    ON resident_trade_transactions(buyer_uuid, created_at)
+                    """);
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_status
+                    ON resident_trade_transactions(status, updated_at)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (19)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
 
 }
