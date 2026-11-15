@@ -4,6 +4,7 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.quest.ResidentQuest;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +43,10 @@ public interface ResidentQuestRepository {
     CompletableFuture<Boolean> transferBusinessStock(
             NpcId sourceResidentId, NpcId targetResidentId,
             String material, int amount, int targetCapacity);
+    /** Consumes all recipe inputs and adds the output atomically to one profession's stock. */
+    CompletableFuture<Boolean> produceBusinessStock(
+            NpcId residentId, Map<String, Integer> inputs,
+            String outputMaterial, int outputAmount, int outputCapacity);
     /** Applies one configured daily consumption pass to all town business stock rows. */
     CompletableFuture<Integer> consumeBusinessStockDaily(int percentage);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
