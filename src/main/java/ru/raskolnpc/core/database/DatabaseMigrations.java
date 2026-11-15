@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 17;
+    private static final int CURRENT_SCHEMA_VERSION = 18;
 
     private DatabaseMigrations() {
     }
@@ -44,6 +44,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 15)) applyGuardMoraleSchema(connection);
         if (!isApplied(connection, 16)) applyGuardInjurySchema(connection);
         if (!isApplied(connection, 17)) applyResidentSkillExperienceSchema(connection);
+        if (!isApplied(connection, 18)) applyResidentBusinessStockBatchSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -762,6 +763,61 @@ public final class DatabaseMigrations {
         try (Statement statement = connection.createStatement()) {
             statement.execute("ALTER TABLE resident_skills ADD COLUMN experience INTEGER NOT NULL DEFAULT 0 CHECK (experience >= 0)");
             statement.execute("INSERT INTO schema_migrations(version) VALUES (17)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    private static void applyResidentBusinessStockBatchSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS resident_business_stock_batches (
+                        batch_id TEXT PRIMARY KEY,
+                        business_id TEXT NOT NULL,
+                        profession TEXT NOT NULL,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount > 0),
+                        quality TEXT NOT NULL CHECK (quality IN (
+                            'BASIC', 'STANDARD', 'FINE', 'MASTERWORK'
+                        )),
+                        created_at INTEGER NOT NULL,
+                        source_type TEXT NOT NULL DEFAULT 'LEGACY',
+                        source_ref TEXT
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_resident_business_stock_batches_stock
+                    ON resident_business_stock_batches(
+                        business_id, profession, material, created_at, batch_id
+                    )
+                    """);
+            statement.execute("""
+                    INSERT INTO resident_business_stock_batches(
+                        batch_id, business_id, profession, material, amount,
+                        quality, created_at, source_type, source_ref
+                    )
+                    SELECT
+                        lower(hex(randomblob(16))),
+                        business_id, profession, material, amount,
+                        'STANDARD', updated_at, 'LEGACY', NULL
+                    FROM resident_business_stock
+                    WHERE amount > 0
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (18)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
