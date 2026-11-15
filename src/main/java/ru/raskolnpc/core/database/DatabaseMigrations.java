@@ -697,4 +697,36 @@ public final class DatabaseMigrations {
         }
     }
 
+
+    private static void applyGuardMoraleSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE guard_conditions (
+                        npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE,
+                        morale INTEGER NOT NULL CHECK (morale BETWEEN 0 AND 100),
+                        last_combat_at INTEGER NOT NULL CHECK (last_combat_at >= 0),
+                        updated_at INTEGER NOT NULL CHECK (updated_at > 0)
+                    )
+                    """);
+            statement.execute("CREATE INDEX idx_guard_conditions_last_combat "
+                    + "ON guard_conditions(last_combat_at)");
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (15)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
 }
