@@ -85,3 +85,23 @@ Do not expose a quality label through commands, dialogue, item metadata, or econ
 3. Route every existing stock mutation through the batch primitives.
 4. Add quality-aware production output and service reads.
 5. Add player/admin presentation only after end-to-end persistence tests pass.
+
+## Quality-based valuation
+
+The storage/economy layer now exposes `ResidentProductValuation`, which
+calculates prices in the economy's smallest currency unit using integer
+fixed-point arithmetic (basis points) rather than floating point:
+
+| Quality | Default multiplier |
+| --- | ---: |
+| BASIC | 80% |
+| STANDARD | 100% |
+| FINE | 125% |
+| MASTERWORK | 175% |
+
+The caller supplies the material's configured base unit price. The valuation
+helper applies half-up rounding to the unit price, validates positive lot
+amounts, and detects total-value overflow. These are initial balancing
+defaults, not a substitute for per-material pricing configuration or a
+market adapter. No currency is charged or credited by this helper.
+
