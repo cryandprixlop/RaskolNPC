@@ -223,6 +223,7 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getDouble("guards.combat.damage", 2.0),
                 getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L),
                 playerSubjects);
+        guardCombatController.setSquadService(guardSquadService);
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
         }
