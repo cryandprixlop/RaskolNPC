@@ -30,12 +30,13 @@ import static org.mockito.Mockito.*;
 
 class GuardSquadFormationTest {
     private ServerMock server;
+    private org.bukkit.plugin.Plugin plugin;
     private World world;
 
     @BeforeEach
     void setUp() {
         server = MockBukkit.mock();
-        MockBukkit.createMockPlugin();
+        plugin = MockBukkit.createMockPlugin();
         world = server.addSimpleWorld("guard-squad-formation");
         world.loadChunk(0, 0);
     }
@@ -71,7 +72,6 @@ class GuardSquadFormationTest {
 
     @Test
     void movementControllerUsesTheCachedSquadFormationTarget() {
-        var plugin = MockBukkit.createMockPlugin();
         NpcRegistry registry = new NpcRegistry();
         NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
         registry.register(guard);
