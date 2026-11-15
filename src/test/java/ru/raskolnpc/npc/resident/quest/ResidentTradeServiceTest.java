@@ -90,7 +90,7 @@ class ResidentTradeServiceTest {
                         ResidentTradeDeliveryProvider.Outcome.FAILED, "inventory full")));
         when(payments.refund(trade)).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
-                        ResidentTradePaymentProvider.Outcome.PAID, "refund-2", null)));
+                        ResidentTradePaymentProvider.Outcome.REFUNDED, "refund-2", null)));
 
         assertEquals(ResidentTradeService.Result.DELIVERY_FAILED_REFUNDED, purchase());
         verify(repository).transition("trade-1", ResidentTradeTransaction.Status.PAID,
