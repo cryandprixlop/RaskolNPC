@@ -136,7 +136,7 @@ public final class GuardMoraleService implements Listener {
         if (alliedDeathPenalty == 0) return;
         NpcId fallenId = entities.getNpcId(event.getEntity()).orElse(null);
         NpcRecord fallen = fallenId == null ? null : registry.get(fallenId).orElse(null);
-        if (fallen == null || fallen.type() != NpcType.GUARD) return;
+        if (fallen == null || fallen.type() != NpcType.GUARD || fallen.nationId() == null) return;
         Location origin = event.getEntity().getLocation();
         if (origin.getWorld() == null) return;
         double radiusSquared = 12.0 * 12.0;
