@@ -200,7 +200,7 @@ class ResidentQuestServiceTest {
                       COAL: 2
                     output:
                       material: IRON_SWORD
-                      amount: 1
+                      amount: 10
                       capacity: 32
                 """);
 
@@ -209,13 +209,15 @@ class ResidentQuestServiceTest {
         NpcRegistry registry = new NpcRegistry();
         registry.register(resident);
         ResidentProfile profile = new ResidentProfile(resident.id(), 30,
-                ResidentProfession.BLACKSMITH, Set.of(), 75, 75, 75, 75, 75, 75, Map.of());
+                ResidentProfession.BLACKSMITH, Set.of(), 75, 75, 75, 75, 75, 75,
+                Map.of(ResidentProfession.BLACKSMITH,
+                        ru.raskolnpc.npc.resident.model.ResidentSkillLevel.MASTER));
         ResidentProfileService profiles = mock(ResidentProfileService.class);
         when(profiles.find(resident.id()))
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
         when(repository.produceBusinessStock(resident.id(),
-                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 1, 32))
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32))
                 .thenReturn(CompletableFuture.completedFuture(true));
 
         ResidentQuestService service = new ResidentQuestService(
