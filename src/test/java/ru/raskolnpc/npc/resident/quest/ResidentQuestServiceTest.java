@@ -225,7 +225,7 @@ class ResidentQuestServiceTest {
 
         assertTrue(service.produceAvailable(resident.id()).join());
         verify(repository).produceBusinessStock(resident.id(),
-                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 1, 32);
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32);
     }
 
     @Test
