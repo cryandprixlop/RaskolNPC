@@ -56,6 +56,7 @@ public final class GuardCombatController implements Listener {
     private static final long RETALIATION_WINDOW_MILLIS = 10_000L;
     private boolean listenerRegistered;
     private GuardSquadService squadService;
+    private GuardMoraleService moraleService;
     private BukkitTask task;
     private int cursor;
 
@@ -146,6 +147,12 @@ public final class GuardCombatController implements Listener {
         }
     }
 
+    /** Applies the persistent morale state to outgoing guard damage. */
+    public void setMoraleService(GuardMoraleService moraleService) {
+        requireMainThread();
+        this.moraleService = Objects.requireNonNull(moraleService, "moraleService");
+    }
+
     /** Enables shared target selection using the preloaded squad-membership snapshot. */
     public void setSquadService(GuardSquadService squadService) {
         requireMainThread();
@@ -206,7 +213,9 @@ public final class GuardCombatController implements Listener {
         if (!mayDamage(guard, attacker, livingTarget)) return;
 
         try {
-            livingTarget.damage(damage, attacker);
+            double moraleMultiplier = moraleService == null ? 1.0
+                    : moraleService.damageMultiplier(guard.id());
+            livingTarget.damage(damage * moraleMultiplier, attacker);
             lastAttack.put(guard.id(), now);
         } catch (RuntimeException error) {
             plugin.getLogger().log(Level.FINE,
