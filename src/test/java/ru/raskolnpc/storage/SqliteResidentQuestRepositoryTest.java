@@ -312,9 +312,10 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(32, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
 
         assertTrue(quests.transferBusinessStock(
-                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 64).join());
-        assertFalse(quests.transferBusinessStock(
                 miner.id(), blacksmith.id(), "IRON_INGOT", 16, 24).join());
+        // A later caller cannot raise the already persisted capacity by passing a larger value.
+        assertFalse(quests.transferBusinessStock(
+                miner.id(), blacksmith.id(), "IRON_INGOT", 16, 64).join());
         assertEquals(16, quests.getBusinessStock(miner.id(), "IRON_INGOT").join());
         assertEquals(16, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
     }
