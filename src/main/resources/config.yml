@@ -28,6 +28,13 @@ guards:
     rally-threshold: 35
     # Nearby guards from the same nation lose this many morale points when a guard dies.
     allied-death-penalty: 8
+  injury:
+    # A single hit at this damage or above causes a light injury.
+    light-damage: 4.0
+    # A single hit at this damage or above causes a severe injury.
+    severe-damage: 8.0
+    # Injury severity and health recover after this many seconds without damage.
+    recovery-delay-seconds: 300
 
   # Basic combat only targets registered NPCs whose diplomacy is explicitly hostile.
   # Unknown relationships are ignored; WorldGuard checks fail closed when installed.
