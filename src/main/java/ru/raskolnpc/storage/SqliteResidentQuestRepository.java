@@ -807,10 +807,14 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
             update.setLong(7, now);
             update.executeUpdate();
         }
-        int credited = Math.max(0, Math.min(amount, capacity - before));
-        if (credited > 0) {
-            insertBusinessStockBatch(connection, business, normalizedMaterial, credited,
+        int after = readBusinessStock(connection, business, normalizedMaterial);
+        int delta = after - before;
+        if (delta > 0) {
+            insertBusinessStockBatch(connection, business, normalizedMaterial, delta,
                     ResidentProductQuality.STANDARD, now, "QUEST_DELIVERY", null);
+        } else if (delta < 0
+                && consumeBusinessStockBatches(connection, business, normalizedMaterial, -delta) == null) {
+            throw new SQLException("Business stock batches do not match the aggregate balance after capacity adjustment.");
         }
     }
 
