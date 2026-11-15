@@ -512,4 +512,20 @@ class GuardCombatControllerTest {
     }
 
 
+    @Test
+    void routedGuardDoesNotInitiateCombat() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardMoraleService morale = mock(GuardMoraleService.class);
+        when(morale.isRetreating(guard.id())).thenReturn(true);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        controller.setMoraleService(morale);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+
 }
