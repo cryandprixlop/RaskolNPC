@@ -5,6 +5,8 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +62,7 @@ class GuardCombatControllerTest {
 
         entities = mock(NpcEntityManager.class);
         when(entities.find(guard.id())).thenReturn(Optional.of(attacker));
+        when(entities.getNpcId(attacker)).thenReturn(Optional.of(guard.id()));
         when(entities.getNpcId(target)).thenReturn(Optional.of(enemy.id()));
     }
 
@@ -78,6 +81,45 @@ class GuardCombatControllerTest {
         controller.tick();
 
         verify(target).damage(2.0, attacker);
+    }
+
+    @Test
+    void prioritizesVerifiedHostileAttackerForTenSecondRetaliationWindow() {
+        NpcRecord nearerEnemy = NpcRecord.create(
+                NpcType.GUARD, "Nearer enemy", null, "town-c", "nation-c", "{}");
+        registry.register(nearerEnemy);
+        LivingEntity nearerTarget = mock(LivingEntity.class);
+        when(nearerTarget.isValid()).thenReturn(true);
+        when(nearerTarget.isDead()).thenReturn(false);
+        when(nearerTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
+        when(entities.getNpcId(nearerTarget)).thenReturn(Optional.of(nearerEnemy.id()));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(nearerTarget, target));
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.onGuardDamaged(new EntityDamageByEntityEvent(
+                target, attacker, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1.0));
+        controller.tick();
+
+        verify(target).damage(2.0, attacker);
+        verify(nearerTarget, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void doesNotCreateRetaliationTargetForNeutralAttacker() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.NEUTRAL);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.onGuardDamaged(new EntityDamageByEntityEvent(
+                target, attacker, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1.0));
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
 
     @Test
