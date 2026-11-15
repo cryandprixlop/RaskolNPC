@@ -190,7 +190,7 @@ class ResidentQuestServiceTest {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-auto-production-test"));
-        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\n");
         Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), """
                 recipes:
                   blacksmith_sword:
@@ -231,8 +231,8 @@ class ResidentQuestServiceTest {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-auto-production-negative-test"));
-        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
-        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\n");
 
         NpcRegistry registry = new NpcRegistry();
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
