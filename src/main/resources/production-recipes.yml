@@ -4,6 +4,7 @@
 recipes:
   blacksmith_iron_sword:
     profession: BLACKSMITH
+    minimum-skill-level: NOVICE
     inputs:
       IRON_INGOT: 4
       COAL: 2
@@ -23,6 +24,7 @@ recipes:
 
   builder_stone_bricks:
     profession: BUILDER
+    minimum-skill-level: SPECIALIST
     inputs:
       STONE: 4
     output:
