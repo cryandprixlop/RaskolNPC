@@ -531,6 +531,74 @@ public final class SqliteResidentQuestRepository implements ResidentQuestReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> produceBusinessStock(
+            NpcId residentId, java.util.Map<String, Integer> inputs,
+            String outputMaterial, int outputAmount, int outputCapacity) {
+        if (residentId == null || inputs == null || inputs.isEmpty()) {
+            throw new IllegalArgumentException("A resident and at least one recipe input are required.");
+        }
+        String output = normalizeMaterial(outputMaterial);
+        if (outputAmount < 1 || outputAmount > 1_000_000
+                || outputCapacity < outputAmount || outputCapacity > 1_000_000) {
+            throw new IllegalArgumentException("Invalid production output amount or capacity.");
+        }
+        java.util.Map<String, Integer> normalizedInputs = new java.util.TreeMap<>();
+        inputs.forEach((material, amount) -> {
+            String key = normalizeMaterial(material);
+            if (amount == null || amount < 1 || amount > 1_000_000 || key.equals(output)) {
+                throw new IllegalArgumentException("Invalid or overlapping production recipe input.");
+            }
+            if (normalizedInputs.putIfAbsent(key, amount) != null) {
+                throw new IllegalArgumentException("Duplicate production recipe input: " + key);
+            }
+        });
+        return database.transaction(connection -> {
+            BusinessIdentity business = businessIdentity(connection, residentId);
+            for (var input : normalizedInputs.entrySet()) {
+                try (var debit = connection.prepareStatement("""
+                        UPDATE resident_business_stock
+                        SET amount = amount - ?, updated_at = ?
+                        WHERE business_id = ? AND profession = ? AND material = ?
+                          AND amount >= ?
+                        """)) {
+                    debit.setInt(1, input.getValue());
+                    debit.setLong(2, System.currentTimeMillis());
+                    debit.setString(3, business.businessId());
+                    debit.setString(4, business.profession());
+                    debit.setString(5, input.getKey());
+                    debit.setInt(6, input.getValue());
+                    if (debit.executeUpdate() != 1) return false;
+                }
+            }
+            int existingOutput = readBusinessStock(connection, business, output);
+            Integer existingCapacity = readBusinessStockCapacity(connection, business, output);
+            int effectiveCapacity = existingCapacity == null ? outputCapacity : existingCapacity;
+            if ((long) existingOutput + outputAmount > effectiveCapacity) return false;
+            try (var credit = connection.prepareStatement("""
+                    INSERT INTO resident_business_stock(
+                        business_id, profession, material, amount, capacity, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(business_id, profession, material) DO UPDATE SET
+                        amount = resident_business_stock.amount + excluded.amount,
+                        updated_at = excluded.updated_at
+                    WHERE resident_business_stock.amount + excluded.amount
+                        <= resident_business_stock.capacity
+                    """)) {
+                credit.setString(1, business.businessId());
+                credit.setString(2, business.profession());
+                credit.setString(3, output);
+                credit.setInt(4, outputAmount);
+                credit.setInt(5, outputCapacity);
+                credit.setLong(6, System.currentTimeMillis());
+                if (credit.executeUpdate() != 1) {
+                    throw new SQLException("Production output could not be credited; transaction rolled back.");
+                }
+            }
+            return true;
+        });
+    }
+
+    @Override
     public CompletableFuture<Integer> consumeBusinessStockDaily(int percentage) {
         if (percentage < 0 || percentage > 100) {
             throw new IllegalArgumentException("Daily stock consumption must be between 0 and 100 percent.");
