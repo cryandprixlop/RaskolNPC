@@ -137,6 +137,81 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
     }
 
     @Override
+    public CompletableFuture<Boolean> cancelAndRelease(String transactionId, String reason) {
+        String id = requireText(transactionId, "transactionId", 64);
+        String message = optionalText(reason, 1024);
+        return database.transaction(connection -> {
+            ResidentTradeTransaction trade = findById(connection, id).orElse(null);
+            if (trade == null || (trade.status() != ResidentTradeTransaction.Status.STOCK_RESERVED
+                    && trade.status() != ResidentTradeTransaction.Status.PAYMENT_PENDING)) {
+                return false;
+            }
+            String businessId;
+            String profession;
+            try (var query = connection.prepareStatement("""
+                    SELECT n.town_id, rp.profession
+                    FROM npcs n JOIN resident_profiles rp ON rp.npc_id = n.id
+                    WHERE n.id = ?
+                    """)) {
+                query.setString(1, trade.residentId().toString());
+                try (ResultSet result = query.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Trade resident no longer exists.");
+                    String townId = result.getString("town_id");
+                    businessId = townId == null || townId.isBlank()
+                            ? "resident:" + trade.residentId() : "town:" + townId;
+                    profession = result.getString("profession");
+                }
+            }
+            long now = System.currentTimeMillis();
+            try (var credit = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET amount = amount + ?, updated_at = ?
+                    WHERE business_id = ? AND profession = ? AND material = ?
+                      AND amount + ? <= capacity
+                    """)) {
+                credit.setInt(1, trade.amount());
+                credit.setLong(2, now);
+                credit.setString(3, businessId);
+                credit.setString(4, profession);
+                credit.setString(5, trade.material());
+                credit.setInt(6, trade.amount());
+                if (credit.executeUpdate() != 1) {
+                    throw new SQLException("Could not restore reserved stock within business capacity.");
+                }
+            }
+            try (var batch = connection.prepareStatement("""
+                    INSERT INTO resident_business_stock_batches(
+                        batch_id, business_id, profession, material, amount,
+                        quality, created_at, source_type, source_ref
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'TRADE_RELEASE', ?)
+                    """)) {
+                batch.setString(1, UUID.randomUUID().toString());
+                batch.setString(2, businessId);
+                batch.setString(3, profession);
+                batch.setString(4, trade.material());
+                batch.setInt(5, trade.amount());
+                batch.setString(6, trade.quality().name());
+                batch.setLong(7, now);
+                batch.setString(8, trade.transactionId());
+                batch.executeUpdate();
+            }
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_trade_transactions
+                    SET status = 'CANCELLED', last_error = ?, updated_at = ?
+                    WHERE transaction_id = ? AND status IN ('STOCK_RESERVED', 'PAYMENT_PENDING')
+                    """)) {
+                update.setString(1, message);
+                update.setLong(2, now);
+                update.setString(3, id);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Trade state changed while releasing reserved stock.");
+                }
+            }
+            return true;
+        });
+    }
+
+    @Override
     public CompletableFuture<Optional<ResidentTradeTransaction>> find(String transactionId) {
         String id = requireText(transactionId, "transactionId", 64);
         return database.query(connection -> findById(connection, id));
