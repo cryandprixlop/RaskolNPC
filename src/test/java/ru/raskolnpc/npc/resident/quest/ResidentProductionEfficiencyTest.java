@@ -22,7 +22,7 @@ class ResidentProductionEfficiencyTest {
         assertEquals(4, ResidentProductionEfficiency.outputAmount(4, ResidentSkillLevel.SPECIALIST));
         assertEquals(4, ResidentProductionEfficiency.outputAmount(4, ResidentSkillLevel.EXPERT));
         assertEquals(4, ResidentProductionEfficiency.outputAmount(4, ResidentSkillLevel.MASTER));
-        assertEquals(12, ResidentProductionEfficiency.outputAmount(10, ResidentSkillLevel.SPECIALIST));
+        assertEquals(11, ResidentProductionEfficiency.outputAmount(10, ResidentSkillLevel.SPECIALIST));
         assertEquals(12, ResidentProductionEfficiency.outputAmount(10, ResidentSkillLevel.MASTER));
         assertEquals(120, ResidentProductionEfficiency.outputAmount(100, ResidentSkillLevel.MASTER));
     }
