@@ -360,7 +360,7 @@ public final class RaskolNPC extends JavaPlugin {
                                                 if (!isEnabled()) return;
                                                 if (orderError != null) {
                                                     disableAfterStartupFailure(
-                                                            "RaskolNPC could not restore persisted guard orders.",
+                                                            "RaskolNPC could not restore persisted guard orders and squad membership.",
                                                             orderError);
                                                     return;
                                                 }
