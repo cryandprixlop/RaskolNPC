@@ -352,7 +352,7 @@ public final class RaskolNPC extends JavaPlugin {
                                         npcLifecycleService.markReady();
                                         residentBehaviorService.start();
                                         guardSquadService.refreshMemberships()
-                                                .thenCompose(ignored -> guardOrderController.start())
+                                                .thenCompose(squadLoadResult -> guardOrderController.start())
                                                 .whenComplete((started, orderError) -> {
                                             if (!isEnabled()) return;
                                             scheduleStartupStep(() -> {
