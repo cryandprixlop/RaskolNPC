@@ -3,6 +3,7 @@ package ru.raskolnpc.npc.resident.quest;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
+import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -60,7 +61,9 @@ public final class ResidentProductionCatalog {
                         key, profession, inputs,
                         recipe.getString("output.material", ""),
                         requiredInteger(recipe, "output.amount"),
-                        requiredInteger(recipe, "output.capacity"));
+                        requiredInteger(recipe, "output.capacity"),
+                        ResidentSkillLevel.valueOf(recipe.getString("minimum-skill-level", "APPRENTICE")
+                                .trim().toUpperCase(Locale.ROOT)));
                 if (loaded.putIfAbsent(parsed.id(), parsed) != null) {
                     throw new IllegalArgumentException("Duplicate recipe id: " + parsed.id());
                 }
