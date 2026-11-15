@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(16, schemaVersion(connection));
+            assertEquals(17, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
@@ -32,6 +32,7 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_conditions");
             assertColumnExists(connection, "guard_conditions", "injury_severity");
             assertColumnExists(connection, "guard_conditions", "last_injury_recovery_at");
+            assertColumnExists(connection, "resident_skills", "experience");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(16, schemaVersion(connection));
@@ -114,7 +115,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(17, migrationCount(connection));
+            assertEquals(18, migrationCount(connection));
         }
     }
 
