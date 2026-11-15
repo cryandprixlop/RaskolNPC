@@ -16,6 +16,7 @@ import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.storage.ResidentProfileRepository;
 import ru.raskolnpc.storage.ResidentQuestRepository;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 import ru.raskolnpc.storage.ResidentScheduleRepository;
 
 import java.time.DayOfWeek;
@@ -41,6 +42,7 @@ public final class ResidentBehaviorService {
     private final ResidentScheduleRepository repository;
     private final ResidentProfileRepository profileRepository;
     private volatile ResidentQuestRepository questRepository;
+    private volatile ResidentQuestService productionService;
     private volatile int dailyStockConsumptionPercent = 10;
     private final ResidentSchedulePlanner planner = new ResidentSchedulePlanner();
     private final ResidentNeedsController needsController = new ResidentNeedsController();
@@ -80,6 +82,10 @@ public final class ResidentBehaviorService {
 
     public void setBusinessStockRepository(ResidentQuestRepository repository) {
         this.questRepository = Objects.requireNonNull(repository, "repository");
+    }
+
+    public void setProductionService(ResidentQuestService service) {
+        this.productionService = Objects.requireNonNull(service, "service");
     }
 
     public void setDailyStockConsumptionPercent(int percentage) {
@@ -197,7 +203,20 @@ public final class ResidentBehaviorService {
                     && entity.getLocation().distanceSquared(target) <= 2.25) {
                 ResidentProfile profile = profileCache.get(resident.id());
                 if (profile != null) {
-                    workActions.performIfReady(resident.id(), entity, profile, behaviorTick);
+                    if (workActions.performIfReady(resident.id(), entity, profile, behaviorTick)) {
+                        ResidentQuestService production = productionService;
+                        if (production != null) {
+                            production.produceAvailable(resident.id()).whenComplete((produced, error) -> {
+                                if (error != null) {
+                                    plugin.getLogger().log(Level.WARNING,
+                                            "Resident production cycle failed for " + resident.id(), error);
+                                } else if (Boolean.TRUE.equals(produced)) {
+                                    plugin.getLogger().fine(
+                                            "Resident " + resident.id() + " completed a production recipe.");
+                                }
+                            });
+                        }
+                    }
                 }
             }
         }
