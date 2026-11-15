@@ -45,6 +45,7 @@ public final class ResidentQuestService {
     private final ResidentProfileService profiles;
     private final NpcRegistry registry;
     private final ResidentQuestRepository repository;
+    private static final int PRODUCTION_EXPERIENCE_REWARD = 10;
     private final File catalogFile;
     private final File productionCatalogFile;
     private volatile ResidentQuestCatalog catalog = new ResidentQuestCatalog(java.util.Map.of());
@@ -119,7 +120,8 @@ public final class ResidentQuestService {
             int outputAmount = ResidentProductionEfficiency.outputAmount(
                     recipe.outputAmount(), profile.get().currentSkillLevel());
             return repository.produceBusinessStock(residentId, recipe.inputs(),
-                    recipe.outputMaterial(), outputAmount, recipe.outputCapacity());
+                    recipe.outputMaterial(), outputAmount, recipe.outputCapacity())
+                    .thenCompose(produced -> awardProductionExperience(residentId, profile.get().profession(), produced));
         });
     }
 
@@ -150,9 +152,22 @@ public final class ResidentQuestService {
                 recipe.outputAmount(), skillLevel);
         return repository.produceBusinessStock(residentId, recipe.inputs(),
                 recipe.outputMaterial(), outputAmount, recipe.outputCapacity())
-                .thenCompose(produced -> Boolean.TRUE.equals(produced)
-                        ? CompletableFuture.completedFuture(true)
-                        : tryProductionRecipe(residentId, recipes, skillLevel, index + 1));
+                .thenCompose(produced -> {
+                    if (!Boolean.TRUE.equals(produced)) {
+                        return tryProductionRecipe(residentId, recipes, skillLevel, index + 1);
+                    }
+                    return profiles.addSkillExperience(residentId, recipe.profession(),
+                            PRODUCTION_EXPERIENCE_REWARD).thenApply(progress -> true);
+                });
+    }
+
+
+    private CompletableFuture<Boolean> awardProductionExperience(
+            NpcId residentId, ru.raskolnpc.npc.resident.model.ResidentProfession profession,
+            Boolean produced) {
+        if (!Boolean.TRUE.equals(produced)) return CompletableFuture.completedFuture(false);
+        return profiles.addSkillExperience(residentId, profession,
+                PRODUCTION_EXPERIENCE_REWARD).thenApply(progress -> true);
     }
 
     public List<ResidentQuest> availableFor(ResidentProfile profile) {
