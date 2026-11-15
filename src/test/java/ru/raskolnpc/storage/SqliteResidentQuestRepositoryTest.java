@@ -612,6 +612,27 @@ class SqliteResidentQuestRepositoryTest {
         assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
     }
 
+    @Test
+    void cancellingUnpaidTradeRestoresExactQualityStockOnlyOnce() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 12, 64);
+        UUID buyer = UUID.randomUUID();
+        ResidentTradeTransaction trade = trades.reserve("purchase-cancel", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 5, 100).join().orElseThrow();
+
+        assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertTrue(trades.cancelAndRelease(trade.transactionId(), "payment declined").join());
+        assertFalse(trades.cancelAndRelease(trade.transactionId(), "retry").join());
+        assertEquals(12, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        List<ResidentBusinessStockBatch> batches =
+                quests.findBusinessStockBatches(resident.id(), "IRON_INGOT").join();
+        assertEquals(12, batches.stream().mapToInt(ResidentBusinessStockBatch::amount).sum());
+        assertTrue(batches.stream().allMatch(batch ->
+                batch.quality() == ResidentProductQuality.STANDARD));
+        assertEquals(ResidentTradeTransaction.Status.CANCELLED,
+                trades.find(trade.transactionId()).join().orElseThrow().status());
+    }
+
     private NpcRecord createResident() {
         return createResident(ResidentProfession.MINER, "town");
     }
