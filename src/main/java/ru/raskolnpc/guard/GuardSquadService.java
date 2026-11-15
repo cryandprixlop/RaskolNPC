@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -88,11 +89,25 @@ public final class GuardSquadService {
                         .sorted(Comparator.comparing(NpcId::toString))
                         .toList();
                 for (int index = 0; index < members.size(); index++) {
-                    refreshed.put(members.get(index), new FormationSlot(index, members.size()));
+                    refreshed.put(members.get(index), new FormationSlot(squad.id(), members.getFirst(), index, members.size()));
                 }
             }
             formationSlots = Map.copyOf(refreshed);
         });
+    }
+
+    /** Returns the cached squad identifier for a guard, without querying SQLite. */
+    public Optional<UUID> squadIdFor(NpcId guardId) {
+        Objects.requireNonNull(guardId, "guardId");
+        FormationSlot slot = formationSlots.get(guardId);
+        return slot == null ? Optional.empty() : Optional.of(slot.squadId());
+    }
+
+    /** Returns the stable leader (lowest guard UUID) for a cached squad member. */
+    public Optional<NpcId> leaderFor(NpcId guardId) {
+        Objects.requireNonNull(guardId, "guardId");
+        FormationSlot slot = formationSlots.get(guardId);
+        return slot == null ? Optional.empty() : Optional.of(slot.leaderId());
     }
 
     /**
@@ -129,8 +144,10 @@ public final class GuardSquadService {
         return target;
     }
 
-    public record FormationSlot(int index, int memberCount) {
+    public record FormationSlot(UUID squadId, NpcId leaderId, int index, int memberCount) {
         public FormationSlot {
+            Objects.requireNonNull(squadId, "squadId");
+            Objects.requireNonNull(leaderId, "leaderId");
             if (memberCount < 1 || index < 0 || index >= memberCount) {
                 throw new IllegalArgumentException("Invalid squad formation slot.");
             }
