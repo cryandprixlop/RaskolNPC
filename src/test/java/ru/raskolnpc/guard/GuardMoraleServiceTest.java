@@ -89,7 +89,7 @@ class GuardMoraleServiceTest {
         service.onGuardDamaged(event);
 
         assertEquals(2, service.injurySeverity(guard.id()));
-        assertEquals(0.60 * service.morale(guard.id()) / 100.0 + 0.30, service.damageMultiplier(guard.id()), 0.0001);
+        assertEquals(0.552, service.damageMultiplier(guard.id()), 0.0001);
     }
 
     @Test
