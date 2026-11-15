@@ -22,7 +22,7 @@ public final class SqliteGuardConditionRepository implements GuardConditionRepos
         return database.query(connection -> {
             List<GuardCondition> conditions = new ArrayList<>();
             try (var statement = connection.prepareStatement("""
-                    SELECT c.npc_id, c.morale, c.last_combat_at, c.updated_at
+                    SELECT c.npc_id, c.morale, c.last_combat_at, c.updated_at,\n                           c.injury_severity, c.last_injury_recovery_at
                     FROM guard_conditions c
                     INNER JOIN npcs n ON n.id = c.npc_id
                     WHERE n.type = 'GUARD'
@@ -33,7 +33,7 @@ public final class SqliteGuardConditionRepository implements GuardConditionRepos
                             NpcId.fromString(result.getString("npc_id")),
                             result.getInt("morale"),
                             result.getLong("last_combat_at"),
-                            result.getLong("updated_at")));
+                            result.getLong("updated_at"),\n                            result.getInt("injury_severity"),\n                            result.getLong("last_injury_recovery_at")));
                 }
             }
             return List.copyOf(conditions);
@@ -59,7 +59,7 @@ public final class SqliteGuardConditionRepository implements GuardConditionRepos
                 statement.setInt(2, condition.morale());
                 statement.setLong(3, condition.lastCombatAt());
                 statement.setLong(4, condition.updatedAt());
-                statement.setString(5, condition.npcId().toString());
+                statement.setInt(5, condition.injurySeverity());\n                statement.setLong(6, condition.lastInjuryRecoveryAt());\n                statement.setString(7, condition.npcId().toString());
                 statement.executeUpdate();
             }
         });
