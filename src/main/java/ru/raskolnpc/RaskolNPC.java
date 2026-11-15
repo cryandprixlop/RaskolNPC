@@ -6,6 +6,7 @@ import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardCombatController;
+import ru.raskolnpc.guard.GuardMoraleService;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
 import ru.raskolnpc.guard.GuardSquadService;
@@ -46,6 +47,8 @@ import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardOrderRepository;
 import ru.raskolnpc.storage.GuardSquadRepository;
+import ru.raskolnpc.storage.GuardConditionRepository;
+import ru.raskolnpc.storage.SqliteGuardConditionRepository;
 import ru.raskolnpc.storage.SqliteGuardSquadRepository;
 import ru.raskolnpc.storage.SqliteGuardOrderRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
@@ -72,6 +75,7 @@ public final class RaskolNPC extends JavaPlugin {
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
     private GuardCombatController guardCombatController;
+    private GuardMoraleService guardMoraleService;
     private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
@@ -215,6 +219,8 @@ public final class RaskolNPC extends JavaPlugin {
                 Math.max(0.0, Math.min(32.0,
                         getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))),
                 playerSubjects);
+        guardMoraleService = new GuardMoraleService(this, npcRegistry, npcEntityManager,
+                new SqliteGuardConditionRepository(databaseManager));
         guardCombatController = new GuardCombatController(
                 this, npcRegistry, npcEntityManager, relationshipPolicy,
                 worldGuardProtectionAdapter,
@@ -224,6 +230,7 @@ public final class RaskolNPC extends JavaPlugin {
                 getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L),
                 playerSubjects);
         guardCombatController.setSquadService(guardSquadService);
+        guardCombatController.setMoraleService(guardMoraleService);
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
         }
@@ -364,6 +371,7 @@ public final class RaskolNPC extends JavaPlugin {
                                                             orderError);
                                                     return;
                                                 }
+                                                guardMoraleService.start();
                                                 guardCombatController.start();
                                                 if (availableGuardRentEconomy != null) {
                                                     try {
@@ -437,6 +445,7 @@ public final class RaskolNPC extends JavaPlugin {
         if (residentBehaviorService != null) residentBehaviorService.stop();
         if (guardOrderController != null) guardOrderController.stop();
         if (guardCombatController != null) guardCombatController.stop();
+        if (guardMoraleService != null) guardMoraleService.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();
