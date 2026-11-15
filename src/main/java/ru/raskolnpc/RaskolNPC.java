@@ -231,9 +231,13 @@ public final class RaskolNPC extends JavaPlugin {
         guardCombatController.setSquadService(guardSquadService);
         guardCombatController.setMoraleService(guardMoraleService);
         guardOrderController.setMoraleService(guardMoraleService);
+        int moraleRetreatThreshold = Math.max(0, Math.min(99,
+                getConfig().getInt("guards.morale.retreat-threshold", 20)));
+        int moraleRallyThreshold = Math.max(moraleRetreatThreshold + 1,
+                Math.max(1, Math.min(100,
+                        getConfig().getInt("guards.morale.rally-threshold", 35))));
         guardMoraleService.setRetreatThresholds(
-                Math.max(0, Math.min(99, getConfig().getInt("guards.morale.retreat-threshold", 20))),
-                Math.max(1, Math.min(100, getConfig().getInt("guards.morale.rally-threshold", 35))));
+                moraleRetreatThreshold, moraleRallyThreshold);
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
         }
