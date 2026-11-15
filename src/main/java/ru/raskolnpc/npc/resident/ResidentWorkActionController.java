@@ -2,7 +2,6 @@ package ru.raskolnpc.npc.resident;
 
 import org.bukkit.Particle;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Villager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
@@ -20,14 +19,14 @@ final class ResidentWorkActionController {
     private static final long ACTION_INTERVAL_TICKS = 60L;
     private final Map<NpcId, Long> lastActionTicks = new HashMap<>();
 
-    void performIfReady(NpcId npcId, Entity entity, ResidentProfile profile, long currentTick) {
+    boolean performIfReady(NpcId npcId, Entity entity, ResidentProfile profile, long currentTick) {
         Objects.requireNonNull(npcId, "npcId");
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(profile, "profile");
-        if (!(entity instanceof Villager villager) || !entity.isValid()) return;
+        if (!(entity instanceof Villager villager) || !entity.isValid()) return false;
 
         Long previous = lastActionTicks.get(npcId);
-        if (previous != null && currentTick - previous < ACTION_INTERVAL_TICKS) return;
+        if (previous != null && currentTick - previous < ACTION_INTERVAL_TICKS) return false;
         lastActionTicks.put(npcId, currentTick);
 
         villager.swingMainHand();
@@ -35,6 +34,7 @@ final class ResidentWorkActionController {
         entity.getWorld().spawnParticle(particle,
                 entity.getLocation().add(0.0, 1.0, 0.0),
                 2, 0.15, 0.2, 0.15, 0.01);
+        return true;
     }
 
     private Particle particleFor(ResidentProfession profession) {
