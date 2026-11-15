@@ -321,6 +321,40 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void productionConsumesAllInputsAndCreditsOutputAtomically() {
+        NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
+        deliverStock(blacksmith, "iron_delivery", "IRON_INGOT", 12, 64);
+        deliverStock(blacksmith, "coal_delivery", "COAL", 8, 64);
+
+        assertTrue(quests.produceBusinessStock(blacksmith.id(),
+                java.util.Map.of("IRON_INGOT", 4, "COAL", 2),
+                "IRON_SWORD", 2, 16).join());
+
+        assertEquals(8, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
+        assertEquals(6, quests.getBusinessStock(blacksmith.id(), "COAL").join());
+        assertEquals(2, quests.getBusinessStock(blacksmith.id(), "IRON_SWORD").join());
+    }
+
+    @Test
+    void productionRollsBackAllInputsWhenOneIsMissingOrOutputCapacityIsFull() {
+        NpcRecord blacksmith = createResident(ResidentProfession.BLACKSMITH, "town");
+        deliverStock(blacksmith, "iron_delivery", "IRON_INGOT", 12, 64);
+        deliverStock(blacksmith, "coal_delivery", "COAL", 2, 64);
+        deliverStock(blacksmith, "sword_delivery", "IRON_SWORD", 15, 16);
+
+        assertFalse(quests.produceBusinessStock(blacksmith.id(),
+                java.util.Map.of("IRON_INGOT", 4, "COAL", 3),
+                "IRON_SWORD", 1, 16).join());
+        assertFalse(quests.produceBusinessStock(blacksmith.id(),
+                java.util.Map.of("IRON_INGOT", 4, "COAL", 2),
+                "IRON_SWORD", 2, 16).join());
+
+        assertEquals(12, quests.getBusinessStock(blacksmith.id(), "IRON_INGOT").join());
+        assertEquals(2, quests.getBusinessStock(blacksmith.id(), "COAL").join());
+        assertEquals(15, quests.getBusinessStock(blacksmith.id(), "IRON_SWORD").join());
+    }
+
+    @Test
     void dailyBusinessConsumptionReopensDemandWithoutNegativeStock() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
