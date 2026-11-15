@@ -16,8 +16,15 @@ import java.util.Objects;
  * create repeating tasks, or perform database access.
  */
 final class ResidentWorkActionController {
-    private static final long ACTION_INTERVAL_TICKS = 60L;
+    private long actionIntervalTicks = 60L;
     private final Map<NpcId, Long> lastActionTicks = new HashMap<>();
+
+    void setActionIntervalTicks(long ticks) {
+        if (ticks < 1 || ticks > 24_000L) {
+            throw new IllegalArgumentException("Work action interval must be between 1 and 24000 ticks.");
+        }
+        actionIntervalTicks = ticks;
+    }
 
     boolean performIfReady(NpcId npcId, Entity entity, ResidentProfile profile, long currentTick) {
         Objects.requireNonNull(npcId, "npcId");
@@ -26,7 +33,7 @@ final class ResidentWorkActionController {
         if (!(entity instanceof Villager villager) || !entity.isValid()) return false;
 
         Long previous = lastActionTicks.get(npcId);
-        if (previous != null && currentTick - previous < ACTION_INTERVAL_TICKS) return false;
+        if (previous != null && currentTick - previous < actionIntervalTicks) return false;
         lastActionTicks.put(npcId, currentTick);
 
         villager.swingMainHand();
