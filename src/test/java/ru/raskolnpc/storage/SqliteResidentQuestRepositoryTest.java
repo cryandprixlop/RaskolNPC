@@ -259,6 +259,42 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void businessStockBatchesAreReadInDeterministicFifoOrder() {
+        NpcRecord resident = createResident();
+        database.transaction(connection -> {
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO resident_business_stock_batches(
+                        batch_id, business_id, profession, material, amount,
+                        quality, created_at, source_type, source_ref
+                    ) VALUES (?, 'town:town', 'MINER', 'IRON_INGOT', ?, ?, ?, 'TEST', NULL)
+                    """)) {
+                insert.setString(1, "later-batch");
+                insert.setInt(2, 7);
+                insert.setString(3, "FINE");
+                insert.setLong(4, 200);
+                insert.executeUpdate();
+                insert.setString(1, "earlier-batch");
+                insert.setInt(2, 3);
+                insert.setString(3, "STANDARD");
+                insert.setLong(4, 100);
+                insert.executeUpdate();
+            }
+            return null;
+        }).join();
+
+        List<ResidentBusinessStockBatch> batches =
+                quests.findBusinessStockBatches(resident.id(), "IRON_INGOT").join();
+
+        assertEquals(2, batches.size());
+        assertEquals("earlier-batch", batches.get(0).batchId());
+        assertEquals(ResidentProductQuality.STANDARD, batches.get(0).quality());
+        assertEquals(3, batches.get(0).amount());
+        assertEquals("later-batch", batches.get(1).batchId());
+        assertEquals(ResidentProductQuality.FINE, batches.get(1).quality());
+        assertEquals(7, batches.get(1).amount());
+    }
+
+    @Test
     void businessStockWithdrawalIsAtomicAndCannotBecomeNegative() {
         NpcRecord resident = createResident();
         UUID player = UUID.randomUUID();
