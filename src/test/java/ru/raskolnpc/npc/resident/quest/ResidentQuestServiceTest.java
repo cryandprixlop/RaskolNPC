@@ -258,7 +258,8 @@ class ResidentQuestServiceTest {
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
         when(repository.produceBusinessStock(resident.id(),
-                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32))
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32,
+                ru.raskolnpc.storage.ResidentProductQuality.MASTERWORK))
                 .thenReturn(CompletableFuture.completedFuture(true));
 
         ResidentQuestService service = new ResidentQuestService(
@@ -266,7 +267,8 @@ class ResidentQuestServiceTest {
 
         assertTrue(service.produceAvailable(resident.id()).join());
         verify(repository).produceBusinessStock(resident.id(),
-                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32);
+                Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32,
+                ru.raskolnpc.storage.ResidentProductQuality.MASTERWORK);
     }
 
     @Test
