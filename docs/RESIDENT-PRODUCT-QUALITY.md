@@ -114,9 +114,10 @@ transaction. If the requested tier does not contain the full quantity, the
 operation returns `false` without changing any stock. The resident quest service
 validates that the target NPC is a resident before exposing this operation.
 
-This is a stock reservation primitive, not a complete player trade: currency
-debit/credit and inventory delivery remain outside this increment until an
-idempotent transaction coordinator and economy adapter are implemented.
+This reservation primitive is now used by the durable trade journal. Currency
+debit/credit and inventory delivery are delegated to provider interfaces; a
+concrete Vault/player-wallet adapter and a Bukkit inventory-delivery adapter
+still need to be supplied before player purchases are enabled in gameplay.
 
 ## Resident trade offers
 
@@ -146,10 +147,23 @@ reusing the key with different purchase parameters is rejected. State changes
 use compare-and-set transitions, so stale callbacks cannot overwrite a newer
 payment state.
 
-The journal deliberately does not call an economy provider or deliver Bukkit
-items from a database worker. Integrations must move a transaction to
-`PAYMENT_PENDING` before invoking the provider, persist the provider outcome,
-and only then continue delivery. On restart, all unfinished states are moved
-to `REVIEW_REQUIRED` rather than guessed as paid, unpaid, or delivered. This
-prevents automatic duplicate charging or item delivery, but requires a later
-reconciliation workflow before unresolved trades can be completed.
+The provider-neutral `ResidentTradeService` coordinates the purchase lifecycle:
+reserve stock, persist `PAYMENT_PENDING`, charge, persist `PAID`, deliver, and
+persist `DELIVERED`. A definitive payment decline atomically cancels the trade
+and restores the exact quality tier to stock. A definitive delivery failure
+starts an idempotent refund; uncertain payment, delivery, or refund outcomes
+move to `REVIEW_REQUIRED`.
+
+`ResidentTradePaymentProvider` and `ResidentTradeDeliveryProvider` are explicit
+integration boundaries. Implementations must use the trade ID as their external
+idempotency key, and Bukkit/Vault implementations must marshal server API calls
+onto the main thread. A delivery provider must distinguish definitive failure
+from uncertain/possibly-partial delivery; only the former is automatically
+refunded.
+
+Startup now runs trade recovery. All unfinished states are moved to
+`REVIEW_REQUIRED` rather than guessed as paid, unpaid, or delivered. This
+prevents automatic duplicate charging or item delivery, but a reconciliation
+workflow and concrete economy/inventory adapters are still required before
+player purchases can be enabled in gameplay. The Towny town-bank adapter remains
+reserved for guard payments and is not reused for player trading.
