@@ -357,6 +357,17 @@ public final class ResidentQuestService {
                 Objects.requireNonNull(material, "material"), amount, targetCapacity);
     }
 
+    /** Executes a configured recipe atomically against this resident's profession stock. */
+    public CompletableFuture<Boolean> produce(
+            NpcId residentId, java.util.Map<String, Integer> inputs,
+            String outputMaterial, int outputAmount, int outputCapacity) {
+        return repository.produceBusinessStock(
+                Objects.requireNonNull(residentId, "residentId"),
+                Objects.requireNonNull(inputs, "inputs"),
+                Objects.requireNonNull(outputMaterial, "outputMaterial"),
+                outputAmount, outputCapacity);
+    }
+
     public CompletableFuture<Integer> reputation(UUID playerId) {
         return repository.getReputation(Objects.requireNonNull(playerId, "playerId"));
     }
