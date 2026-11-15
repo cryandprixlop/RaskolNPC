@@ -436,7 +436,7 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     private ResidentProfession residentProfession(NpcRecord resident) {
-        return profiles.find(resident.id()).join().orElseThrow().profession();
+        return profiles.findByNpcId(resident.id()).join().orElseThrow().profession();
     }
 
     @Test
