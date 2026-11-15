@@ -4,6 +4,14 @@
 
 Design decision for the next resident-economy increment. This document defines the storage contract before quality is exposed to players or used by gameplay. It does not claim that product quality is implemented yet.
 
+## Implementation progress
+
+- Schema migration 18 creates `resident_business_stock_batches` with validated quality tiers and FIFO index.
+- Existing positive aggregate stock is backfilled as one `STANDARD` / `LEGACY` batch; zero balances are skipped.
+- Added `ResidentProductQuality` and immutable `ResidentBusinessStockBatch` domain types.
+- Added a read-only repository query ordered by `created_at, batch_id`.
+- Existing mutation paths still write only the aggregate table. The batch table is therefore not yet the source of truth, and quality must not be exposed in gameplay until mutation routing and consistency checks are complete.
+
 ## Problem
 
 The current `resident_business_stock` table stores one aggregate quantity per business, profession, and material. Production, delivery deposits, withdrawals, inter-profession transfers, and daily consumption update that aggregate row directly. A single quality value on that row would be incorrect as soon as goods of different quality are combined.
