@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
+import org.mockito.ArgumentCaptor;
 import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.guard.model.GuardSquad;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
@@ -100,8 +101,10 @@ class GuardSquadFormationTest {
         controller.tick();
 
         verify(squads).formationTarget(eq(guard.id()), any(Location.class), eq(GuardOrder.Type.PATROL));
-        verify(entity).teleport(argThat(destination ->
-                destination.getZ() > origin.getZ() && Math.abs(destination.getX() - origin.getX()) < 0.001));
+        ArgumentCaptor<Location> destination = ArgumentCaptor.forClass(Location.class);
+        verify(entity).teleport(destination.capture());
+        assertTrue(destination.getValue().getZ() > origin.getZ());
+        assertEquals(origin.getX(), destination.getValue().getX(), 0.001);
     }
 
     private NpcId id(long leastSignificantBits) {
