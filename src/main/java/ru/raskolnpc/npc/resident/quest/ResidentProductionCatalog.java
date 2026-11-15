@@ -59,8 +59,8 @@ public final class ResidentProductionCatalog {
                 ResidentProductionRecipe parsed = new ResidentProductionRecipe(
                         key, profession, inputs,
                         recipe.getString("output.material", ""),
-                        recipe.getInt("output.amount", 0),
-                        recipe.getInt("output.capacity", 0));
+                        requiredInteger(recipe, "output.amount"),
+                        requiredInteger(recipe, "output.capacity"));
                 if (loaded.putIfAbsent(parsed.id(), parsed) != null) {
                     throw new IllegalArgumentException("Duplicate recipe id: " + parsed.id());
                 }
@@ -89,6 +89,14 @@ public final class ResidentProductionCatalog {
         return recipes.values().stream()
                 .sorted(java.util.Comparator.comparing(ResidentProductionRecipe::id))
                 .toList();
+    }
+
+    private static int requiredInteger(ConfigurationSection section, String path) {
+        Object raw = section.get(path);
+        if (!(raw instanceof Number number) || number.doubleValue() != number.intValue()) {
+            throw new IllegalArgumentException(path + " must be an integer.");
+        }
+        return number.intValue();
     }
 
     private static String normalizeId(String id) {
