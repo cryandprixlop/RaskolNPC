@@ -35,6 +35,13 @@ public interface ResidentQuestRepository {
     CompletableFuture<Integer> getBusinessStock(NpcId residentId, String material);
     /** Atomically removes stock for a business purchase or production use. */
     CompletableFuture<Boolean> withdrawBusinessStock(NpcId residentId, String material, int amount);
+    /**
+     * Transfers one material from a source profession to a different profession
+     * in the same town. The source debit and target capacity check are atomic.
+     */
+    CompletableFuture<Boolean> transferBusinessStock(
+            NpcId sourceResidentId, NpcId targetResidentId,
+            String material, int amount, int targetCapacity);
     /** Applies one configured daily consumption pass to all town business stock rows. */
     CompletableFuture<Integer> consumeBusinessStockDaily(int percentage);
     CompletableFuture<List<ResidentQuestReview>> findReviews(int limit);
