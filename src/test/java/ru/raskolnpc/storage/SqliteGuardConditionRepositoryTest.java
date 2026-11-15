@@ -49,6 +49,14 @@ class SqliteGuardConditionRepositoryTest {
     }
 
     @Test
+    void persistsAndRestoresInjuryState() {
+        NpcRecord guard = createNpc(NpcType.GUARD);
+        GuardCondition injured = new GuardCondition(guard.id(), 65, 1000, 2000, 2, 1500);
+        conditions.save(injured).join();
+        assertEquals(injured, conditions.findAll().join().getFirst());
+    }
+
+    @Test
     void ignoresNonGuardRowsAndOlderWrites() {
         NpcRecord guard = createNpc(NpcType.GUARD);
         NpcRecord resident = createNpc(NpcType.RESIDENT);
