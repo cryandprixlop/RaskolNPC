@@ -103,6 +103,30 @@ class ResidentTradeServiceTest {
         verify(repository).completeRefundAndRelease(trade.transactionId(), "REF-1", "refund confirmed");
     }
 
+
+    @Test
+    void synchronousDeliveryFailureRequiresReviewAndNeverRefunds() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(eq(trade.transactionId()), any(), any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(economy.charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.CONFIRMED, "PAY-1", "charged")));
+        when(delivery.deliver(trade)).thenThrow(new IllegalStateException("inventory adapter failed"));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        verify(repository).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Delivery outcome is uncertain after adapter failure: IllegalStateException: inventory adapter failed");
+        verify(economy, never()).refund(anyString(), any(), anyLong());
+    }
+
     private void reserve(ResidentTradeTransaction trade) {
         when(repository.reserve(eq(trade.idempotencyKey()), eq(trade.buyerId()),
                 eq(trade.residentId()), eq(trade.material()), eq(trade.quality()),
