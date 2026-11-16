@@ -129,9 +129,12 @@ public final class ResidentTradeService {
             call = delivery.deliver(trade);
             if (call == null) throw new IllegalStateException("Delivery provider returned a null future.");
         } catch (Throwable error) {
-            return startRefund(trade, "Delivery adapter failed: " + concise(error));
+            // A synchronous adapter failure does not prove that inventory insertion
+            // did not happen. Refunding here could duplicate items and currency.
+            return review(trade, ResidentTradeTransaction.Status.PAID,
+                    "Delivery outcome is uncertain after adapter failure: " + concise(error));
         }
-        return call.handle((result, error) -> {
+        return call.handle((result, error) => {
             if (error != null || result == null) {
                 // An exception does not prove that no item was inserted.
                 return review(trade, ResidentTradeTransaction.Status.PAID,
