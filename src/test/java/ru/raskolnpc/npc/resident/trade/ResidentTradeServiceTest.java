@@ -127,6 +127,25 @@ class ResidentTradeServiceTest {
         verify(economy, never()).refund(anyString(), any(), anyLong());
     }
 
+
+    @Test
+    void idempotentRetryOfPendingPaymentMovesToReviewWithoutChargingAgain() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.PAYMENT_PENDING);
+        reserve(trade);
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Idempotent retry found an unfinished transaction; external outcome must be reconciled."))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        verifyNoInteractions(economy, delivery);
+    }
+
     private void reserve(ResidentTradeTransaction trade) {
         when(repository.reserve(eq(trade.idempotencyKey()), eq(trade.buyerId()),
                 eq(trade.residentId()), eq(trade.material()), eq(trade.quality()),
