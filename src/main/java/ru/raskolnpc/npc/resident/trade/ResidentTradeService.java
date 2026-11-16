@@ -134,7 +134,7 @@ public final class ResidentTradeService {
             return review(trade, ResidentTradeTransaction.Status.PAID,
                     "Delivery outcome is uncertain after adapter failure: " + concise(error));
         }
-        return call.handle((result, error) => {
+        return call.handle((result, error) -> {
             if (error != null || result == null) {
                 // An exception does not prove that no item was inserted.
                 return review(trade, ResidentTradeTransaction.Status.PAID,
