@@ -24,6 +24,8 @@ import ru.raskolnpc.integration.IntegrationCapabilities;
 import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.guard.model.GuardRentPayment;
 import ru.raskolnpc.guard.model.GuardRentPaymentStatus;
+import ru.raskolnpc.storage.ResidentTradeRepository;
+import ru.raskolnpc.storage.ResidentTradeTransaction;
 
 import java.io.IOException;
 import java.util.List;
