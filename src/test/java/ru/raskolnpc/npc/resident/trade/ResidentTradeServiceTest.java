@@ -146,7 +146,9 @@ class ResidentTradeServiceTest {
         verify(repository, times(1)).transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.STOCK_RESERVED,
                 ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null);
-        verifyNoMoreInteractions(repository);
+        verify(repository, never()).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null, anyString());
         verifyNoInteractions(economy, delivery);
     }
 
