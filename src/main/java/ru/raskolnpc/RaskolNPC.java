@@ -330,6 +330,7 @@ public final class RaskolNPC extends JavaPlugin {
                 commandService, residentSchedules, residentBehaviorService));
         commandHandler.setResidentDialogueService(residentDialogues);
         commandHandler.setResidentQuestService(residentQuests);
+        commandHandler.setResidentTradeRepository(residentTradeRepository);
         if (townyEnabled) {
             commandHandler.setKingdomGeneralService(new TownyKingdomGeneralService(
                     getConfig().getString("guards.towny-general-rank", "general")));
