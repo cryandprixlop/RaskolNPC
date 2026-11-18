@@ -209,3 +209,17 @@ A confirmed payment is persisted as `PAID` before delivery. A confirmed delivery
 The plugin now invokes journal recovery during startup. Any trade left in `STOCK_RESERVED`, `PAYMENT_PENDING`, `PAID`, or `REFUND_PENDING` by a previous process is moved to `REVIEW_REQUIRED` before gameplay can use it.
 
 These are orchestration contracts, not a live marketplace integration: no concrete player-economy provider, Paper inventory adapter, purchase GUI, or permission-checked administration command is enabled yet. Those must be implemented and tested against the actual server provider before player-money trading is advertised.
+
+
+## Administrator trade reconciliation commands
+
+The durable journal now exposes a bounded, oldest-first query for transactions in a selected state. Administrators with `raskolnpc.admin` can inspect and reconcile uncertain trades:
+
+- `/raskolnpc resident trade review` lists up to 25 `REVIEW_REQUIRED` transactions, including buyer, resident, item, quality, amount, total minor-unit price, and the last recorded reason.
+- `/raskolnpc resident trade resolve <ID> delivered <evidence>` confirms that the items reached the buyer; reserved stock remains consumed.
+- `/raskolnpc resident trade resolve <ID> cancelled_unpaid <evidence>` confirms that neither payment nor delivery occurred; the exact quality quantity is restored.
+- `/raskolnpc resident trade resolve <ID> refunded_not_delivered <evidence>` confirms a completed refund and no delivery; the exact quality quantity is restored.
+
+Resolution is compare-and-set and stock restoration plus journal state change occur in one SQLite transaction. Evidence is mandatory and stored in the journal. The command does not contact an economy provider, inspect a player's inventory, or infer the correct outcome. An administrator must verify external bank/provider records and inventory first. If capacity prevents stock restoration, the transaction remains in review and no partial change is committed.
+
+These commands provide reconciliation for the provider-neutral journal only. They do not enable player purchases, a Vault adapter, a player-facing market, or currency handling.
