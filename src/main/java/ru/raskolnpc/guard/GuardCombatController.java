@@ -374,8 +374,8 @@ public final class GuardCombatController implements Listener {
             RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
                     guard.ownerUuid(), guard.townId(), guard.nationId());
             return relationships.mayTarget(actor, victim);
-        } catch (RuntimeException unavailable) {
-            // Fail closed when Towny/SiegeWar diplomacy cannot be queried.
+        } catch (RuntimeException | LinkageError unavailable) {
+            // Fail closed when Towny/SiegeWar diplomacy cannot be queried, including binary API mismatches.
             return false;
         }
     }
@@ -397,20 +397,24 @@ public final class GuardCombatController implements Listener {
             // WorldGuard may be disabled after RaskolNPC starts. A stale RegionQuery
             // must never keep granting combat permission after its provider is offline.
             if (!worldGuardEnabled.getAsBoolean()) return false;
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
         if (worldGuard == null) return false;
-        return worldGuard.checkMobDamage(attackerLocation)
-                        == WorldGuardProtectionAdapter.Decision.ALLOWED
-                && worldGuard.checkMobDamage(targetLocation)
-                        == WorldGuardProtectionAdapter.Decision.ALLOWED;
+        try {
+            return worldGuard.checkMobDamage(attackerLocation)
+                            == WorldGuardProtectionAdapter.Decision.ALLOWED
+                    && worldGuard.checkMobDamage(targetLocation)
+                            == WorldGuardProtectionAdapter.Decision.ALLOWED;
+        } catch (RuntimeException | LinkageError unavailable) {
+            return false;
+        }
     }
 
     private boolean hasTerritoryAccess(Location location, String nationId) {
         try {
             return territoryAccess.test(location, nationId);
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
     }
