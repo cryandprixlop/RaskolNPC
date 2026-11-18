@@ -9,7 +9,6 @@ import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
-import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
 
 import java.nio.file.Path;
 import java.util.UUID;
