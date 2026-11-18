@@ -379,6 +379,29 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
     }
 
     @Override
+    public CompletableFuture<java.util.List<ResidentTradeTransaction>> findByStatus(
+            ResidentTradeTransaction.Status status, int limit) {
+        java.util.Objects.requireNonNull(status, "status");
+        int boundedLimit = Math.max(1, Math.min(100, limit));
+        return database.query(connection -> {
+            java.util.ArrayList<ResidentTradeTransaction> transactions = new java.util.ArrayList<>();
+            try (var query = connection.prepareStatement("""
+                    SELECT * FROM resident_trade_transactions
+                    WHERE status = ?
+                    ORDER BY created_at, transaction_id
+                    LIMIT ?
+                    """)) {
+                query.setString(1, status.name());
+                query.setInt(2, boundedLimit);
+                try (ResultSet result = query.executeQuery()) {
+                    while (result.next()) transactions.add(read(result));
+                }
+            }
+            return java.util.List.copyOf(transactions);
+        });
+    }
+
+    @Override
     public CompletableFuture<Optional<ResidentTradeTransaction>> findByIdempotencyKey(String idempotencyKey) {
         String key = requireText(idempotencyKey, "idempotencyKey", 128);
         return database.query(connection -> findByKey(connection, key));
