@@ -81,7 +81,9 @@ class SqliteNpcRepositoryTest {
         java.util.concurrent.CompletionException error = assertThrows(
                 java.util.concurrent.CompletionException.class,
                 () -> deletions.deleteAndQueue(resident.id()).join());
-        assertTrue(error.getCause().getMessage().contains(
+        Throwable cause = error;
+        while (cause.getCause() != null) cause = cause.getCause();
+        assertTrue(cause.getMessage().contains(
                 "Cannot delete resident while a trade requires reconciliation: trade-review"));
         assertTrue(repository.findById(resident.id()).join().isPresent());
         assertTrue(deletions.findPending().join().isEmpty());
