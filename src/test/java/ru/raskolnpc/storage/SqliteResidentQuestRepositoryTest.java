@@ -731,6 +731,25 @@ class SqliteResidentQuestRepositoryTest {
 
 
     @Test
+    void concurrentTradeReservationWithSameIdempotencyKeyConsumesStockOnlyOnce() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 20, 64);
+        UUID buyer = UUID.randomUUID();
+
+        var firstFuture = trades.reserve("purchase-concurrent-same-key", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 7, 125);
+        var secondFuture = trades.reserve("purchase-concurrent-same-key", buyer, resident.id(),
+                "IRON_INGOT", ResidentProductQuality.STANDARD, 7, 125);
+
+        ResidentTradeTransaction first = firstFuture.join().orElseThrow();
+        ResidentTradeTransaction second = secondFuture.join().orElseThrow();
+        assertEquals(first.transactionId(), second.transactionId());
+        assertEquals(13, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(1, trades.findByStatus(
+                ResidentTradeTransaction.Status.STOCK_RESERVED, 10).join().size());
+    }
+
+    @Test
     void tradeReservationRejectsInvalidAmountsPricesAndOverflowBeforeDatabaseWork() {
         UUID buyer = UUID.randomUUID();
         NpcRecord resident = createResident();
