@@ -1358,6 +1358,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission(PERMISSION)) {
             messages.sendRaw(sender, "&e/" + label + " resident quest review &7— спорные сдачи");
             messages.sendRaw(sender, "&e/" + label + " resident quest resolve ... &7— разрешить спорную сдачу");
+            messages.sendRaw(sender, "&e/" + label + " resident trade review &7— сделки, требующие сверки");
+            messages.sendRaw(sender, "&e/" + label + " resident trade resolve ... &7— сверить сделку по доказательствам");
         }
         if (service.isGuardHiringEnabled()) {
             messages.sendRaw(sender, "&e/" + label + " guard hire <уровень> <имя> &7— нанять стража");
@@ -1411,10 +1413,19 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("resident")) {
             java.util.ArrayList<String> residentActions = new java.util.ArrayList<>();
             if (sender.hasPermission(PERMISSION)) {
-                residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues", "stock"));
+                residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues", "stock", "trade"));
             }
             if (canAcceptResidentQuest) residentActions.add("quest");
             return startsWith(residentActions, args[1]);
+        }
+        if (sender.hasPermission(PERMISSION) && args.length == 3
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("trade")) {
+            return startsWith(List.of("review", "resolve"), args[2]);
+        }
+        if (sender.hasPermission(PERMISSION) && args.length == 5
+                && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("trade")
+                && args[2].equalsIgnoreCase("resolve")) {
+            return startsWith(List.of("delivered", "cancelled_unpaid", "refunded_not_delivered"), args[4]);
         }
         if (canAcceptResidentQuest && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
