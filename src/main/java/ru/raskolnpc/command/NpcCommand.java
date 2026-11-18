@@ -44,6 +44,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private volatile ResidentScheduleCommandService residentScheduleService;
     private volatile ResidentDialogueService residentDialogueService;
     private volatile ResidentQuestService residentQuestService;
+    private volatile ResidentTradeRepository residentTradeRepository;
     private volatile TownyKingdomGeneralService kingdomGeneralService;
     private volatile IntegrationCapabilities integrationCapabilities;
 
@@ -80,6 +81,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
     public void setResidentQuestService(ResidentQuestService service) {
         this.residentQuestService = service;
+    }
+
+    public void setResidentTradeRepository(ResidentTradeRepository repository) {
+        this.residentTradeRepository = repository;
     }
 
     public void setKingdomGeneralService(TownyKingdomGeneralService service) {
@@ -216,6 +221,80 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
 
     private void resident(CommandSender sender, String[] args) {
+        if (args.length == 3 && args[1].equalsIgnoreCase("trade")
+                && args[2].equalsIgnoreCase("review")) {
+            if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+            ResidentTradeRepository trades = residentTradeRepository;
+            if (trades == null) {
+                messages.sendRaw(sender, "&cЖурнал торговых операций временно недоступен.");
+                return;
+            }
+            trades.findByStatus(ResidentTradeTransaction.Status.REVIEW_REQUIRED, 25)
+                    .whenComplete((pending, error) -> runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось загрузить спорные сделки: "
+                                    + rootMessage(error));
+                            return;
+                        }
+                        if (pending.isEmpty()) {
+                            messages.sendRaw(sender, "&aСделок, требующих проверки, нет.");
+                            return;
+                        }
+                        messages.sendRaw(sender, "&6Сделки, требующие сверки: &f" + pending.size());
+                        for (ResidentTradeTransaction trade : pending) {
+                            messages.sendRaw(sender, "&eID: &f" + trade.transactionId()
+                                    + " &7Покупатель: &f" + trade.buyerId());
+                            messages.sendRaw(sender, "&7Житель: &f" + trade.residentId()
+                                    + " &7Товар: &f" + trade.material() + " x" + trade.amount()
+                                    + " &7Качество: &f" + trade.quality()
+                                    + " &7Сумма (minor): &f" + trade.totalPriceMinor());
+                            messages.sendRaw(sender, "&8Причина: "
+                                    + (trade.lastError() == null ? "не указана" : trade.lastError()));
+                        }
+                        messages.sendRaw(sender, "&eПосле проверки банка и инвентаря: "
+                                + "/raskolnpc resident trade resolve <ID> <delivered|cancelled_unpaid|refunded_not_delivered> <доказательство>");
+                    }));
+            return;
+        }
+
+        if (args.length >= 6 && args[1].equalsIgnoreCase("trade")
+                && args[2].equalsIgnoreCase("resolve")) {
+            if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
+            ResidentTradeRepository trades = residentTradeRepository;
+            if (trades == null) {
+                messages.sendRaw(sender, "&cЖурнал торговых операций временно недоступен.");
+                return;
+            }
+            ResidentTradeRepository.ReviewResolution resolution;
+            try {
+                resolution = switch (args[4].toLowerCase(Locale.ROOT)) {
+                    case "delivered" -> ResidentTradeRepository.ReviewResolution.DELIVERED;
+                    case "cancelled_unpaid" -> ResidentTradeRepository.ReviewResolution.CANCELLED_UNPAID;
+                    case "refunded_not_delivered" -> ResidentTradeRepository.ReviewResolution.REFUNDED_NOT_DELIVERED;
+                    default -> throw new IllegalArgumentException("Unknown trade resolution.");
+                };
+            } catch (IllegalArgumentException invalid) {
+                messages.sendRaw(sender, "&eВыберите delivered, cancelled_unpaid или refunded_not_delivered.");
+                return;
+            }
+            String evidence = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+            if (evidence.isBlank() || evidence.length() > 1024) {
+                messages.sendRaw(sender, "&cУкажите доказательство длиной от 1 до 1024 символов.");
+                return;
+            }
+            trades.resolveReview(args[3], resolution, evidence).whenComplete((resolved, error) ->
+                    runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось разрешить сделку: " + rootMessage(error));
+                        } else if (Boolean.TRUE.equals(resolved)) {
+                            messages.sendRaw(sender, "&aСделка разрешена: &f" + resolution
+                                    + "&a. Решение и изменение запасов сохранены атомарно.");
+                        } else {
+                            messages.sendRaw(sender, "&cСделка не найдена или уже была разрешена.");
+                        }
+                    }));
+            return;
+        }
         if (args.length == 5 && args[1].equalsIgnoreCase("quest")
                 && (args[2].equalsIgnoreCase("accept") || args[2].equalsIgnoreCase("submit")
                         || args[2].equalsIgnoreCase("abandon"))) {
