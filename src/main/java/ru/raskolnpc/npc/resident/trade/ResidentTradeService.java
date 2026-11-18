@@ -22,7 +22,7 @@ import java.util.logging.Logger;
 public final class ResidentTradeService {
     public enum Outcome {
         DELIVERED, INSUFFICIENT_STOCK, PAYMENT_DECLINED,
-        REFUNDED, REVIEW_REQUIRED, FAILED
+        REFUNDED, REVIEW_REQUIRED, IN_PROGRESS, FAILED
     }
 
     public record PurchaseResult(Outcome outcome, String transactionId, String detail) { }
@@ -58,7 +58,7 @@ public final class ResidentTradeService {
                     // These states may belong to the original request, whose provider call is still
                     // running. Startup recovery moves abandoned states to REVIEW_REQUIRED, so a
                     // live idempotent retry must observe rather than mutate an in-flight transaction.
-                    return completed(Outcome.REVIEW_REQUIRED, trade.transactionId(),
+                    return completed(Outcome.IN_PROGRESS, trade.transactionId(),
                             "This purchase is already in progress; no payment or delivery was repeated.");
                 }
                 return completed(statusOutcome(trade.status()), trade.transactionId(),
@@ -80,7 +80,7 @@ public final class ResidentTradeService {
                         // Another request may have claimed this idempotency key after reserve()
                         // returned STOCK_RESERVED. Do not force that in-flight payment into review:
                         // the winning request owns the provider call and its state transitions.
-                        return completed(Outcome.REVIEW_REQUIRED, trade.transactionId(),
+                        return completed(Outcome.IN_PROGRESS, trade.transactionId(),
                                 "This purchase is already being processed; no second payment was started.");
                     }
                     return safeCharge(trade);
