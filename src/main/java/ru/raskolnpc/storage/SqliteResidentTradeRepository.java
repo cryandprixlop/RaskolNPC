@@ -86,8 +86,8 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     INSERT INTO resident_trade_transactions(
                         transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
                         material, quality, amount, unit_price_minor, total_price_minor,
-                        status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'STOCK_RESERVED', ?, ?)
+                        business_id, profession, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'STOCK_RESERVED', ?, ?)
                     """)) {
                 insert.setString(1, transactionId);
                 insert.setString(2, key);
@@ -98,8 +98,10 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                 insert.setInt(7, amount);
                 insert.setLong(8, unitPriceMinor);
                 insert.setLong(9, total);
-                insert.setLong(10, now);
-                insert.setLong(11, now);
+                insert.setString(10, businessId);
+                insert.setString(11, profession);
+                insert.setLong(12, now);
+                insert.setLong(13, now);
                 insert.executeUpdate();
             }
             return findById(connection, transactionId);
@@ -146,22 +148,9 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     && trade.status() != ResidentTradeTransaction.Status.PAYMENT_PENDING)) {
                 return false;
             }
-            String businessId;
-            String profession;
-            try (var query = connection.prepareStatement("""
-                    SELECT n.town_id, rp.profession
-                    FROM npcs n JOIN resident_profiles rp ON rp.npc_id = n.id
-                    WHERE n.id = ?
-                    """)) {
-                query.setString(1, trade.residentId().toString());
-                try (ResultSet result = query.executeQuery()) {
-                    if (!result.next()) throw new SQLException("Trade resident no longer exists.");
-                    String townId = result.getString("town_id");
-                    businessId = townId == null || townId.isBlank()
-                            ? "resident:" + trade.residentId() : "town:" + townId;
-                    profession = result.getString("profession");
-                }
-            }
+            ReservedBusiness reservedBusiness = findReservedBusiness(connection, id);
+            String businessId = reservedBusiness.businessId();
+            String profession = reservedBusiness.profession();
             long now = System.currentTimeMillis();
             try (var credit = connection.prepareStatement("""
                     UPDATE resident_business_stock
@@ -222,22 +211,9 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
             if (trade == null || trade.status() != ResidentTradeTransaction.Status.REFUND_PENDING) {
                 return false;
             }
-            String businessId;
-            String profession;
-            try (var query = connection.prepareStatement("""
-                    SELECT n.town_id, rp.profession
-                    FROM npcs n JOIN resident_profiles rp ON rp.npc_id = n.id
-                    WHERE n.id = ?
-                    """)) {
-                query.setString(1, trade.residentId().toString());
-                try (ResultSet result = query.executeQuery()) {
-                    if (!result.next()) throw new SQLException("Trade resident no longer exists.");
-                    String townId = result.getString("town_id");
-                    businessId = townId == null || townId.isBlank()
-                            ? "resident:" + trade.residentId() : "town:" + townId;
-                    profession = result.getString("profession");
-                }
-            }
+            ReservedBusiness reservedBusiness = findReservedBusiness(connection, id);
+            String businessId = reservedBusiness.businessId();
+            String profession = reservedBusiness.profession();
             long now = System.currentTimeMillis();
             try (var credit = connection.prepareStatement("""
                     UPDATE resident_business_stock
@@ -302,22 +278,9 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
 
             // Only decisions proving that no item was delivered restore the reserved stock.
             if (resolution != ReviewResolution.DELIVERED) {
-                String businessId;
-                String profession;
-                try (var query = connection.prepareStatement("""
-                        SELECT n.town_id, rp.profession
-                        FROM npcs n JOIN resident_profiles rp ON rp.npc_id = n.id
-                        WHERE n.id = ?
-                        """)) {
-                    query.setString(1, trade.residentId().toString());
-                    try (ResultSet result = query.executeQuery()) {
-                        if (!result.next()) throw new SQLException("Trade resident no longer exists.");
-                        String townId = result.getString("town_id");
-                        businessId = townId == null || townId.isBlank()
-                                ? "resident:" + trade.residentId() : "town:" + townId;
-                        profession = result.getString("profession");
-                    }
-                }
+                ReservedBusiness reservedBusiness = findReservedBusiness(connection, id);
+                String businessId = reservedBusiness.businessId();
+                String profession = reservedBusiness.profession();
                 long now = System.currentTimeMillis();
                 try (var credit = connection.prepareStatement("""
                         UPDATE resident_business_stock
@@ -421,6 +384,29 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                 return update.executeUpdate();
             }
         });
+    }
+
+    private record ReservedBusiness(String businessId, String profession) { }
+
+    private static ReservedBusiness findReservedBusiness(Connection connection, String transactionId)
+            throws SQLException {
+        try (var query = connection.prepareStatement("""
+                SELECT business_id, profession
+                FROM resident_trade_transactions
+                WHERE transaction_id = ?
+                """)) {
+            query.setString(1, transactionId);
+            try (ResultSet result = query.executeQuery()) {
+                if (!result.next()) throw new SQLException("Trade reservation origin is missing.");
+                String businessId = result.getString("business_id");
+                String profession = result.getString("profession");
+                if (businessId == null || businessId.isBlank()
+                        || profession == null || profession.isBlank()) {
+                    throw new SQLException("Trade reservation origin is incomplete; stock release was withheld.");
+                }
+                return new ReservedBusiness(businessId, profession);
+            }
+        }
     }
 
     private static boolean consumeQualityBatches(Connection connection, String businessId,
