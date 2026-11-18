@@ -144,10 +144,14 @@ public final class ResidentTradeService {
                 case DELIVERED -> repository.transition(trade.transactionId(),
                         ResidentTradeTransaction.Status.PAID,
                         ResidentTradeTransaction.Status.DELIVERED, null, result.detail())
-                        .thenApply(changed -> changed
-                                ? new PurchaseResult(Outcome.DELIVERED, trade.transactionId(), result.detail())
-                                : new PurchaseResult(Outcome.REVIEW_REQUIRED, trade.transactionId(),
-                                        "Items may be delivered; final state requires reconciliation."));
+                        .handle((changed, persistenceError) -> {
+                            if (persistenceError != null || !Boolean.TRUE.equals(changed)) {
+                                String detail = "Items may be delivered; final state requires reconciliation."
+                                        + (persistenceError == null ? "" : " Persistence error: " + concise(persistenceError));
+                                return review(trade, ResidentTradeTransaction.Status.PAID, detail);
+                            }
+                            return completed(Outcome.DELIVERED, trade.transactionId(), result.detail());
+                        }).thenCompose(future -> future);
                 case REJECTED -> startRefund(trade,
                         safeDetail(result.detail(), "Delivery rejected; starting compensation."));
                 case UNKNOWN -> review(trade, ResidentTradeTransaction.Status.PAID,
