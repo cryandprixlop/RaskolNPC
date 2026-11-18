@@ -39,7 +39,7 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_trade_transactions", "profession");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(19, schemaVersion(connection));
+            assertEquals(20, schemaVersion(connection));
             assertEquals(20, migrationCount(connection));
         }
     }
@@ -98,7 +98,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(19, schemaVersion(connection));
+            assertEquals(20, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
@@ -147,7 +147,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(19, schemaVersion(connection));
+            assertEquals(20, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT business_id, profession, material, amount, quality,
@@ -228,7 +228,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(19, migrationCount(connection));
+            assertEquals(20, migrationCount(connection));
         }
     }
 
