@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 19;
+    private static final int CURRENT_SCHEMA_VERSION = 20;
 
     private DatabaseMigrations() {
     }
@@ -46,6 +46,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 17)) applyResidentSkillExperienceSchema(connection);
         if (!isApplied(connection, 18)) applyResidentBusinessStockBatchSchema(connection);
         if (!isApplied(connection, 19)) applyResidentTradeJournalSchema(connection);
+        if (!isApplied(connection, 20)) applyResidentTradeOriginSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -888,5 +889,45 @@ public final class DatabaseMigrations {
         }
     }
 
+
+
+    private static void applyResidentTradeOriginSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE resident_trade_transactions ADD COLUMN business_id TEXT");
+            statement.execute("ALTER TABLE resident_trade_transactions ADD COLUMN profession TEXT");
+            statement.execute("""
+                    UPDATE resident_trade_transactions
+                    SET business_id = CASE
+                        WHEN npcs.town_id IS NULL OR trim(npcs.town_id) = ''
+                            THEN 'resident:' || resident_trade_transactions.resident_npc_id
+                        ELSE 'town:' || npcs.town_id
+                    END,
+                    profession = resident_profiles.profession
+                    FROM npcs
+                    JOIN resident_profiles ON resident_profiles.npc_id = npcs.id
+                    WHERE resident_trade_transactions.resident_npc_id = npcs.id
+                    """);
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_origin
+                    ON resident_trade_transactions(business_id, profession)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (20)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
 
 }
