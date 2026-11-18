@@ -102,7 +102,7 @@ Invalid YAML does not replace the currently active dialogue catalog. After editi
 
 ## Persistence and recovery
 
-SQLite migrations currently cover NPC identity, resident profiles, schedules, quests, reputation, review records, reward snapshots, and business stock. The resident quest flow is designed to prevent duplicate rewards after replay or restart. Review records should be inspected before manual resolution; `complete` means an administrator has verified that the delivery should be treated as completed.
+SQLite migrations currently cover NPC identity, resident profiles, schedules, quests, reputation, review records, reward snapshots, business stock, and the provider-neutral trade journal (schema version 21). Trade rows retain the resident's historical NPC identifier and original business/profession without a foreign key to the live resident profile, so deleting a resident does not erase transaction audit history. Resident deletion is blocked while any trade is in `STOCK_RESERVED`, `PAYMENT_PENDING`, `PAID`, `REFUND_PENDING`, or `REVIEW_REQUIRED`; terminal `DELIVERED`, `CANCELLED`, and `REFUNDED` trades remain in the audit journal after deletion. The resident quest flow is designed to prevent duplicate rewards after replay or restart. Review records should be inspected before manual resolution; `complete` means an administrator has verified that the delivery should be treated as completed.
 
 ## Performance notes
 
