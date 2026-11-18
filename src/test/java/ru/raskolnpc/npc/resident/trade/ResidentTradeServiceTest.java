@@ -129,6 +129,28 @@ class ResidentTradeServiceTest {
 
 
     @Test
+    void concurrentIdempotentRequestDoesNotMoveWinningPaymentIntoReview() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null))
+                .thenReturn(CompletableFuture.completedFuture(false));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        assertEquals(trade.transactionId(), result.transactionId());
+        verify(repository, times(1)).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null);
+        verifyNoMoreInteractions(repository);
+        verifyNoInteractions(economy, delivery);
+    }
+
+    @Test
     void idempotentRetryOfPendingPaymentMovesToReviewWithoutChargingAgain() {
         ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.PAYMENT_PENDING);
         reserve(trade);
