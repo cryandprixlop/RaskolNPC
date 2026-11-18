@@ -107,6 +107,67 @@ class GuardSquadCombatTest {
         verify(followerDecoy, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
     }
 
+    @Test
+    void livingFollowerTakesOverTargetSelectionWhenStableLeaderIsUnavailable() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord firstGuard = NpcRecord.create(
+                NpcType.GUARD, "First guard", null, "town-a", "nation-a", "{}");
+        NpcRecord secondGuard = NpcRecord.create(
+                NpcType.GUARD, "Second guard", null, "town-a", "nation-a", "{}");
+        NpcRecord nearbyTargetRecord = NpcRecord.create(
+                NpcType.GUARD, "Nearby hostile", null, "town-b", "nation-b", "{}");
+        NpcRecord distantTargetRecord = NpcRecord.create(
+                NpcType.GUARD, "Other hostile", null, "town-c", "nation-c", "{}");
+        for (NpcRecord record : List.of(
+                firstGuard, secondGuard, nearbyTargetRecord, distantTargetRecord)) {
+            registry.register(record);
+        }
+
+        List<NpcRecord> orderedGuards = List.of(firstGuard, secondGuard).stream()
+                .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
+                .toList();
+        NpcRecord leader = orderedGuards.getFirst();
+        NpcRecord follower = orderedGuards.getLast();
+
+        LivingEntity unavailableLeader = mock(LivingEntity.class);
+        LivingEntity livingFollower = mock(LivingEntity.class);
+        LivingEntity nearbyTarget = mock(LivingEntity.class);
+        LivingEntity distantTarget = mock(LivingEntity.class);
+        Location followerLocation = new Location(world, 0.5, 64, 0.5);
+        configure(unavailableLeader, new Location(world, 0.5, 64, 1.5));
+        configure(livingFollower, followerLocation);
+        configure(nearbyTarget, new Location(world, 2.5, 64, 0.5));
+        configure(distantTarget, new Location(world, 7.5, 64, 0.5));
+        when(unavailableLeader.isValid()).thenReturn(false);
+        when(livingFollower.getNearbyEntities(12.0, 12.0, 12.0))
+                .thenReturn(List.of(distantTarget, nearbyTarget));
+
+        NpcEntityManager entities = mock(NpcEntityManager.class);
+        when(entities.find(leader.id())).thenReturn(Optional.of(unavailableLeader));
+        when(entities.find(follower.id())).thenReturn(Optional.of(livingFollower));
+        when(entities.getNpcId(nearbyTarget)).thenReturn(Optional.of(nearbyTargetRecord.id()));
+        when(entities.getNpcId(distantTarget)).thenReturn(Optional.of(distantTargetRecord.id()));
+
+        GuardSquad squad = new GuardSquad(UUID.randomUUID(), "Alpha", UUID.randomUUID(),
+                100L, List.of(follower.id(), leader.id()));
+        GuardSquadRepository squadRepository = mock(GuardSquadRepository.class);
+        when(squadRepository.findAll())
+                .thenReturn(CompletableFuture.completedFuture(List.of(squad)));
+        GuardSquadService squads = new GuardSquadService(registry, squadRepository, 10);
+        squads.refreshMemberships().join();
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (actor, victim) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+        controller.setSquadService(squads);
+
+        controller.tick();
+
+        verify(nearbyTarget).damage(2.0, livingFollower);
+        verify(distantTarget, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
+    }
+
     private void configure(LivingEntity entity, Location location) {
         when(entity.isValid()).thenReturn(true);
         when(entity.isDead()).thenReturn(false);
