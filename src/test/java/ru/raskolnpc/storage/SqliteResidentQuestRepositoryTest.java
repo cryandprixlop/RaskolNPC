@@ -729,6 +729,26 @@ class SqliteResidentQuestRepositoryTest {
                 ResidentTradeTransaction.Status.DELIVERED, 0).join().getFirst().transactionId());
     }
 
+
+    @Test
+    void tradeReservationRejectsInvalidAmountsPricesAndOverflowBeforeDatabaseWork() {
+        UUID buyer = UUID.randomUUID();
+        NpcRecord resident = createResident();
+
+        assertThrows(IllegalArgumentException.class, () -> trades.reserve(
+                "trade-zero-amount", buyer, resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 0, 100));
+        assertThrows(IllegalArgumentException.class, () -> trades.reserve(
+                "trade-negative-price", buyer, resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 1, -1));
+        assertThrows(ArithmeticException.class, () -> trades.reserve(
+                "trade-price-overflow", buyer, resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 2, Long.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> trades.reserve(
+                " ", buyer, resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 1, 100));
+    }
+
     private NpcRecord createResident() {
         return createResident(ResidentProfession.MINER, "town");
     }
