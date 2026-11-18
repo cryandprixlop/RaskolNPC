@@ -707,20 +707,26 @@ class SqliteResidentQuestRepositoryTest {
                 ResidentProductQuality.STANDARD, 3, 100).join().orElseThrow();
 
         assertEquals(2, trades.recoverUnfinished().join());
+        List<ResidentTradeTransaction> all = trades.findByStatus(
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, 25).join();
+        assertEquals(2, all.size());
+        ResidentTradeTransaction oldest = all.getFirst();
+        ResidentTradeTransaction newest = all.getLast();
+
         List<ResidentTradeTransaction> limited = trades.findByStatus(
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, 1).join();
         assertEquals(1, limited.size());
-        assertEquals(first.transactionId(), limited.getFirst().transactionId());
+        assertEquals(oldest.transactionId(), limited.getFirst().transactionId());
 
-        assertTrue(trades.resolveReview(first.transactionId(),
+        assertTrue(trades.resolveReview(oldest.transactionId(),
                 ResidentTradeRepository.ReviewResolution.DELIVERED,
                 "Verified delivery in test.").join());
         List<ResidentTradeTransaction> remaining = trades.findByStatus(
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, 25).join();
         assertEquals(1, remaining.size());
-        assertEquals(second.transactionId(), remaining.getFirst().transactionId());
-        assertTrue(trades.findByStatus(ResidentTradeTransaction.Status.DELIVERED, 0)
-                .join().isEmpty() == false);
+        assertEquals(newest.transactionId(), remaining.getFirst().transactionId());
+        assertEquals(oldest.transactionId(), trades.findByStatus(
+                ResidentTradeTransaction.Status.DELIVERED, 0).join().getFirst().transactionId());
     }
 
     private NpcRecord createResident() {
