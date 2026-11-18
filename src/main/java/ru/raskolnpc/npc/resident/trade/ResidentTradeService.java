@@ -74,8 +74,11 @@ public final class ResidentTradeService {
                 ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null)
                 .thenCompose(changed -> {
                     if (!changed) {
-                        return review(trade, ResidentTradeTransaction.Status.STOCK_RESERVED,
-                                "Could not persist PAYMENT_PENDING before provider call.");
+                        // Another request may have claimed this idempotency key after reserve()
+                        // returned STOCK_RESERVED. Do not force that in-flight payment into review:
+                        // the winning request owns the provider call and its state transitions.
+                        return completed(Outcome.REVIEW_REQUIRED, trade.transactionId(),
+                                "This purchase is already being processed; no second payment was started.");
                     }
                     return safeCharge(trade);
                 });
