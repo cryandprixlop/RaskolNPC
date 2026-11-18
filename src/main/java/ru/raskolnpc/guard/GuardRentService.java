@@ -214,7 +214,16 @@ public final class GuardRentService {
                                 logFailure("Could not inspect existing rent payment for "
                                         + record.id(), lookupError);
                             } else if (existing.isPresent()) {
-                                handleExistingPayment(existing.get());
+                                handleExistingPayment(existing.get()).whenComplete((ignored, applyError) -> {
+                                    if (applyError != null) {
+                                        logFailure("Could not apply existing rent payment for "
+                                                + record.id(), applyError);
+                                    }
+                                    // Keep the guard locked until the durable payment result has
+                                    // been applied to the NPC record and the registry is refreshed.
+                                    inFlight.remove(record.id());
+                                });
+                                return;
                             }
                             inFlight.remove(record.id());
                         }));
@@ -273,22 +282,21 @@ public final class GuardRentService {
         }));
     }
 
-    private void handleExistingPayment(GuardRentPayment payment) {
-        switch (payment.status()) {
-            case PAID -> applyKnownPayment(payment, true).whenComplete((ignored, error) -> {
-                if (error != null) logFailure("Could not recover paid rent " + payment.paymentId(), error);
-            });
-            case FAILED -> applyKnownPayment(payment, false).whenComplete((ignored, error) -> {
-                if (error != null) logFailure("Could not recover failed rent " + payment.paymentId(), error);
-            });
-            case IN_PROGRESS, REVIEW_REQUIRED ->
-                    plugin.getLogger().warning("Rent payment " + payment.paymentId()
-                            + " is not eligible for automatic retry (status "
-                            + payment.status() + ").");
+    private CompletableFuture<Void> handleExistingPayment(GuardRentPayment payment) {
+        return switch (payment.status()) {
+            case PAID -> applyKnownPayment(payment, true);
+            case FAILED -> applyKnownPayment(payment, false);
+            case IN_PROGRESS, REVIEW_REQUIRED -> {
+                plugin.getLogger().warning("Rent payment " + payment.paymentId()
+                        + " is not eligible for automatic retry (status "
+                        + payment.status() + ").");
+                yield CompletableFuture.completedFuture(null);
+            }
             case PAID_APPLIED, DEBT_APPLIED -> {
                 // The ledger already records that the NPC-side effect was committed.
+                yield CompletableFuture.completedFuture(null);
             }
-        }
+        };
     }
 
     /** Returns unresolved rent operations for the administrative review screen. */
