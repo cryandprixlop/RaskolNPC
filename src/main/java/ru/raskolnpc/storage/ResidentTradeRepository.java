@@ -29,6 +29,10 @@ public interface ResidentTradeRepository {
 
     CompletableFuture<Optional<ResidentTradeTransaction>> find(String transactionId);
 
+    /** Lists a bounded set of transactions in one state, oldest first for admin reconciliation. */
+    CompletableFuture<java.util.List<ResidentTradeTransaction>> findByStatus(
+            ResidentTradeTransaction.Status status, int limit);
+
     CompletableFuture<Optional<ResidentTradeTransaction>> findByIdempotencyKey(String idempotencyKey);
 
     CompletableFuture<Integer> recoverUnfinished();
