@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 20;
+    private static final int CURRENT_SCHEMA_VERSION = 21;
 
     private DatabaseMigrations() {
     }
@@ -47,6 +47,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 18)) applyResidentBusinessStockBatchSchema(connection);
         if (!isApplied(connection, 19)) applyResidentTradeJournalSchema(connection);
         if (!isApplied(connection, 20)) applyResidentTradeOriginSchema(connection);
+        if (!isApplied(connection, 21)) applyResidentTradeAuditRetentionSchema(connection);
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
@@ -915,6 +916,85 @@ public final class DatabaseMigrations {
                     ON resident_trade_transactions(business_id, profession)
                     """);
             statement.execute("INSERT INTO schema_migrations(version) VALUES (20)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+
+    /**
+     * Trade rows are an immutable audit journal, not owned by the live resident profile.
+     * Keep the historical NPC id while allowing deletion of residents with terminal trades.
+     */
+    private static void applyResidentTradeAuditRetentionSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE resident_trade_transactions_new (
+                        transaction_id TEXT PRIMARY KEY,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        buyer_uuid TEXT NOT NULL,
+                        resident_npc_id TEXT NOT NULL,
+                        material TEXT NOT NULL,
+                        quality TEXT NOT NULL CHECK (quality IN (
+                            'BASIC', 'STANDARD', 'FINE', 'MASTERWORK'
+                        )),
+                        amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 1000000),
+                        unit_price_minor INTEGER NOT NULL CHECK (unit_price_minor >= 0),
+                        total_price_minor INTEGER NOT NULL CHECK (total_price_minor >= 0),
+                        status TEXT NOT NULL CHECK (status IN (
+                            'STOCK_RESERVED', 'PAYMENT_PENDING', 'PAID', 'DELIVERED',
+                            'CANCELLED', 'REFUND_PENDING', 'REFUNDED', 'REVIEW_REQUIRED'
+                        )),
+                        provider_reference TEXT,
+                        last_error TEXT,
+                        created_at INTEGER NOT NULL CHECK (created_at > 0),
+                        updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+                        business_id TEXT,
+                        profession TEXT,
+                        CHECK (total_price_minor = unit_price_minor * amount)
+                    )
+                    """);
+            statement.execute("""
+                    INSERT INTO resident_trade_transactions_new(
+                        transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
+                        material, quality, amount, unit_price_minor, total_price_minor,
+                        status, provider_reference, last_error, created_at, updated_at,
+                        business_id, profession
+                    )
+                    SELECT transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
+                           material, quality, amount, unit_price_minor, total_price_minor,
+                           status, provider_reference, last_error, created_at, updated_at,
+                           business_id, profession
+                    FROM resident_trade_transactions
+                    """);
+            statement.execute("DROP TABLE resident_trade_transactions");
+            statement.execute("ALTER TABLE resident_trade_transactions_new RENAME TO resident_trade_transactions");
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_buyer
+                    ON resident_trade_transactions(buyer_uuid, created_at)
+                    """);
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_status
+                    ON resident_trade_transactions(status, updated_at)
+                    """);
+            statement.execute("""
+                    CREATE INDEX idx_resident_trade_origin
+                    ON resident_trade_transactions(business_id, profession)
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (21)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
