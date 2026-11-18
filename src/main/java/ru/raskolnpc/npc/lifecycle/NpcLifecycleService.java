@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class NpcLifecycleService {
     private static final String RENT_DELETION_BLOCK_PREFIX =
             "Cannot delete guard while rent payment requires reconciliation: ";
+    private static final String TRADE_DELETION_BLOCK_PREFIX =
+            "Cannot delete resident while a trade requires reconciliation: ";
 
     private final NpcRepository repository;
     private final NpcRegistry registry;
@@ -156,6 +158,11 @@ public final class NpcLifecycleService {
                     throw new CompletionException(new NpcLifecycleException(
                             blocked.getMessage(), blocked));
                 }
+                SQLException blockedTrade = findBlockedTradeDeletion(error);
+                if (blockedTrade != null) {
+                    throw new CompletionException(new NpcLifecycleException(
+                            blockedTrade.getMessage(), blockedTrade));
+                }
                 throw new CompletionException(unwrap(error));
             }
             if (deleted) registry.unregister(id);
@@ -169,6 +176,19 @@ public final class NpcLifecycleService {
             if (current instanceof SQLException sqlException
                     && sqlException.getMessage() != null
                     && sqlException.getMessage().startsWith(RENT_DELETION_BLOCK_PREFIX)) {
+                return sqlException;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static SQLException findBlockedTradeDeletion(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof SQLException sqlException
+                    && sqlException.getMessage() != null
+                    && sqlException.getMessage().startsWith(TRADE_DELETION_BLOCK_PREFIX)) {
                 return sqlException;
             }
             current = current.getCause();
