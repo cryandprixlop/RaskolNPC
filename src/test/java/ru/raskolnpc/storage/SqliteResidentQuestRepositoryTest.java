@@ -695,6 +695,34 @@ class SqliteResidentQuestRepositoryTest {
                 trades.find(delivered.transactionId()).join().orElseThrow().status());
     }
 
+    @Test
+    void tradeReviewQueueIsFilteredOldestFirstAndBounded() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 20, 64);
+        ResidentTradeTransaction first = trades.reserve("review-list-1",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 2, 100).join().orElseThrow();
+        ResidentTradeTransaction second = trades.reserve("review-list-2",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 3, 100).join().orElseThrow();
+
+        assertEquals(2, trades.recoverUnfinished().join());
+        List<ResidentTradeTransaction> limited = trades.findByStatus(
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, 1).join();
+        assertEquals(1, limited.size());
+        assertEquals(first.transactionId(), limited.getFirst().transactionId());
+
+        assertTrue(trades.resolveReview(first.transactionId(),
+                ResidentTradeRepository.ReviewResolution.DELIVERED,
+                "Verified delivery in test.").join());
+        List<ResidentTradeTransaction> remaining = trades.findByStatus(
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, 25).join();
+        assertEquals(1, remaining.size());
+        assertEquals(second.transactionId(), remaining.getFirst().transactionId());
+        assertTrue(trades.findByStatus(ResidentTradeTransaction.Status.DELIVERED, 0)
+                .join().isEmpty() == false);
+    }
+
     private NpcRecord createResident() {
         return createResident(ResidentProfession.MINER, "town");
     }
