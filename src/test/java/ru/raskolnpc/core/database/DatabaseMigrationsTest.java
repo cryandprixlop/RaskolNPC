@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(19, schemaVersion(connection));
+            assertEquals(20, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
@@ -35,10 +35,12 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "guard_conditions", "injury_severity");
             assertColumnExists(connection, "guard_conditions", "last_injury_recovery_at");
             assertColumnExists(connection, "resident_skills", "experience");
+            assertColumnExists(connection, "resident_trade_transactions", "business_id");
+            assertColumnExists(connection, "resident_trade_transactions", "profession");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(19, schemaVersion(connection));
-            assertEquals(19, migrationCount(connection));
+            assertEquals(20, migrationCount(connection));
         }
     }
 
@@ -161,6 +163,54 @@ class DatabaseMigrationsTest {
                 assertEquals(12345, result.getLong("created_at"));
                 assertEquals("LEGACY", result.getString("source_type"));
                 assertFalse(result.next(), "Zero-amount stock must not create an empty batch.");
+            }
+        }
+    }
+
+    @Test
+    void versionNineteenUpgradeBackfillsImmutableTradeOrigin() throws Exception {
+        var file = temporaryDirectory.resolve("version-nineteen.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
+                for (int version = 1; version <= 19; version++) {
+                    statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
+                }
+                statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY, town_id TEXT)");
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY, profession TEXT NOT NULL)");
+                statement.execute("""
+                        CREATE TABLE resident_trade_transactions (
+                            transaction_id TEXT PRIMARY KEY,
+                            resident_npc_id TEXT NOT NULL,
+                            business_id TEXT,
+                            profession TEXT
+                        )
+                        """);
+                statement.execute("INSERT INTO npcs(id, town_id) VALUES ('resident-town', 'town-7')");
+                statement.execute("INSERT INTO npcs(id, town_id) VALUES ('resident-solo', NULL)");
+                statement.execute("INSERT INTO resident_profiles(npc_id, profession) VALUES ('resident-town', 'BLACKSMITH')");
+                statement.execute("INSERT INTO resident_profiles(npc_id, profession) VALUES ('resident-solo', 'FARMER')");
+                statement.execute("INSERT INTO resident_trade_transactions(transaction_id, resident_npc_id) VALUES ('trade-1', 'resident-town')");
+                statement.execute("INSERT INTO resident_trade_transactions(transaction_id, resident_npc_id) VALUES ('trade-2', 'resident-solo')");
+            }
+
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(20, schemaVersion(connection));
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("""
+                         SELECT transaction_id, business_id, profession
+                         FROM resident_trade_transactions ORDER BY transaction_id
+                         """)) {
+                assertTrue(result.next());
+                assertEquals("trade-1", result.getString("transaction_id"));
+                assertEquals("town:town-7", result.getString("business_id"));
+                assertEquals("BLACKSMITH", result.getString("profession"));
+                assertTrue(result.next());
+                assertEquals("trade-2", result.getString("transaction_id"));
+                assertEquals("resident:resident-solo", result.getString("business_id"));
+                assertEquals("FARMER", result.getString("profession"));
+                assertFalse(result.next());
             }
         }
     }
