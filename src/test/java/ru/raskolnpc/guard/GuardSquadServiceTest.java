@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.guard.model.GuardSquad;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardSquadRepository;
@@ -75,7 +76,7 @@ class GuardSquadServiceTest {
         NpcId second = NpcId.fromString("00000000-0000-0000-0000-000000000002");
         NpcId third = NpcId.fromString("00000000-0000-0000-0000-000000000003");
         for (NpcId id : List.of(first, second, third)) {
-            registry.register(new NpcRecord(id, NpcType.GUARD, "Guard", null, "town", "nation", "{}"));
+            registry.register(new NpcRecord(id, NpcType.GUARD, "Guard", null, "town", "nation", NpcState.UNLOADED, "{}", null, null, null, null));
         }
         UUID squadId = UUID.randomUUID();
         GuardSquad before = new GuardSquad(
@@ -105,7 +106,7 @@ class GuardSquadServiceTest {
         NpcRegistry registry = new NpcRegistry();
         NpcId guard = NpcId.fromString("00000000-0000-0000-0000-000000000011");
         registry.register(new NpcRecord(
-                guard, NpcType.GUARD, "Guard", null, "town", "nation", "{}"));
+                guard, NpcType.GUARD, "Guard", null, "town", "nation", NpcState.UNLOADED, "{}", null, null, null, null));
         GuardSquad squad = new GuardSquad(
                 UUID.randomUUID(), "Watch", UUID.randomUUID(), 100L, List.of(guard));
         GuardSquadRepository repository = mock(GuardSquadRepository.class);
