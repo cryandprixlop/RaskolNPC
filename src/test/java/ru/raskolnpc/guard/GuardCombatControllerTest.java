@@ -115,6 +115,19 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void keepsCombatTickAliveWhenDamageProviderThrowsLinkageError() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+        doThrow(new NoSuchMethodError("Bukkit damage API mismatch"))
+                .when(target).damage(2.0, attacker);
+
+        assertDoesNotThrow(controller::tick);
+        verify(target).damage(2.0, attacker);
+    }
+
+    @Test
     void damagesOnlyRegisteredNpcWithVerifiedHostileDiplomacy() {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
