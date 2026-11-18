@@ -55,8 +55,10 @@ class DatabaseMigrationsTest {
                     statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
                 }
                 statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY)");
-                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id))");
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id), profession TEXT NOT NULL)");
                 statement.execute("CREATE TABLE resident_skills(npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id), profession TEXT NOT NULL, skill_level TEXT NOT NULL, PRIMARY KEY(npc_id, profession))");
+                statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY, town_id TEXT)");
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id), profession TEXT NOT NULL)");
                 statement.execute("""
                         CREATE TABLE resident_business_stock (
                             business_id TEXT NOT NULL, profession TEXT NOT NULL,
