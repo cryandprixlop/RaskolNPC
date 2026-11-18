@@ -72,6 +72,49 @@ class GuardCombatControllerTest {
     }
 
     @Test
+    void failsClosedWhenDiplomacyProviderThrowsLinkageError() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> { throw new NoSuchMethodError("Towny API mismatch"); });
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        assertDoesNotThrow(controller::tick);
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void failsClosedWhenPlayerSubjectResolverThrowsLinkageError() {
+        Player player = mock(Player.class);
+        when(player.isValid()).thenReturn(true);
+        when(player.isDead()).thenReturn(false);
+        when(player.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(player));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, ignored -> { throw new NoSuchMethodError("Towny player API mismatch"); });
+
+        assertDoesNotThrow(controller::tick);
+        verify(player, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void failsClosedWhenWorldGuardQueryThrowsLinkageError() {
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenThrow(new NoSuchMethodError("WorldGuard API mismatch"));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true, () -> true);
+
+        assertDoesNotThrow(controller::tick);
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
     void damagesOnlyRegisteredNpcWithVerifiedHostileDiplomacy() {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
