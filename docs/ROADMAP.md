@@ -16,7 +16,7 @@ The active development branch contains the resident work:
 - Town business stock, delivery-demand gating, atomic deposits/withdrawals, and configurable daily consumption.
 - Administrative commands and an operator guide.
 
-The resource-side supply/demand loop is implemented. Product quality is the next resident-economy increment; its batch-based storage contract and migration/compatibility requirements are documented in `docs/RESIDENT-PRODUCT-QUALITY.md`. Quality is not exposed in gameplay until all stock mutation paths preserve batch metadata. Player-currency rewards and a player-money marketplace remain intentionally disabled until the server's economy provider and transaction policy are selected. No economy provider is assumed.
+The resource-side supply/demand loop is implemented. Product quality is the next resident-economy increment; its batch-based storage contract and migration/compatibility requirements are documented in `docs/RESIDENT-PRODUCT-QUALITY.md`. Quality is not exposed in gameplay until all stock mutation paths preserve batch metadata. Player-currency rewards and a player-money marketplace remain intentionally disabled until the server's economy provider and transaction policy are selected. The provider-neutral durable trade journal now has an admin-only evidence-backed review/list/resolve workflow; it does not perform external payment or inventory verification. No economy provider is assumed.
 
 The resident milestone still needs full in-server acceptance and load testing at the global NPC cap of 150. The work remains on the open draft pull request and has not been merged into `main`.
 
