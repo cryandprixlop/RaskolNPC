@@ -168,6 +168,77 @@ class GuardSquadCombatTest {
         verify(distantTarget, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
     }
 
+    @Test
+    void squadDropsDeadSharedTargetAndSelectsAnotherHostile() {
+        NpcRegistry registry = new NpcRegistry();
+        NpcRecord firstGuard = NpcRecord.create(
+                NpcType.GUARD, "First guard", null, "town-a", "nation-a", "{}");
+        NpcRecord secondGuard = NpcRecord.create(
+                NpcType.GUARD, "Second guard", null, "town-a", "nation-a", "{}");
+        NpcRecord firstTargetRecord = NpcRecord.create(
+                NpcType.GUARD, "First target", null, "town-b", "nation-b", "{}");
+        NpcRecord replacementTargetRecord = NpcRecord.create(
+                NpcType.GUARD, "Replacement target", null, "town-c", "nation-c", "{}");
+        for (NpcRecord record : List.of(
+                firstGuard, secondGuard, firstTargetRecord, replacementTargetRecord)) {
+            registry.register(record);
+        }
+
+        List<NpcRecord> orderedGuards = List.of(firstGuard, secondGuard).stream()
+                .sorted(java.util.Comparator.comparing(record -> record.id().toString()))
+                .toList();
+        NpcRecord leader = orderedGuards.getFirst();
+        NpcRecord follower = orderedGuards.getLast();
+
+        LivingEntity leaderEntity = mock(LivingEntity.class);
+        LivingEntity followerEntity = mock(LivingEntity.class);
+        LivingEntity firstTarget = mock(LivingEntity.class);
+        LivingEntity replacementTarget = mock(LivingEntity.class);
+        configure(leaderEntity, new Location(world, 0.5, 64, 0.5));
+        configure(followerEntity, new Location(world, 0.5, 64, 1.5));
+        configure(firstTarget, new Location(world, 2.5, 64, 0.5));
+        configure(replacementTarget, new Location(world, 4.5, 64, 0.5));
+        when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
+                .thenReturn(List.of(firstTarget, replacementTarget));
+        when(followerEntity.getNearbyEntities(12.0, 12.0, 12.0))
+                .thenReturn(List.of(firstTarget, replacementTarget));
+        doThrow(new IllegalStateException("simulated transient damage failure"))
+                .when(firstTarget).damage(2.0, leaderEntity);
+        doThrow(new IllegalStateException("simulated transient damage failure"))
+                .when(firstTarget).damage(2.0, followerEntity);
+
+        NpcEntityManager entities = mock(NpcEntityManager.class);
+        when(entities.find(leader.id())).thenReturn(Optional.of(leaderEntity));
+        when(entities.find(follower.id())).thenReturn(Optional.of(followerEntity));
+        when(entities.getNpcId(firstTarget)).thenReturn(Optional.of(firstTargetRecord.id()));
+        when(entities.getNpcId(replacementTarget))
+                .thenReturn(Optional.of(replacementTargetRecord.id()));
+
+        GuardSquad squad = new GuardSquad(UUID.randomUUID(), "Alpha", UUID.randomUUID(),
+                100L, List.of(follower.id(), leader.id()));
+        GuardSquadRepository squadRepository = mock(GuardSquadRepository.class);
+        when(squadRepository.findAll())
+                .thenReturn(CompletableFuture.completedFuture(List.of(squad)));
+        GuardSquadService squads = new GuardSquadService(registry, squadRepository, 10);
+        squads.refreshMemberships().join();
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (actor, victim) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+        controller.setSquadService(squads);
+
+        controller.tick();
+        verify(firstTarget).damage(2.0, leaderEntity);
+        verify(firstTarget).damage(2.0, followerEntity);
+
+        when(firstTarget.isDead()).thenReturn(true);
+        controller.tick();
+
+        verify(replacementTarget).damage(2.0, leaderEntity);
+        verify(replacementTarget).damage(2.0, followerEntity);
+    }
+
     private void configure(LivingEntity entity, Location location) {
         when(entity.isValid()).thenReturn(true);
         when(entity.isDead()).thenReturn(false);
