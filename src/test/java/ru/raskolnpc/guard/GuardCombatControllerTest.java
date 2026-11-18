@@ -595,8 +595,8 @@ class GuardCombatControllerTest {
         when(sharedTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
         when(entities.getNpcId(sharedTarget)).thenReturn(Optional.of(hostile.id()));
 
-        List<LivingEntity> guards = new java.util.ArrayList<>(150);
-        for (int index = 0; index < 150; index++) {
+        List<LivingEntity> guards = new java.util.ArrayList<>(149);
+        for (int index = 0; index < 149; index++) {
             int kingdom = index / 30;
             NpcRecord record = NpcRecord.create(
                     NpcType.GUARD, "Guard " + index, null,
