@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(20, schemaVersion(connection));
+            assertEquals(21, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
@@ -39,8 +39,8 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_trade_transactions", "profession");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(20, schemaVersion(connection));
-            assertEquals(20, migrationCount(connection));
+            assertEquals(21, schemaVersion(connection));
+            assertEquals(21, migrationCount(connection));
         }
     }
 
@@ -98,7 +98,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(20, schemaVersion(connection));
+            assertEquals(21, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
@@ -147,7 +147,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(20, schemaVersion(connection));
+            assertEquals(21, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT business_id, profession, material, amount, quality,
@@ -196,7 +196,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(20, schemaVersion(connection));
+            assertEquals(21, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT transaction_id, business_id, profession
@@ -216,6 +216,75 @@ class DatabaseMigrationsTest {
     }
 
     @Test
+    void versionTwentyUpgradeKeepsTradeAuditAfterResidentProfileDeletion() throws Exception {
+        var file = temporaryDirectory.resolve("version-twenty.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
+                statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
+                for (int version = 1; version <= 20; version++) {
+                    statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
+                }
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY)");
+                statement.execute("""
+                        CREATE TABLE resident_trade_transactions (
+                            transaction_id TEXT PRIMARY KEY,
+                            idempotency_key TEXT NOT NULL UNIQUE,
+                            buyer_uuid TEXT NOT NULL,
+                            resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id) ON DELETE RESTRICT,
+                            material TEXT NOT NULL,
+                            quality TEXT NOT NULL,
+                            amount INTEGER NOT NULL,
+                            unit_price_minor INTEGER NOT NULL,
+                            total_price_minor INTEGER NOT NULL,
+                            status TEXT NOT NULL,
+                            provider_reference TEXT,
+                            last_error TEXT,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            business_id TEXT,
+                            profession TEXT
+                        )
+                        """);
+                statement.execute("INSERT INTO resident_profiles(npc_id) VALUES ('resident-archive')");
+                statement.execute("""
+                        INSERT INTO resident_trade_transactions(
+                            transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
+                            material, quality, amount, unit_price_minor, total_price_minor,
+                            status, created_at, updated_at, business_id, profession
+                        ) VALUES (
+                            'trade-archive', 'key-archive', 'buyer-1', 'resident-archive',
+                            'IRON_INGOT', 'STANDARD', 2, 50, 100,
+                            'DELIVERED', 100, 100, 'town:archive', 'MINER'
+                        )
+                        """);
+            }
+
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(21, schemaVersion(connection));
+            try (var statement = connection.createStatement()) {
+                try (var foreignKeys = statement.executeQuery(
+                        "PRAGMA foreign_key_list(resident_trade_transactions)")) {
+                    assertFalse(foreignKeys.next(),
+                            "Trade audit rows must not depend on a live resident profile.");
+                }
+                statement.execute("DELETE FROM resident_profiles WHERE npc_id = 'resident-archive'");
+                try (var result = statement.executeQuery("""
+                        SELECT resident_npc_id, status, business_id, profession
+                        FROM resident_trade_transactions WHERE transaction_id = 'trade-archive'
+                        """)) {
+                    assertTrue(result.next());
+                    assertEquals("resident-archive", result.getString("resident_npc_id"));
+                    assertEquals("DELIVERED", result.getString("status"));
+                    assertEquals("town:archive", result.getString("business_id"));
+                    assertEquals("MINER", result.getString("profession"));
+                }
+            }
+        }
+    }
+
+    @Test
     void refusesDatabaseCreatedByNewerPluginVersionWithoutChangingIt() throws Exception {
         var file = temporaryDirectory.resolve("future.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
@@ -228,7 +297,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(20, migrationCount(connection));
+            assertEquals(21, migrationCount(connection));
         }
     }
 
