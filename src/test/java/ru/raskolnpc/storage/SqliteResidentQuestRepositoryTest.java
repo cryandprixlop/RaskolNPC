@@ -750,6 +750,27 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void reusingTradeIdempotencyKeyWithDifferentParametersDoesNotConsumeAdditionalStock() {
+        NpcRecord resident = createResident();
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 20, 64);
+        UUID buyer = UUID.randomUUID();
+
+        ResidentTradeTransaction original = trades.reserve("purchase-key-parameter-mismatch",
+                buyer, resident.id(), "IRON_INGOT", ResidentProductQuality.STANDARD,
+                7, 125).join().orElseThrow();
+
+        assertThrows(java.util.concurrent.CompletionException.class, () -> trades.reserve(
+                "purchase-key-parameter-mismatch", buyer, resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 8, 125).join());
+
+        assertEquals(13, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(original.transactionId(), trades.findByIdempotencyKey(
+                "purchase-key-parameter-mismatch").join().orElseThrow().transactionId());
+        assertEquals(1, trades.findByStatus(
+                ResidentTradeTransaction.Status.STOCK_RESERVED, 10).join().size());
+    }
+
+    @Test
     void tradeReservationRejectsInvalidAmountsPricesAndOverflowBeforeDatabaseWork() {
         UUID buyer = UUID.randomUUID();
         NpcRecord resident = createResident();
