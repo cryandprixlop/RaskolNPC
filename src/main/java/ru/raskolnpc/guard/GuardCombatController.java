@@ -8,6 +8,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.Location;
@@ -302,6 +303,34 @@ public final class GuardCombatController implements Listener {
         if (selected == null) return null;
         squadTargets.put(squadId, selected);
         return isTargetEligible(guard, attacker, selected) ? selected : null;
+    }
+
+    /** Clears runtime combat state for entities leaving loaded chunks. */
+    @EventHandler
+    public void onEntitiesUnload(EntitiesUnloadEvent event) {
+        requireMainThread();
+        onEntitiesUnload(event.getEntities());
+    }
+
+    void onEntitiesUnload(java.util.List<Entity> unloadingEntities) {
+        requireMainThread();
+        Set<UUID> unloadingEntityIds = unloadingEntities.stream()
+                .map(Entity::getUniqueId)
+                .collect(java.util.stream.Collectors.toSet());
+        for (Entity entity : unloadingEntities) {
+            NpcId npcId = entities.getNpcId(entity).orElse(null);
+            if (npcId == null) continue;
+            NpcRecord record = registry.get(npcId).orElse(null);
+            if (record != null && record.type() == NpcType.GUARD) {
+                lastAttack.remove(npcId);
+                lastPressurePenalty.remove(npcId);
+                retaliationTargets.remove(npcId);
+            }
+        }
+        retaliationTargets.entrySet().removeIf(entry ->
+                unloadingEntityIds.contains(entry.getValue().target().getUniqueId()));
+        squadTargets.entrySet().removeIf(entry ->
+                unloadingEntityIds.contains(entry.getValue().getUniqueId()));
     }
 
     /**
