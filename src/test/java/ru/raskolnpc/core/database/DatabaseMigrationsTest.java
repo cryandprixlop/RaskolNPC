@@ -172,26 +172,55 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("version-nineteen.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
                 statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
                 for (int version = 1; version <= 19; version++) {
                     statement.executeUpdate("INSERT INTO schema_migrations(version) VALUES (" + version + ")");
                 }
                 statement.execute("CREATE TABLE npcs(id TEXT PRIMARY KEY, town_id TEXT)");
-                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY, profession TEXT NOT NULL)");
+                statement.execute("CREATE TABLE resident_profiles(npc_id TEXT PRIMARY KEY REFERENCES npcs(id) ON DELETE CASCADE, profession TEXT NOT NULL)");
                 statement.execute("""
                         CREATE TABLE resident_trade_transactions (
                             transaction_id TEXT PRIMARY KEY,
-                            resident_npc_id TEXT NOT NULL,
-                            business_id TEXT,
-                            profession TEXT
+                            idempotency_key TEXT NOT NULL UNIQUE,
+                            buyer_uuid TEXT NOT NULL,
+                            resident_npc_id TEXT NOT NULL REFERENCES resident_profiles(npc_id) ON DELETE RESTRICT,
+                            material TEXT NOT NULL,
+                            quality TEXT NOT NULL CHECK (quality IN ('BASIC', 'STANDARD', 'FINE', 'MASTERWORK')),
+                            amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 1000000),
+                            unit_price_minor INTEGER NOT NULL CHECK (unit_price_minor >= 0),
+                            total_price_minor INTEGER NOT NULL CHECK (total_price_minor >= 0),
+                            status TEXT NOT NULL CHECK (status IN (
+                                'STOCK_RESERVED', 'PAYMENT_PENDING', 'PAID', 'DELIVERED',
+                                'CANCELLED', 'REFUND_PENDING', 'REFUNDED', 'REVIEW_REQUIRED'
+                            )),
+                            provider_reference TEXT,
+                            last_error TEXT,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            CHECK (total_price_minor = unit_price_minor * amount)
                         )
                         """);
                 statement.execute("INSERT INTO npcs(id, town_id) VALUES ('resident-town', 'town-7')");
                 statement.execute("INSERT INTO npcs(id, town_id) VALUES ('resident-solo', NULL)");
                 statement.execute("INSERT INTO resident_profiles(npc_id, profession) VALUES ('resident-town', 'BLACKSMITH')");
                 statement.execute("INSERT INTO resident_profiles(npc_id, profession) VALUES ('resident-solo', 'FARMER')");
-                statement.execute("INSERT INTO resident_trade_transactions(transaction_id, resident_npc_id) VALUES ('trade-1', 'resident-town')");
-                statement.execute("INSERT INTO resident_trade_transactions(transaction_id, resident_npc_id) VALUES ('trade-2', 'resident-solo')");
+                statement.execute("""
+                        INSERT INTO resident_trade_transactions(
+                            transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
+                            material, quality, amount, unit_price_minor, total_price_minor,
+                            status, created_at, updated_at
+                        ) VALUES ('trade-1', 'key-1', 'buyer-1', 'resident-town',
+                                  'IRON_INGOT', 'STANDARD', 1, 10, 10, 'DELIVERED', 100, 100)
+                        """);
+                statement.execute("""
+                        INSERT INTO resident_trade_transactions(
+                            transaction_id, idempotency_key, buyer_uuid, resident_npc_id,
+                            material, quality, amount, unit_price_minor, total_price_minor,
+                            status, created_at, updated_at
+                        ) VALUES ('trade-2', 'key-2', 'buyer-2', 'resident-solo',
+                                  'WHEAT', 'STANDARD', 1, 10, 10, 'CANCELLED', 101, 101)
+                        """);
             }
 
             DatabaseMigrations.migrate(connection);
