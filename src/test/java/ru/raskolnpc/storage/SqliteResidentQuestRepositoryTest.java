@@ -696,6 +696,60 @@ class SqliteResidentQuestRepositoryTest {
     }
 
     @Test
+    void reviewStockReleaseUsesOriginalBusinessAfterResidentChangesTownAndProfession() {
+        NpcRecord resident = createResident(ResidentProfession.MINER, "town");
+        deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 12, 64);
+        ResidentTradeTransaction trade = trades.reserve("purchase-origin-stability",
+                UUID.randomUUID(), resident.id(), "IRON_INGOT",
+                ResidentProductQuality.STANDARD, 5, 100).join().orElseThrow();
+        assertEquals(7, quests.getBusinessStock(resident.id(), "IRON_INGOT").join());
+        assertEquals(1, trades.recoverUnfinished().join());
+
+        database.transaction(connection -> {
+            try (var updateNpc = connection.prepareStatement(
+                    "UPDATE npcs SET town_id = 'new-town' WHERE id = ?")) {
+                updateNpc.setString(1, resident.id().toString());
+                assertEquals(1, updateNpc.executeUpdate());
+            }
+            try (var updateProfile = connection.prepareStatement(
+                    "UPDATE resident_profiles SET profession = 'FARMER' WHERE npc_id = ?")) {
+                updateProfile.setString(1, resident.id().toString());
+                assertEquals(1, updateProfile.executeUpdate());
+            }
+            return null;
+        }).join();
+
+        assertTrue(trades.resolveReview(trade.transactionId(),
+                ResidentTradeRepository.ReviewResolution.CANCELLED_UNPAID,
+                "Provider confirms no payment and no delivery.").join());
+
+        int originalBusinessStock = database.query(connection -> {
+            try (var query = connection.prepareStatement("""
+                    SELECT amount FROM resident_business_stock
+                    WHERE business_id = 'town:town'
+                      AND profession = 'MINER' AND material = 'IRON_INGOT'
+                    """);
+                 var result = query.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }).join();
+        int changedBusinessRows = database.query(connection -> {
+            try (var query = connection.prepareStatement("""
+                    SELECT COUNT(*) FROM resident_business_stock
+                    WHERE business_id = 'town:new-town'
+                      AND profession = 'FARMER' AND material = 'IRON_INGOT'
+                    """);
+                 var result = query.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }).join();
+        assertEquals(12, originalBusinessStock,
+                "Released stock must return to the business that originally supplied it.");
+        assertEquals(0, changedBusinessRows,
+                "A resident's new town and profession must not receive another business's stock.");
+    }
+
+    @Test
     void tradeReviewQueueIsFilteredOldestFirstAndBounded() {
         NpcRecord resident = createResident();
         deliverStock(resident, "miner_iron_delivery", "IRON_INGOT", 20, 64);
