@@ -225,7 +225,8 @@ public final class GuardCombatController implements Listener {
                     : moraleService.damageMultiplier(guard.id());
             livingTarget.damage(damage * moraleMultiplier, attacker);
             lastAttack.put(guard.id(), now);
-        } catch (RuntimeException error) {
+        } catch (RuntimeException | LinkageError error) {
+            // A provider/API mismatch during damage must not terminate the combat tick.
             plugin.getLogger().log(Level.FINE,
                     "Guard combat action failed for " + guard.id(), error);
         }
