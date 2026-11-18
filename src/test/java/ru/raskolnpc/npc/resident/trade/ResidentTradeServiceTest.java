@@ -141,7 +141,7 @@ class ResidentTradeServiceTest {
                 trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
                 trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
 
-        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        assertEquals(ResidentTradeService.Outcome.IN_PROGRESS, result.outcome());
         assertEquals(trade.transactionId(), result.transactionId());
         verify(repository, times(1)).transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.STOCK_RESERVED,
@@ -160,7 +160,7 @@ class ResidentTradeServiceTest {
                 trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
                 trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
 
-        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        assertEquals(ResidentTradeService.Outcome.IN_PROGRESS, result.outcome());
         verify(repository, never()).transition(anyString(), any(), any(), any(), any());
         verifyNoInteractions(economy, delivery);
     }
