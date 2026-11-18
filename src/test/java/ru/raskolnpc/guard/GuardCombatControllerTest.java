@@ -584,4 +584,45 @@ class GuardCombatControllerTest {
     }
 
 
+    @Test
+    void processesMaximumServerGuardPopulationAcrossFairBatches() {
+        NpcRecord hostile = NpcRecord.create(
+                NpcType.RESIDENT, "Hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(hostile);
+        LivingEntity sharedTarget = mock(LivingEntity.class);
+        when(sharedTarget.isValid()).thenReturn(true);
+        when(sharedTarget.isDead()).thenReturn(false);
+        when(sharedTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
+        when(entities.getNpcId(sharedTarget)).thenReturn(Optional.of(hostile.id()));
+
+        List<LivingEntity> guards = new java.util.ArrayList<>(150);
+        for (int index = 0; index < 150; index++) {
+            int kingdom = index / 30;
+            NpcRecord record = NpcRecord.create(
+                    NpcType.GUARD, "Guard " + index, null,
+                    "town-" + index, "kingdom-" + kingdom, "{}");
+            registry.register(record);
+            LivingEntity guardEntity = mock(LivingEntity.class);
+            when(guardEntity.isValid()).thenReturn(true);
+            when(guardEntity.isDead()).thenReturn(false);
+            when(guardEntity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
+            when(guardEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(sharedTarget));
+            when(entities.find(record.id())).thenReturn(Optional.of(guardEntity));
+            guards.add(guardEntity);
+        }
+
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+
+        for (int tick = 0; tick < 15; tick++) {
+            controller.tick();
+        }
+
+        for (LivingEntity guardEntity : guards) {
+            verify(sharedTarget, times(1)).damage(2.0, guardEntity);
+        }
+    }
+
 }
