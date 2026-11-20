@@ -129,6 +129,33 @@ class ResidentTradeServiceTest {
 
 
     @Test
+    void paymentPendingPersistenceFailureIsQueuedForReviewBeforeAnyCharge() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Could not persist PAYMENT_PENDING before charging; payment was not started. IllegalStateException: sqlite unavailable"))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        assertEquals(trade.transactionId(), result.transactionId());
+        verify(repository).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Could not persist PAYMENT_PENDING before charging; payment was not started. IllegalStateException: sqlite unavailable");
+        verifyNoInteractions(economy, delivery);
+    }
+
+    @Test
     void concurrentIdempotentRequestDoesNotMoveWinningPaymentIntoReview() {
         ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
         reserve(trade);
