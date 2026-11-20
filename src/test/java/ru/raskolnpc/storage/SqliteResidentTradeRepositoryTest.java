@@ -6,7 +6,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.raskolnpc.core.database.DatabaseManager;
-import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 
@@ -108,6 +107,27 @@ class SqliteResidentTradeRepositoryTest {
     }
 
     @Test
+    void cancellationRestoresReservedStockEvenAfterBusinessCapacityWasReduced() {
+        ResidentTradeTransaction trade = reserve("capacity-shrink-key");
+        database.execute(connection -> {
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET capacity = 7
+                    WHERE business_id = 'town:town-1' AND profession = 'MINER'
+                      AND material = 'IRON_INGOT'
+                    """)) {
+                assertEquals(1, update.executeUpdate());
+            }
+            return null;
+        }).join();
+
+        assertTrue(trades.cancelAndRelease(trade.transactionId(), "release reservation").join());
+        assertEquals(10, stockAmount());
+        assertEquals(10, batchAmount("FINE"));
+        assertEquals(7, stockCapacity());
+    }
+
+    @Test
     void restartRecoveryMovesEveryUnfinishedTradeToReviewAndIsIdempotent() {
         ResidentTradeTransaction trade = reserve("recovery-key");
         assertTrue(trades.transition(trade.transactionId(),
@@ -131,6 +151,20 @@ class SqliteResidentTradeRepositoryTest {
         return database.query(connection -> {
             try (var query = connection.prepareStatement("""
                     SELECT amount FROM resident_business_stock
+                    WHERE business_id = 'town:town-1' AND profession = 'MINER'
+                      AND material = 'IRON_INGOT'
+                    """);
+                 var result = query.executeQuery()) {
+                assertTrue(result.next());
+                return result.getInt(1);
+            }
+        }).join();
+    }
+
+    private int stockCapacity() {
+        return database.query(connection -> {
+            try (var query = connection.prepareStatement("""
+                    SELECT capacity FROM resident_business_stock
                     WHERE business_id = 'town:town-1' AND profession = 'MINER'
                       AND material = 'IRON_INGOT'
                     """);
