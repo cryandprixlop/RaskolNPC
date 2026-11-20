@@ -156,14 +156,12 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     UPDATE resident_business_stock
                     SET amount = amount + ?, updated_at = ?
                     WHERE business_id = ? AND profession = ? AND material = ?
-                      AND amount + ? <= capacity
                     """)) {
                 credit.setInt(1, trade.amount());
                 credit.setLong(2, now);
                 credit.setString(3, businessId);
                 credit.setString(4, profession);
                 credit.setString(5, trade.material());
-                credit.setInt(6, trade.amount());
                 if (credit.executeUpdate() != 1) {
                     throw new SQLException("Could not restore reserved stock within business capacity.");
                 }
@@ -219,14 +217,12 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     UPDATE resident_business_stock
                     SET amount = amount + ?, updated_at = ?
                     WHERE business_id = ? AND profession = ? AND material = ?
-                      AND amount + ? <= capacity
                     """)) {
                 credit.setInt(1, trade.amount());
                 credit.setLong(2, now);
                 credit.setString(3, businessId);
                 credit.setString(4, profession);
                 credit.setString(5, trade.material());
-                credit.setInt(6, trade.amount());
                 if (credit.executeUpdate() != 1) {
                     throw new SQLException("Cannot restore refunded trade stock: business capacity is insufficient.");
                 }
@@ -293,8 +289,7 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     credit.setString(3, businessId);
                     credit.setString(4, profession);
                     credit.setString(5, trade.material());
-                    credit.setInt(6, trade.amount());
-                    if (credit.executeUpdate() != 1) {
+                        if (credit.executeUpdate() != 1) {
                         throw new SQLException("Cannot restore reserved stock: business capacity is insufficient.");
                     }
                 }
