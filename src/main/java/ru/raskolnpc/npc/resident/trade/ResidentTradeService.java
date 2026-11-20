@@ -120,13 +120,16 @@ public final class ResidentTradeService {
         return repository.transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.PAYMENT_PENDING,
                 ResidentTradeTransaction.Status.PAID, payment.providerReference(), payment.detail())
-                .thenCompose(changed -> {
-                    if (!changed) {
-                        return review(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING,
-                                "Provider confirmed payment but PAID state could not be persisted.");
+                .handle((changed, persistenceError) -> {
+                    if (persistenceError != null || !Boolean.TRUE.equals(changed)) {
+                        String detail = "Provider confirmed payment but PAID state could not be persisted."
+                                + (persistenceError == null ? "" : " Persistence error: " + concise(persistenceError));
+                        // The provider has charged the player. Never report a generic failure or
+                        // attempt a second charge; preserve the uncertain transaction for review.
+                        return review(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING, detail);
                     }
                     return deliverPaid(trade);
-                });
+                }).thenCompose(future -> future);
     }
 
     private CompletableFuture<PurchaseResult> deliverPaid(ResidentTradeTransaction trade) {
