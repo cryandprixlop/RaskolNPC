@@ -75,8 +75,15 @@ public final class ResidentTradeService {
         return repository.transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.STOCK_RESERVED,
                 ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null)
-                .thenCompose(changed -> {
-                    if (!changed) {
+                .handle((changed, persistenceError) -> {
+                    if (persistenceError != null) {
+                        // No provider call has started yet. Keep the stock reservation durable
+                        // and queue reconciliation rather than returning a silent FAILED state.
+                        return review(trade, ResidentTradeTransaction.Status.STOCK_RESERVED,
+                                "Could not persist PAYMENT_PENDING before charging; payment was not started. "
+                                        + concise(persistenceError));
+                    }
+                    if (!Boolean.TRUE.equals(changed)) {
                         // Another request may have claimed this idempotency key after reserve()
                         // returned STOCK_RESERVED. Do not force that in-flight payment into review:
                         // the winning request owns the provider call and its state transitions.
@@ -84,7 +91,7 @@ public final class ResidentTradeService {
                                 "This purchase is already being processed; no second payment was started.");
                     }
                     return safeCharge(trade);
-                });
+                }).thenCompose(future -> future);
     }
 
     private CompletableFuture<PurchaseResult> safeCharge(ResidentTradeTransaction trade) {
