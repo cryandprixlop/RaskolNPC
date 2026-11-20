@@ -208,6 +208,42 @@ class ResidentTradeServiceTest {
 
 
     @Test
+    void confirmedPaymentWithJournalPersistenceExceptionMovesTradeToReview() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.PAID, "PAY-1", "charged"))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Provider confirmed payment but PAID state could not be persisted. Persistence error: IllegalStateException: sqlite unavailable"))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(economy.charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.CONFIRMED, "PAY-1", "charged")));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        assertEquals(trade.transactionId(), result.transactionId());
+        verify(repository).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Provider confirmed payment but PAID state could not be persisted. Persistence error: IllegalStateException: sqlite unavailable");
+        verifyNoInteractions(delivery);
+        verify(economy, never()).charge(anyString(), any(), anyLong());
+        verify(economy, never()).refund(anyString(), any(), anyLong());
+    }
+
+    @Test
     void deliveryFinalizationPersistenceExceptionMovesTradeToReview() {
         ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
         reserve(trade);
