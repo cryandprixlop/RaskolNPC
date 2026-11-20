@@ -282,7 +282,6 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                         UPDATE resident_business_stock
                         SET amount = amount + ?, updated_at = ?
                         WHERE business_id = ? AND profession = ? AND material = ?
-                          AND amount + ? <= capacity
                         """)) {
                     credit.setInt(1, trade.amount());
                     credit.setLong(2, now);
