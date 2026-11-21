@@ -163,7 +163,7 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                 credit.setString(4, profession);
                 credit.setString(5, trade.material());
                 if (credit.executeUpdate() != 1) {
-                    throw new SQLException("Could not restore reserved stock within business capacity.");
+                    throw new SQLException("Could not restore reserved stock to its original business.");
                 }
             }
             try (var batch = connection.prepareStatement("""
@@ -224,7 +224,7 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                 credit.setString(4, profession);
                 credit.setString(5, trade.material());
                 if (credit.executeUpdate() != 1) {
-                    throw new SQLException("Cannot restore refunded trade stock: business capacity is insufficient.");
+                    throw new SQLException("Cannot restore refunded trade stock to its original business.");
                 }
             }
             try (var batch = connection.prepareStatement("""
@@ -288,8 +288,8 @@ public final class SqliteResidentTradeRepository implements ResidentTradeReposit
                     credit.setString(3, businessId);
                     credit.setString(4, profession);
                     credit.setString(5, trade.material());
-                        if (credit.executeUpdate() != 1) {
-                        throw new SQLException("Cannot restore reserved stock: business capacity is insufficient.");
+                    if (credit.executeUpdate() != 1) {
+                        throw new SQLException("Cannot restore reserved stock to its original business.");
                     }
                 }
                 try (var batch = connection.prepareStatement("""
