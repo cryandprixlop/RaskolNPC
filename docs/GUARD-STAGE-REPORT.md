@@ -51,3 +51,25 @@ Use `docs/PAPER-ACCEPTANCE.md` for the live test procedure and result record. Th
 ## Disposition
 
 The code-level guard lifecycle audit and automated CI verification are complete for this revision. The pull request remains Draft and unmerged; `main` is unchanged.
+
+## Follow-up audit — 2026-11-21
+
+**Audited branch head:** `9429930286c0a7c1588aa84757dcc5799419a012`  
+**Pull request:** #1 (Draft; not merged)
+
+The current branch now includes additional guard combat-condition and equipment functionality beyond the 2026-11-14 audit above. Source review confirmed:
+
+- Guard morale and injury condition are stored through `GuardConditionRepository` / `SqliteGuardConditionRepository`; the plugin loads conditions before starting guard runtime tasks and stops the morale service during shutdown.
+- Incoming final damage drives morale loss and injury severity. The existing damage listener is registered with `ignoreCancelled = true`, so cancelled damage events are excluded.
+- Morale thresholds are clamped from configuration and enforce a separate retreat and rally threshold. The order controller returns a routed guard toward its persisted spawn/post without replacing the durable order.
+- Equipment wear uses native Bukkit item durability. The repair command first checks the guard is visible to the player's kingdom (or the player is an administrator); the repair service separately requires a loaded guard within six blocks.
+- Repair cost is validated for every supported damaged slot before materials are removed. The repair operation and inventory/entity mutation run on the server thread. Insufficient materials leave both inventory and equipment unchanged in the covered regression test.
+- Unsupported item types are reported and left unchanged; the documented recipes cover supported material tiers.
+
+Relevant automated test classes present on the branch include `GuardMoraleServiceTest`, `GuardEquipmentWearServiceTest`, `GuardEquipmentRepairServiceTest`, `GuardOrderControllerTest`, and `SqliteGuardConditionRepositoryTest`. This source audit does not substitute for executing those tests against the current commit.
+
+### Current CI and release disposition
+
+GitHub Actions run **#782** for the audited head was still **in progress** at the time of this report. Java 25 and Gradle setup steps had completed; `Build plugin` was running. No successful build or test result is claimed here.
+
+The live Paper/Towny/SiegeWar/WorldGuard acceptance plan and 150-NPC load test in `docs/PAPER-ACCEPTANCE.md` remain **NOT RUN** until executed on a staging server. The PR remains Draft and unmerged; `main` is unchanged.
