@@ -36,7 +36,7 @@ class SqliteResidentTradeRepositoryTest {
         resident = NpcRecord.create(NpcType.RESIDENT, "Trade resident",
                 null, "town-1", "nation-1", "{}");
         npcs.insert(resident).join();
-        database.execute(connection -> {
+        database.transaction(connection -> {
             try (var insert = connection.prepareStatement("""
                     INSERT INTO resident_profiles(
                         npc_id, age, profession, hunger, energy, rest,
@@ -109,14 +109,14 @@ class SqliteResidentTradeRepositoryTest {
     @Test
     void cancellationRestoresReservedStockEvenAfterBusinessCapacityWasReduced() {
         ResidentTradeTransaction trade = reserve("capacity-shrink-key");
-        database.execute(connection -> {
+        database.transaction(connection -> {
             try (var update = connection.prepareStatement("""
                     UPDATE resident_business_stock
                     SET capacity = 7
                     WHERE business_id = 'town:town-1' AND profession = 'MINER'
                       AND material = 'IRON_INGOT'
                     """)) {
-                assertEquals(1, update.executeUpdate());
+                if (update.executeUpdate() != 1) throw new AssertionError("Expected one stock row to be updated.");
             }
             return null;
         }).join();
