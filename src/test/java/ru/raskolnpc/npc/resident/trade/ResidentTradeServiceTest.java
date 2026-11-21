@@ -310,6 +310,102 @@ class ResidentTradeServiceTest {
         verify(economy, never()).refund(anyString(), any(), anyLong());
     }
 
+
+    @Test
+    void declinedPaymentWithStockReleaseExceptionMovesTradeToReview() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(economy.charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.DECLINED, null, "declined")));
+        when(repository.cancelAndRelease(trade.transactionId(), "declined"))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Payment was declined but stock release failed; reconciliation required: IllegalStateException: sqlite unavailable"))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        verify(repository).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Payment was declined but stock release failed; reconciliation required: IllegalStateException: sqlite unavailable");
+        verifyNoInteractions(delivery);
+    }
+
+    @Test
+    void refundPendingPersistenceFailureDoesNotCallRefundProvider() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(eq(trade.transactionId()), any(), any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.REFUND_PENDING, null, "inventory full"))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Delivery failed but REFUND_PENDING persistence failed; refund was not started: IllegalStateException: sqlite unavailable"))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(economy.charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.CONFIRMED, "PAY-1", "charged")));
+        when(delivery.deliver(trade)).thenReturn(CompletableFuture.completedFuture(
+                new ResidentTradeDeliveryProvider.Result(
+                        ResidentTradeDeliveryProvider.Outcome.REJECTED, "inventory full")));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        verify(economy, never()).refund(anyString(), any(), anyLong());
+    }
+
+    @Test
+    void confirmedRefundWithStockRestoreExceptionMovesTradeToReview() {
+        ResidentTradeTransaction trade = trade(ResidentTradeTransaction.Status.STOCK_RESERVED);
+        reserve(trade);
+        when(repository.transition(eq(trade.transactionId()), any(), any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.completeRefundAndRelease(trade.transactionId(), "REF-1", "refund confirmed"))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
+        when(repository.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.REFUND_PENDING,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Refund was confirmed but stock restoration failed; reconciliation required: IllegalStateException: sqlite unavailable"))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(economy.charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.CONFIRMED, "PAY-1", "charged")));
+        when(delivery.deliver(trade)).thenReturn(CompletableFuture.completedFuture(
+                new ResidentTradeDeliveryProvider.Result(
+                        ResidentTradeDeliveryProvider.Outcome.REJECTED, "inventory full")));
+        when(economy.refund(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor()))
+                .thenReturn(CompletableFuture.completedFuture(new ResidentTradeEconomyProvider.Result(
+                        ResidentTradeEconomyProvider.Outcome.CONFIRMED, "REF-1", "refund confirmed")));
+
+        ResidentTradeService.PurchaseResult result = service.purchase(
+                trade.idempotencyKey(), trade.buyerId(), trade.residentId(),
+                trade.material(), trade.quality(), trade.amount(), trade.unitPriceMinor()).join();
+
+        assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
+        verify(repository).transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.REFUND_PENDING,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
+                "Refund was confirmed but stock restoration failed; reconciliation required: IllegalStateException: sqlite unavailable");
+    }
+
     private void reserve(ResidentTradeTransaction trade) {
         when(repository.reserve(eq(trade.idempotencyKey()), eq(trade.buyerId()),
                 eq(trade.residentId()), eq(trade.material()), eq(trade.quality()),
