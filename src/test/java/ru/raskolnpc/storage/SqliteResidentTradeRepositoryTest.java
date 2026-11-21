@@ -127,6 +127,58 @@ class SqliteResidentTradeRepositoryTest {
         assertEquals(7, stockCapacity());
     }
 
+
+    @Test
+    void refundRestoresAggregateStockAndOriginalQualityExactlyOnce() {
+        ResidentTradeTransaction trade = reserve("refund-key");
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.PAID, "payment-1", null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.REFUND_PENDING, null, "buyer refund").join());
+
+        assertTrue(trades.completeRefundAndRelease(trade.transactionId(), "refund-1", "refunded").join());
+        assertFalse(trades.completeRefundAndRelease(trade.transactionId(), "refund-duplicate", "retry").join());
+
+        assertEquals(10, stockAmount());
+        assertEquals(10, batchAmount("FINE"));
+        assertEquals(0, batchAmount("STANDARD"));
+        assertEquals(ResidentTradeTransaction.Status.REFUNDED,
+                trades.find(trade.transactionId()).join().orElseThrow().status());
+    }
+
+    @Test
+    void reviewRefundResolutionRestoresStockAfterCapacityWasReduced() {
+        ResidentTradeTransaction trade = reserve("review-capacity-shrink-key");
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null, "uncertain outcome").join());
+        database.transaction(connection -> {
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_business_stock
+                    SET capacity = 7
+                    WHERE business_id = 'town:town-1' AND profession = 'MINER'
+                      AND material = 'IRON_INGOT'
+                    """)) {
+                if (update.executeUpdate() != 1) throw new AssertionError("Expected one stock row to be updated.");
+            }
+            return null;
+        }).join();
+
+        assertTrue(trades.resolveReview(trade.transactionId(),
+                ResidentTradeRepository.ReviewResolution.REFUNDED_NOT_DELIVERED,
+                "provider confirms refund and no delivery").join());
+        assertEquals(10, stockAmount());
+        assertEquals(10, batchAmount("FINE"));
+        assertEquals(7, stockCapacity());
+        assertEquals(ResidentTradeTransaction.Status.REFUNDED,
+                trades.find(trade.transactionId()).join().orElseThrow().status());
+    }
+
     @Test
     void restartRecoveryMovesEveryUnfinishedTradeToReviewAndIsIdempotent() {
         ResidentTradeTransaction trade = reserve("recovery-key");
