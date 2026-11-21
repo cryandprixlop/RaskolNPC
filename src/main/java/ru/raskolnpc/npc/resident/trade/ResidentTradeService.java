@@ -111,10 +111,17 @@ public final class ResidentTradeService {
             return switch (result.outcome()) {
                 case DECLINED -> repository.cancelAndRelease(trade.transactionId(),
                         safeDetail(result.detail(), "Payment declined."))
-                        .thenApply(released -> released
-                                ? new PurchaseResult(Outcome.PAYMENT_DECLINED, trade.transactionId(), result.detail())
-                                : new PurchaseResult(Outcome.REVIEW_REQUIRED, trade.transactionId(),
-                                        "Payment declined but stock release needs reconciliation."));
+                        .handle((released, releaseError) -> {
+                            if (releaseError != null) {
+                                return review(trade, ResidentTradeTransaction.Status.STOCK_RESERVED,
+                                        "Payment was declined but stock release failed; reconciliation required: "
+                                                + concise(releaseError));
+                            }
+                            return released
+                                    ? completed(Outcome.PAYMENT_DECLINED, trade.transactionId(), result.detail())
+                                    : completed(Outcome.REVIEW_REQUIRED, trade.transactionId(),
+                                            "Payment declined but stock release needs reconciliation.");
+                        }).thenCompose(future -> future);
                 case UNKNOWN -> review(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING,
                         safeDetail(result.detail(), "Payment provider returned UNKNOWN."));
                 case CONFIRMED -> paymentConfirmed(trade, result);
@@ -180,13 +187,18 @@ public final class ResidentTradeService {
         return repository.transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.PAID,
                 ResidentTradeTransaction.Status.REFUND_PENDING, null, reason)
-                .thenCompose(changed -> {
-                    if (!changed) {
+                .handle((changed, persistenceError) -> {
+                    if (persistenceError != null) {
                         return review(trade, ResidentTradeTransaction.Status.PAID,
-                                "Delivery failed but REFUND_PENDING could not be persisted.");
+                                "Delivery failed but REFUND_PENDING persistence failed; refund was not started: "
+                                        + concise(persistenceError));
+                    }
+                    if (!Boolean.TRUE.equals(changed)) {
+                        return review(trade, ResidentTradeTransaction.Status.PAID,
+                                "Delivery failed but REFUND_PENDING could not be persisted; refund was not started.");
                     }
                     return safeRefund(trade, reason);
-                });
+                }).thenCompose(future -> future);
     }
 
     private CompletableFuture<PurchaseResult> safeRefund(ResidentTradeTransaction trade, String reason) {
@@ -209,10 +221,17 @@ public final class ResidentTradeService {
             }
             return repository.completeRefundAndRelease(trade.transactionId(),
                     result.providerReference(), safeDetail(result.detail(), reason))
-                    .thenApply(completed -> completed
-                            ? new PurchaseResult(Outcome.REFUNDED, trade.transactionId(), result.detail())
-                            : new PurchaseResult(Outcome.REVIEW_REQUIRED, trade.transactionId(),
-                                    "Refund confirmed; stock release requires reconciliation."));
+                    .handle((completed, persistenceError) -> {
+                        if (persistenceError != null) {
+                            return review(trade, ResidentTradeTransaction.Status.REFUND_PENDING,
+                                    "Refund was confirmed but stock restoration failed; reconciliation required: "
+                                            + concise(persistenceError));
+                        }
+                        return completed
+                                ? completed(Outcome.REFUNDED, trade.transactionId(), result.detail())
+                                : review(trade, ResidentTradeTransaction.Status.REFUND_PENDING,
+                                        "Refund confirmed; stock release requires reconciliation.");
+                    }).thenCompose(future -> future);
         }).thenCompose(future -> future);
     }
 
