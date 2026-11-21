@@ -113,7 +113,7 @@ public final class ResidentTradeService {
                         safeDetail(result.detail(), "Payment declined."))
                         .handle((released, releaseError) -> {
                             if (releaseError != null) {
-                                return review(trade, ResidentTradeTransaction.Status.STOCK_RESERVED,
+                                return review(trade, ResidentTradeTransaction.Status.PAYMENT_PENDING,
                                         "Payment was declined but stock release failed; reconciliation required: "
                                                 + concise(releaseError));
                             }
