@@ -325,7 +325,7 @@ class ResidentTradeServiceTest {
         when(repository.cancelAndRelease(trade.transactionId(), "declined"))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sqlite unavailable")));
         when(repository.transition(trade.transactionId(),
-                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
                 "Payment was declined but stock release failed; reconciliation required: IllegalStateException: sqlite unavailable"))
                 .thenReturn(CompletableFuture.completedFuture(true));
@@ -336,7 +336,7 @@ class ResidentTradeServiceTest {
 
         assertEquals(ResidentTradeService.Outcome.REVIEW_REQUIRED, result.outcome());
         verify(repository).transition(trade.transactionId(),
-                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
                 "Payment was declined but stock release failed; reconciliation required: IllegalStateException: sqlite unavailable");
         verifyNoInteractions(delivery);
