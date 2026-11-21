@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
@@ -71,6 +72,77 @@ class SqliteResidentProfileRepositoryTest {
         assertEquals(Optional.of(updated), repository.findByNpcId(npc.id()).join());
         assertTrue(repository.delete(npc.id()).join());
         assertTrue(repository.findByNpcId(npc.id()).join().isEmpty());
+    }
+
+    @Test
+    void bulkLoadsProfilesWithTraitsAndSkills() {
+        NpcRecord firstNpc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        NpcRecord secondNpc = NpcRecord.create(NpcType.RESIDENT, "Oren", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(firstNpc).join();
+        npcRepository.insert(secondNpc).join();
+
+        ResidentProfile first = new ResidentProfile(firstNpc.id(), 24,
+                ResidentProfession.FARMER,
+                EnumSet.of(ResidentProfile.ResidentTrait.FRIENDLY),
+                70, 80, 90, 50, 85, 75,
+                java.util.Map.of(ResidentProfession.FARMER, ResidentSkillLevel.EXPERT));
+        ResidentProfile second = new ResidentProfile(secondNpc.id(), 41,
+                ResidentProfession.BLACKSMITH,
+                EnumSet.of(ResidentProfile.ResidentTrait.HARD_WORKING),
+                55, 60, 65, 45, 80, 70,
+                java.util.Map.of(ResidentProfession.BLACKSMITH, ResidentSkillLevel.MASTER));
+        repository.save(first).join();
+        repository.save(second).join();
+
+        var loaded = repository.findAll().join();
+
+        assertEquals(2, loaded.size());
+        assertTrue(loaded.contains(first));
+        assertTrue(loaded.contains(second));
+    }
+
+    @Test
+    void professionExperienceLevelsUpAndSurvivesProfileSaveAndReload() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        ResidentProfile profile = new ResidentProfile(npc.id(), 31,
+                ResidentProfession.FARMER, java.util.Set.of(),
+                70, 70, 70, 70, 70, 70,
+                java.util.Map.of(ResidentProfession.FARMER, ResidentSkillLevel.APPRENTICE));
+        repository.save(profile).join();
+
+        var progress = repository.addSkillExperience(
+                npc.id(), ResidentProfession.FARMER, 300).join();
+        assertEquals(ResidentSkillLevel.SPECIALIST, progress.level());
+        assertEquals(300, progress.totalExperience());
+        assertEquals(0, progress.experienceIntoLevel());
+        assertEquals(400, progress.experienceToNextLevel());
+
+        repository.save(profile).join();
+        var loaded = repository.findByNpcId(npc.id()).join().orElseThrow();
+        assertEquals(ResidentSkillLevel.SPECIALIST, loaded.currentSkillLevel());
+    }
+
+    @Test
+    void experienceAccumulatesAndRejectsMissingProfilesAndInvalidAmounts() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Oren", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 25, ResidentProfession.MINER,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of())).join();
+
+        assertEquals(100, repository.addSkillExperience(
+                npc.id(), ResidentProfession.MINER, 100).join().totalExperience());
+        assertEquals(150, repository.addSkillExperience(
+                npc.id(), ResidentProfession.MINER, 50).join().totalExperience());
+        assertThrows(IllegalArgumentException.class, () ->
+                repository.addSkillExperience(npc.id(), ResidentProfession.MINER, 0));
+        assertTrue(repository.addSkillExperience(
+                NpcId.fromString("00000000-0000-0000-0000-000000000001"),
+                ResidentProfession.MINER, 10).handle((progress, error) -> error != null).join());
     }
 
     @Test

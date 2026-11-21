@@ -5,6 +5,8 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgress;
 import ru.raskolnpc.storage.ResidentProfileRepository;
 
 import java.util.EnumMap;
@@ -27,6 +29,18 @@ public final class ResidentProfileService {
 
     public ResidentProfileService(ResidentProfileRepository repository) {
         this.repository = java.util.Objects.requireNonNull(repository, "repository");
+    }
+
+    /** Loads a resident profile asynchronously for interaction and dialogue systems. */
+    public CompletableFuture<java.util.Optional<ResidentProfile>> find(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findByNpcId(java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
+    /** Awards profession XP using one atomic repository transaction. */
+    public CompletableFuture<ResidentSkillProgress> addSkillExperience(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession, int amount) {
+        return repository.addSkillExperience(npcId, profession, amount);
     }
 
     /** Creates a profile only when one does not already exist. */

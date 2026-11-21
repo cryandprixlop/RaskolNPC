@@ -5,6 +5,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
+import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
+import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
+import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
@@ -16,6 +19,7 @@ import ru.raskolnpc.npc.registry.NpcRegistry;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -105,6 +109,39 @@ class NpcCommandServiceTest {
         assertThrows(RuntimeException.class,
                 () -> service.createResident("Another", player).join());
         verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectsOverflowingHireCostBeforeReservingGuardCapacityOrAccessingTowny() {
+        assertOverflowingCostRejected(Double.MAX_VALUE, 1.0);
+    }
+
+    @Test
+    void rejectsOverflowingDailyRentBeforeReservingGuardCapacityOrAccessingTowny() {
+        assertOverflowingCostRejected(1.0, Double.MAX_VALUE);
+    }
+
+    private void assertOverflowingCostRejected(double baseHireCost, double baseDailyRent) {
+        Player player = mock(Player.class);
+        TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
+        TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
+        KingdomGuardService limits = new KingdomGuardService();
+        GuardHiringPaymentRepository journal = mock(GuardHiringPaymentRepository.class);
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class),
+                mock(NpcLifecycleService.class), new NpcRegistry(),
+                mock(NpcEntityManager.class), null, new TownyNpcLimitService(), 15,
+                access, bank, limits, 30, baseHireCost, baseDailyRent);
+        service.setGuardHiringPaymentRepository(journal);
+
+        assertThrows(CompletionException.class,
+                () -> service.hireGuard("Guard", 10, player).join());
+
+        verifyNoInteractions(access, bank, journal);
+        verify(player, never()).getLocation();
+        try (KingdomGuardService.Reservation available =
+                     limits.reserve("nation-1", 30, new NpcRegistry())) {
+            assertNotNull(available, "invalid pricing must not leak a pending guard reservation");
+        }
     }
 
     @Test

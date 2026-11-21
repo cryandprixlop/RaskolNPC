@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.guard.GuardHiringService;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.guard.model.GuardHiringPayment;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -20,6 +21,7 @@ import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
+import ru.raskolnpc.npc.resident.ResidentBehaviorService;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +45,8 @@ public final class NpcCommandService {
     private final double guardBaseDailyRent;
     private volatile GuardHiringPaymentRepository hiringPayments;
     private volatile ResidentProfileService residentProfileService;
+    private volatile ResidentBehaviorService residentBehaviorService;
+    private volatile KingdomGuardRosterService guardRosterService;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
                              NpcRegistry registry, NpcEntityManager entities,
@@ -83,6 +87,31 @@ public final class NpcCommandService {
         this.residentProfileService = service;
     }
 
+    public void setResidentBehaviorService(ResidentBehaviorService service) {
+        this.residentBehaviorService = service;
+    }
+
+    private void refreshResidentBehavior() {
+        ResidentBehaviorService behavior = residentBehaviorService;
+        if (behavior != null) behavior.reload();
+    }
+
+    public void setGuardRosterService(KingdomGuardRosterService service) {
+        this.guardRosterService = service;
+    }
+
+    public List<NpcRecord> guardRoster(Player player) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.listVisible(player);
+    }
+
+    public Optional<NpcRecord> findVisibleGuard(Player player, NpcId id) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.findVisible(player, id);
+    }
+
     public boolean isTownyIntegrationEnabled() {
         return townyResidents != null;
     }
@@ -119,6 +148,10 @@ public final class NpcCommandService {
             }
             return profiles.createIfMissing(record)
                     .thenCompose(ignored -> onMainThread(() -> entities.spawnAsync(record, location)))
+                    .thenApply(ignored -> {
+                        refreshResidentBehavior();
+                        return record;
+                    })
                     .exceptionallyCompose(error -> cleanup(record, error));
         });
     }
@@ -144,6 +177,13 @@ public final class NpcCommandService {
                     "Имя должно содержать от 1 до 64 символов."));
         }
 
+        double hireCost = guardBaseHireCost * level;
+        double dailyRent = guardBaseDailyRent * level;
+        if (!Double.isFinite(hireCost) || !Double.isFinite(dailyRent)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Стоимость найма и аренды стража должна быть конечным числом."));
+        }
+
         Location location = player.getLocation().clone();
         final TownyKingdomGuardAccess.Placement placement;
         final KingdomGuardService.Reservation reservation;
@@ -154,8 +194,6 @@ public final class NpcCommandService {
             return CompletableFuture.failedFuture(exception);
         }
 
-        double hireCost = guardBaseHireCost * level;
-        double dailyRent = guardBaseDailyRent * level;
         String paymentId = UUID.randomUUID().toString();
         GuardHiringPayment payment = new GuardHiringPayment(
                 paymentId, null, player.getUniqueId(), placement.townId(),
@@ -341,10 +379,10 @@ public final class NpcCommandService {
                 .thenCompose(deleted -> deleted
                         ? lifecycle.completeDeletion(record.id())
                         : CompletableFuture.completedFuture(false))
-                .handle((ignored, cleanupError) -> {
+                .<NpcRecord>handle((ignored, cleanupError) -> {
                     if (cleanupError != null) error.addSuppressed(cleanupError);
                     throw new CompletionException(error);
-                });
+                }).whenComplete((ignored, cleanupError) -> refreshResidentBehavior());
     }
 
     private <T> CompletableFuture<T> onMainThread(
@@ -412,6 +450,9 @@ public final class NpcCommandService {
                 return removed ? lifecycle.completeDeletion(id)
                         .thenApply(ignored -> true)
                         : CompletableFuture.completedFuture(true);
+            }).thenApply(deletedEntity -> {
+                refreshResidentBehavior();
+                return deletedEntity;
             });
         });
     }

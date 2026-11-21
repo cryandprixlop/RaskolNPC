@@ -2,6 +2,7 @@ package ru.raskolnpc.storage;
 
 import ru.raskolnpc.core.database.DatabaseManager;
 import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.resident.model.ResidentBehaviorData;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 
@@ -9,7 +10,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -62,19 +65,10 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
                     """)) {
                 statement.setString(1, npcId.toString());
                 try (ResultSet result = statement.executeQuery()) {
-                    while (result.next()) {
-                        entries.add(new ResidentSchedule.Entry(
-                                DayOfWeek.of(result.getInt("day_of_week")),
-                                result.getInt("start_minute"),
-                                result.getInt("end_minute"),
-                                ResidentSchedule.Activity.valueOf(result.getString("activity")),
-                                ResidentDestination.DestinationType.valueOf(
-                                        result.getString("destination_type"))));
-                    }
+                    while (result.next()) entries.add(readEntry(result));
                 }
             }
-            return entries.isEmpty()
-                    ? Optional.empty()
+            return entries.isEmpty() ? Optional.empty()
                     : Optional.of(new ResidentSchedule(entries));
         });
     }
@@ -88,12 +82,8 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
                         npc_id, destination_type, world_uuid, x, y, z, yaw, pitch, label
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(npc_id, destination_type) DO UPDATE SET
-                        world_uuid = excluded.world_uuid,
-                        x = excluded.x,
-                        y = excluded.y,
-                        z = excluded.z,
-                        yaw = excluded.yaw,
-                        pitch = excluded.pitch,
+                        world_uuid = excluded.world_uuid, x = excluded.x, y = excluded.y,
+                        z = excluded.z, yaw = excluded.yaw, pitch = excluded.pitch,
                         label = excluded.label
                     """)) {
                 statement.setString(1, destination.npcId().toString());
@@ -117,25 +107,11 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
             List<ResidentDestination> destinations = new ArrayList<>();
             try (var statement = connection.prepareStatement("""
                     SELECT destination_type, world_uuid, x, y, z, yaw, pitch, label
-                    FROM resident_destinations
-                    WHERE npc_id = ?
-                    ORDER BY destination_type
+                    FROM resident_destinations WHERE npc_id = ? ORDER BY destination_type
                     """)) {
                 statement.setString(1, npcId.toString());
                 try (ResultSet result = statement.executeQuery()) {
-                    while (result.next()) {
-                        destinations.add(new ResidentDestination(
-                                npcId,
-                                ResidentDestination.DestinationType.valueOf(
-                                        result.getString("destination_type")),
-                                UUID.fromString(result.getString("world_uuid")),
-                                result.getDouble("x"),
-                                result.getDouble("y"),
-                                result.getDouble("z"),
-                                result.getFloat("yaw"),
-                                result.getFloat("pitch"),
-                                result.getString("label")));
-                    }
+                    while (result.next()) destinations.add(readDestination(npcId, result));
                 }
             }
             return List.copyOf(destinations);
@@ -147,8 +123,7 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
             NpcId npcId, ResidentDestination.DestinationType type) {
         return database.query(connection -> {
             try (var statement = connection.prepareStatement("""
-                    DELETE FROM resident_destinations
-                    WHERE npc_id = ? AND destination_type = ?
+                    DELETE FROM resident_destinations WHERE npc_id = ? AND destination_type = ?
                     """)) {
                 statement.setString(1, npcId.toString());
                 statement.setString(2, type.name());
@@ -157,15 +132,78 @@ public final class SqliteResidentScheduleRepository implements ResidentScheduleR
         });
     }
 
-    private static void requireResidentProfile(
-            java.sql.Connection connection, NpcId npcId) throws SQLException {
+    @Override
+    public CompletableFuture<List<ResidentBehaviorData>> findAllBehaviorData() {
+        return database.query(connection -> {
+            Map<NpcId, List<ResidentSchedule.Entry>> schedules = new HashMap<>();
+            Map<NpcId, List<ResidentDestination>> destinations = new HashMap<>();
+
+            try (var statement = connection.prepareStatement("""
+                    SELECT s.npc_id, s.day_of_week, s.start_minute, s.end_minute,
+                           s.activity, s.destination_type
+                    FROM resident_schedules s
+                    INNER JOIN resident_profiles p ON p.npc_id = s.npc_id
+                    ORDER BY s.npc_id, s.day_of_week, s.start_minute
+                    """); ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    NpcId id = NpcId.fromString(result.getString("npc_id"));
+                    schedules.computeIfAbsent(id, ignored -> new ArrayList<>()).add(readEntry(result));
+                }
+            }
+
+            try (var statement = connection.prepareStatement("""
+                    SELECT d.npc_id, d.destination_type, d.world_uuid, d.x, d.y, d.z,
+                           d.yaw, d.pitch, d.label
+                    FROM resident_destinations d
+                    INNER JOIN resident_profiles p ON p.npc_id = d.npc_id
+                    ORDER BY d.npc_id, d.destination_type
+                    """); ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    NpcId id = NpcId.fromString(result.getString("npc_id"));
+                    destinations.computeIfAbsent(id, ignored -> new ArrayList<>())
+                            .add(readDestination(id, result));
+                }
+            }
+
+            // Include home-only residents so their default behavior can be executed.
+            java.util.Set<NpcId> residentIds = new java.util.HashSet<>(schedules.keySet());
+            residentIds.addAll(destinations.keySet());
+
+            List<ResidentBehaviorData> snapshots = new ArrayList<>();
+            for (NpcId id : residentIds) {
+                snapshots.add(new ResidentBehaviorData(
+                        id, new ResidentSchedule(schedules.getOrDefault(id, List.of())),
+                        destinations.getOrDefault(id, List.of())));
+            }
+            return List.copyOf(snapshots);
+        });
+    }
+
+    private static ResidentSchedule.Entry readEntry(ResultSet result) throws SQLException {
+        return new ResidentSchedule.Entry(
+                DayOfWeek.of(result.getInt("day_of_week")),
+                result.getInt("start_minute"), result.getInt("end_minute"),
+                ResidentSchedule.Activity.valueOf(result.getString("activity")),
+                ResidentDestination.DestinationType.valueOf(result.getString("destination_type")));
+    }
+
+    private static ResidentDestination readDestination(NpcId npcId, ResultSet result)
+            throws SQLException {
+        return new ResidentDestination(npcId,
+                ResidentDestination.DestinationType.valueOf(result.getString("destination_type")),
+                UUID.fromString(result.getString("world_uuid")),
+                result.getDouble("x"), result.getDouble("y"), result.getDouble("z"),
+                result.getFloat("yaw"), result.getFloat("pitch"), result.getString("label"));
+    }
+
+    private static void requireResidentProfile(java.sql.Connection connection, NpcId npcId)
+            throws SQLException {
         try (var statement = connection.prepareStatement(
                 "SELECT 1 FROM resident_profiles WHERE npc_id = ?")) {
             statement.setString(1, npcId.toString());
-            try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) {
-                    throw new SQLException("Resident profile does not exist: " + npcId);
-                }
+            try (var result = statement.executeQuery()) {
+                if (!result.next()) throw new SQLException(
+                        "Resident profile does not exist: " + npcId);
             }
         }
     }

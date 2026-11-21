@@ -5,11 +5,29 @@ import ru.raskolnpc.command.NpcCommand;
 import ru.raskolnpc.command.NpcCommandMessages;
 import ru.raskolnpc.command.NpcCommandService;
 import ru.raskolnpc.guard.GuardRentService;
+import ru.raskolnpc.guard.GuardCombatController;
+import ru.raskolnpc.guard.GuardMoraleService;
+import ru.raskolnpc.guard.GuardEquipmentWearService;
+import ru.raskolnpc.guard.GuardEquipmentRepairService;
+import ru.raskolnpc.guard.GuardOrderService;
+import ru.raskolnpc.guard.GuardOrderController;
+import ru.raskolnpc.guard.GuardSquadService;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.core.config.ConfigManager;
 import ru.raskolnpc.core.database.DatabaseManager;
+import ru.raskolnpc.integration.IntegrationCapabilities;
+import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.PlayerSubjectResolver;
+import ru.raskolnpc.integration.towny.TownyPlayerSubjectResolver;
+import ru.raskolnpc.integration.towny.TownyGuardTerritoryAccess;
+import ru.raskolnpc.integration.CompositeDiplomacy;
+import ru.raskolnpc.integration.towny.TownyDiplomacyAdapter;
+import ru.raskolnpc.integration.siegewar.SiegeWarDiplomacyAdapter;
+import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
 import ru.raskolnpc.integration.towny.TownyIntegration;
 import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
+import ru.raskolnpc.integration.towny.TownyKingdomGeneralService;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
@@ -21,12 +39,28 @@ import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.lifecycle.NpcRecoveryService;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
+import ru.raskolnpc.npc.resident.ResidentBehaviorService;
+import ru.raskolnpc.npc.resident.ResidentDialogueService;
+import ru.raskolnpc.npc.resident.ResidentInteractionListener;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
+import ru.raskolnpc.storage.ResidentQuestRepository;
+import ru.raskolnpc.storage.SqliteResidentQuestRepository;
+import ru.raskolnpc.storage.ResidentTradeRepository;
+import ru.raskolnpc.storage.SqliteResidentTradeRepository;
+import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.storage.GuardRentPaymentRepository;
+import ru.raskolnpc.storage.GuardOrderRepository;
+import ru.raskolnpc.storage.GuardSquadRepository;
+import ru.raskolnpc.storage.SqliteGuardConditionRepository;
+import ru.raskolnpc.storage.SqliteGuardSquadRepository;
+import ru.raskolnpc.storage.SqliteGuardOrderRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 import ru.raskolnpc.storage.NpcRepository;
 import ru.raskolnpc.storage.ResidentProfileRepository;
+import ru.raskolnpc.storage.ResidentScheduleRepository;
 import ru.raskolnpc.storage.SqliteResidentProfileRepository;
+import ru.raskolnpc.storage.SqliteResidentScheduleRepository;
 import ru.raskolnpc.storage.SqliteGuardRentPaymentRepository;
 import ru.raskolnpc.storage.SqliteGuardHiringPaymentRepository;
 import ru.raskolnpc.storage.SqliteNpcDeletionRepository;
@@ -43,7 +77,14 @@ public final class RaskolNPC extends JavaPlugin {
     private NpcRecoveryService npcRecoveryService;
     private TownyKingdomGuardAccess townyKingdomGuardAccess;
     private GuardRentService guardRentService;
+    private GuardCombatController guardCombatController;
+    private GuardMoraleService guardMoraleService;
+    private GuardEquipmentWearService guardEquipmentWearService;
+    private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
+    private ResidentBehaviorService residentBehaviorService;
+    private RelationshipPolicy relationshipPolicy;
+    private WorldGuardProtectionAdapter worldGuardProtectionAdapter;
 
     @Override
     public void onEnable() {
@@ -75,17 +116,183 @@ public final class RaskolNPC extends JavaPlugin {
         npcEntityManager = new NpcEntityManager(this,
                 new PaperNpcEntityProvider(this, tagger),
                 tagger, repository, npcRegistry);
+        GuardOrderRepository guardOrders = new SqliteGuardOrderRepository(databaseManager);
+        GuardOrderService guardOrderService = new GuardOrderService(npcRegistry, guardOrders);
+        GuardSquadRepository guardSquads = new SqliteGuardSquadRepository(databaseManager);
+        GuardSquadService guardSquadService = new GuardSquadService(npcRegistry, guardSquads,
+                Math.max(2, Math.min(10, getConfig().getInt("guards.squad-max-members", 10))));
+        guardOrderController = new GuardOrderController(this, npcRegistry, npcEntityManager,
+                guardOrderService,
+                Math.max(1, getConfig().getInt("guards.order-batch-size", 6)),
+                Math.min(1.5, Math.max(0.1,
+                        getConfig().getDouble("guards.movement-step", 0.6))));
+        guardOrderController.setSquadService(guardSquadService);
         npcRecoveryService = new NpcRecoveryService(
                 this, npcRegistry, npcEntityManager, deletionRepository);
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
-        TownyIntegration townyIntegration = new TownyIntegration(this);
-        boolean townyEnabled = townyIntegration.isAvailable()
-                && getConfig().getBoolean("integrations.towny.enabled", true);
-        townyKingdomGuardAccess = townyEnabled ? new TownyKingdomGuardAccess() : null;
-        TownyResidentService townyResidents = townyEnabled
-                ? townyIntegration.residents() : null;
+        ResidentDialogueService residentDialogues = new ResidentDialogueService(this);
+        ResidentQuestRepository residentQuestRepository =
+                new SqliteResidentQuestRepository(databaseManager);
+        ResidentTradeRepository residentTradeRepository =
+                new SqliteResidentTradeRepository(databaseManager);
+        ResidentQuestService residentQuests = new ResidentQuestService(
+                this, residentProfileService, npcRegistry, residentQuestRepository);
+        getServer().getPluginManager().registerEvents(
+                new ResidentInteractionListener(this, npcEntityManager, npcRegistry,
+                        residentProfileService, residentDialogues, residentQuests), this);
+
+        ResidentScheduleRepository residentSchedules =
+                new SqliteResidentScheduleRepository(databaseManager);
+        residentBehaviorService = new ResidentBehaviorService(this, npcRegistry,
+                npcEntityManager, residentSchedules, residentProfiles,
+                Math.max(1, getConfig().getInt("resident-behavior.batch-size", 8)),
+                Math.max(1L, getConfig().getLong("resident-behavior.interval-ticks", 10L)),
+                getConfig().getDouble("resident-behavior.movement-step", 0.8));
+        residentBehaviorService.setBusinessStockRepository(residentQuestRepository);
+        residentBehaviorService.setProductionService(residentQuests);
+        residentBehaviorService.setWorkActionIntervalTicks(Math.max(1L, Math.min(24_000L,
+                getConfig().getLong("resident-behavior.work-action-interval-ticks", 60L))));
+        residentBehaviorService.setDailyStockConsumptionPercent(Math.max(0, Math.min(100,
+                getConfig().getInt("resident-business-stock.daily-consumption-percent", 10))));
+
+        TownyIntegration townyIntegration = null;
+        boolean townyDetected = false;
+        if (getConfig().getBoolean("integrations.towny.enabled", true)) {
+            try {
+                townyIntegration = new TownyIntegration(this);
+                townyDetected = townyIntegration.isAvailable();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny was detected but its API is incompatible or unavailable. "
+                                + "Towny-backed features are disabled; unknown relations remain neutral.",
+                        adapterError);
+            }
+        }
+        final boolean townyEnabled = townyDetected;
+        org.bukkit.plugin.Plugin siegeWarPlugin =
+                getServer().getPluginManager().getPlugin("SiegeWar");
+        boolean siegeWarEnabled = siegeWarPlugin != null && siegeWarPlugin.isEnabled();
+        org.bukkit.plugin.Plugin worldGuardPlugin =
+                getServer().getPluginManager().getPlugin("WorldGuard");
+        worldGuardProtectionAdapter = null;
+        if (worldGuardPlugin != null && worldGuardPlugin.isEnabled()) {
+            try {
+                worldGuardProtectionAdapter = new WorldGuardProtectionAdapter();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "WorldGuard was detected, but its region query adapter could not initialize. "
+                                + "NPC combat must fail closed until the adapter is available.",
+                        adapterError);
+            }
+        }
+        java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
+        if (townyEnabled) {
+            try {
+                diplomacyProviders.add(new TownyDiplomacyAdapter());
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny diplomacy adapter could not initialize; Towny relations remain unknown.",
+                        adapterError);
+            }
+        }
+        if (siegeWarEnabled) {
+            try {
+                diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "SiegeWar was detected but its API adapter could not initialize. "
+                                + "Siege relations remain unknown.",
+                        adapterError);
+            }
+        }
+        relationshipPolicy = new RelationshipPolicy(new CompositeDiplomacy(diplomacyProviders));
+        PlayerSubjectResolver playerSubjects = PlayerSubjectResolver.none();
+        TownyGuardTerritoryAccess territoryAccess = null;
+        if (townyEnabled) {
+            try {
+                playerSubjects = new TownyPlayerSubjectResolver();
+                territoryAccess = new TownyGuardTerritoryAccess();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny player or territory adapter could not initialize. "
+                                + "Player hostility and guard territory movement remain disabled.",
+                        adapterError);
+            }
+        }
+        if (territoryAccess != null) {
+            guardOrderController.setTerritoryAccess(territoryAccess::apply);
+        }
+        guardOrderController.setPursuitPolicy(relationshipPolicy,
+                Math.max(0.0, Math.min(32.0,
+                        getConfig().getDouble("guards.combat.max-pursuit-distance", 16.0))),
+                playerSubjects);
+        guardMoraleService = new GuardMoraleService(this, npcRegistry, npcEntityManager,
+                new SqliteGuardConditionRepository(databaseManager));
+        guardEquipmentWearService = new GuardEquipmentWearService(
+                this, npcRegistry, npcEntityManager);
+        guardEquipmentWearService.setWearPerHit(
+                Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.weapon-wear-per-hit", 1))),
+                Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.armor-wear-per-hit", 1))));
+        guardCombatController = new GuardCombatController(
+                this, npcRegistry, npcEntityManager, relationshipPolicy,
+                worldGuardProtectionAdapter,
+                Math.max(1, getConfig().getInt("guards.combat.batch-size", 4)),
+                getConfig().getDouble("guards.combat.detection-radius", 12.0),
+                getConfig().getDouble("guards.combat.damage", 2.0),
+                getConfig().getLong("guards.combat.attack-cooldown-ms", 1000L),
+                playerSubjects);
+        guardCombatController.setSquadService(guardSquadService);
+        guardCombatController.setMoraleService(guardMoraleService);
+        guardOrderController.setMoraleService(guardMoraleService);
+        int moraleRetreatThreshold = Math.max(0, Math.min(99,
+                getConfig().getInt("guards.morale.retreat-threshold", 20)));
+        int moraleRallyThreshold = Math.max(moraleRetreatThreshold + 1,
+                Math.max(1, Math.min(100,
+                        getConfig().getInt("guards.morale.rally-threshold", 35))));
+        guardMoraleService.setRetreatThresholds(
+                moraleRetreatThreshold, moraleRallyThreshold);
+        guardMoraleService.setAlliedDeathPenalty(
+                Math.max(0, Math.min(50, getConfig().getInt("guards.morale.allied-death-penalty", 8))));
+        double lightInjuryDamage = Math.max(0.5,
+                Math.min(20.0, getConfig().getDouble("guards.injury.light-damage", 4.0)));
+        double severeInjuryDamage = Math.max(lightInjuryDamage + 0.1,
+                Math.min(40.0, getConfig().getDouble("guards.injury.severe-damage", 8.0)));
+        guardMoraleService.setInjuryPolicy(lightInjuryDamage, severeInjuryDamage,
+                Math.max(60L, Math.min(86_400L,
+                        getConfig().getLong("guards.injury.recovery-delay-seconds", 300L))) * 1000L);
+        if (territoryAccess != null) {
+            guardCombatController.setTerritoryAccess(territoryAccess::apply);
+        }
+        townyKingdomGuardAccess = null;
+        TownyResidentService townyResidents = null;
+        if (townyEnabled) {
+            try {
+                townyKingdomGuardAccess = new TownyKingdomGuardAccess();
+                townyResidents = townyIntegration.residents();
+            } catch (RuntimeException | LinkageError adapterError) {
+                townyKingdomGuardAccess = null;
+                townyResidents = null;
+                getLogger().log(Level.WARNING,
+                        "Towny authorization adapters could not initialize. "
+                                + "Towny-backed NPC management is disabled.",
+                        adapterError);
+            }
+        }
+        TownyTownBankEconomy guardRentEconomy = null;
+        if (townyEnabled) {
+            try {
+                guardRentEconomy = new TownyTownBankEconomy();
+            } catch (RuntimeException | LinkageError adapterError) {
+                getLogger().log(Level.WARNING,
+                        "Towny economy adapter could not initialize. Guard rent collection is disabled; "
+                                + "the durable payment ledger will still be recovered.",
+                        adapterError);
+            }
+        }
+        final TownyTownBankEconomy availableGuardRentEconomy = guardRentEconomy;
+
         int residentsPerTown = Math.max(1,
                 getConfig().getInt("limits.residents-per-town", 15));
         int guardsPerNation = Math.max(1,
@@ -94,24 +301,66 @@ public final class RaskolNPC extends JavaPlugin {
                 this, npcLifecycleService, npcRegistry, npcEntityManager,
                 townyResidents, new TownyNpcLimitService(), residentsPerTown,
                 townyKingdomGuardAccess,
-                townyEnabled ? new TownyTownBankEconomy() : null,
+                availableGuardRentEconomy,
                 townyEnabled ? new KingdomGuardService() : null,
                 guardsPerNation,
                 getConfig().getDouble("guards.base-hire-cost", 100.0),
                 getConfig().getDouble("guards.base-daily-rent", 10.0));
         commandService.setGuardHiringPaymentRepository(hiringPayments);
         commandService.setResidentProfileService(residentProfileService);
+        commandService.setResidentBehaviorService(residentBehaviorService);
+        if (townyKingdomGuardAccess != null) {
+            commandService.setGuardRosterService(
+                    new KingdomGuardRosterService(npcRegistry, townyKingdomGuardAccess));
+        }
         NpcCommand commandHandler = new NpcCommand(
                 this, commandService, new NpcCommandMessages(this));
+        commandHandler.setIntegrationCapabilities(new IntegrationCapabilities(
+                getServer().getPluginManager(), townyEnabled,
+                worldGuardProtectionAdapter != null));
+        commandHandler.setGuardOrderService(guardOrderService);
+        commandHandler.setGuardSquadService(guardSquadService);
+        commandHandler.setGuardEquipmentRepairService(
+                new GuardEquipmentRepairService(npcRegistry, npcEntityManager));
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);
         getCommand("raskolnpc").setTabCompleter(commandHandler);
+        commandHandler.setResidentScheduleService(new ResidentScheduleCommandService(
+                commandService, residentSchedules, residentBehaviorService));
+        commandHandler.setResidentDialogueService(residentDialogues);
+        commandHandler.setResidentQuestService(residentQuests);
+        commandHandler.setResidentTradeRepository(residentTradeRepository);
+        if (townyEnabled) {
+            commandHandler.setKingdomGeneralService(new TownyKingdomGeneralService(
+                    getConfig().getString("guards.towny-general-rank", "general")));
+        }
+
+        // Always construct the ledger service. Without Towny it operates in
+        // recovery/review-only mode and cannot schedule new bank withdrawals.
+        guardRentService = new GuardRentService(this, npcRegistry,
+                npcLifecycleService, npcEntityManager, availableGuardRentEconomy,
+                rentPayments, getConfig().getInt("guards.maximum-debt-days", 3));
+        commandHandler.setGuardRentService(guardRentService);
 
         databaseManager.initialize()
-                .thenCompose(ignored -> npcLifecycleService.loadAll())
+                .thenCompose(ignored -> residentQuestRepository.recoverUnfinishedSubmissions())
+                .thenCompose(reviewCount -> {
+                    if (reviewCount > 0) {
+                        getLogger().warning("Resident quest submissions requiring review: " + reviewCount);
+                    }
+                    return residentTradeRepository.recoverUnfinished();
+                })
+                .thenCompose(tradeReviewCount -> {
+                    if (tradeReviewCount > 0) {
+                        getLogger().warning("Resident trades requiring payment/delivery reconciliation: "
+                                + tradeReviewCount);
+                    }
+                    return npcLifecycleService.loadAll();
+                })
                 .thenCompose(records -> residentProfileService.ensureProfiles(records)
                         .thenApply(ignored -> records))
+                .thenCompose(records -> guardMoraleService.load().thenApply(ignored -> records))
                 .whenComplete((records, error) -> {
                     if (!isEnabled()) return;
                     scheduleStartupStep(() -> {
@@ -122,18 +371,8 @@ public final class RaskolNPC extends JavaPlugin {
                             return;
                         }
 
-                        if (townyEnabled) {
-                            guardRentService = new GuardRentService(this, npcRegistry,
-                                    npcLifecycleService, npcEntityManager,
-                                    new TownyTownBankEconomy(), rentPayments,
-                                    getConfig().getInt("guards.maximum-debt-days", 3));
-                            commandHandler.setGuardRentService(guardRentService);
-                        }
-
                         java.util.concurrent.CompletableFuture<Void> rentRecovery =
-                                guardRentService == null
-                                        ? java.util.concurrent.CompletableFuture.completedFuture(null)
-                                        : guardRentService.recoverPendingPayments();
+                                guardRentService.recoverPendingPayments();
                         java.util.concurrent.CompletableFuture<Void> hiringRecovery = rentRecovery
                                 .thenCompose(ignored -> hiringPayments.moveUnfinishedToReview(
                                         "Server restarted while guard hiring or refund result was not finalized."))
@@ -161,19 +400,37 @@ public final class RaskolNPC extends JavaPlugin {
                                             return;
                                         }
                                         npcLifecycleService.markReady();
-                                        if (guardRentService != null) {
-                                            try {
-                                                guardRentService.start();
-                                            } catch (RuntimeException startError) {
-                                                disableAfterStartupFailure(
-                                                        "RaskolNPC could not start guard rent collection.",
-                                                        startError);
-                                                return;
-                                            }
-                                        }
-                                        getLogger().info("RaskolNPC is enabled. Loaded "
-                                                + records.size()
-                                                + " NPC record(s); payment and entity recovery completed.");
+                                        residentBehaviorService.start();
+                                        guardSquadService.refreshMemberships()
+                                                .thenCompose(squadLoadResult -> guardOrderController.start())
+                                                .whenComplete((started, orderError) -> {
+                                            if (!isEnabled()) return;
+                                            scheduleStartupStep(() -> {
+                                                if (!isEnabled()) return;
+                                                if (orderError != null) {
+                                                    disableAfterStartupFailure(
+                                                            "RaskolNPC could not restore persisted guard orders and squad membership.",
+                                                            orderError);
+                                                    return;
+                                                }
+                                                guardMoraleService.start();
+                                                guardEquipmentWearService.start();
+                                                guardCombatController.start();
+                                                if (availableGuardRentEconomy != null) {
+                                                    try {
+                                                        guardRentService.start();
+                                                    } catch (RuntimeException startError) {
+                                                        disableAfterStartupFailure(
+                                                                "RaskolNPC could not start guard rent collection.",
+                                                                startError);
+                                                        return;
+                                                    }
+                                                }
+                                                getLogger().info("RaskolNPC is enabled. Loaded "
+                                                        + records.size()
+                                                        + " NPC record(s); payment, entity, and guard-order recovery completed.");
+                                            });
+                                        });
                                     });
                                 });
                             });
@@ -211,6 +468,16 @@ public final class RaskolNPC extends JavaPlugin {
         return npcEntityManager;
     }
 
+    /** Returns the WorldGuard mob-damage query adapter when WorldGuard is enabled. */
+    public WorldGuardProtectionAdapter getWorldGuardProtectionAdapter() {
+        return worldGuardProtectionAdapter;
+    }
+
+    /** Returns the provider-neutral relationship policy; unknown relations remain neutral. */
+    public RelationshipPolicy getRelationshipPolicy() {
+        return relationshipPolicy;
+    }
+
     /** Returns Towny-backed guard authorization when the integration is enabled. */
     public TownyKingdomGuardAccess getTownyKingdomGuardAccess() {
         return townyKingdomGuardAccess;
@@ -218,6 +485,11 @@ public final class RaskolNPC extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (residentBehaviorService != null) residentBehaviorService.stop();
+        if (guardOrderController != null) guardOrderController.stop();
+        if (guardCombatController != null) guardCombatController.stop();
+        if (guardEquipmentWearService != null) guardEquipmentWearService.stop();
+        if (guardMoraleService != null) guardMoraleService.stop();
         if (guardRentService != null) guardRentService.stop();
         if (npcEntityManager != null && org.bukkit.Bukkit.isPrimaryThread()) {
             npcEntityManager.clear();

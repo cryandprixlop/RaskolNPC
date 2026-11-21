@@ -4,14 +4,14 @@ main: ru.raskolnpc.RaskolNPC
 api-version: '26.2'
 description: Persistent NPC framework for a Paper-based Minecraft RPG server.
 authors: [cryandprixlop]
-softdepend: [Towny]
+softdepend: [Towny, SiegeWar, WorldGuard]
 libraries:
   - org.xerial:sqlite-jdbc:3.54.1.0
 
 commands:
   raskolnpc:
     description: NPC management commands.
-    usage: /raskolnpc <create|list|info|delete|guard> (guard hire|rent review/resolve)
+    usage: /raskolnpc <create|list|info|delete|guard|resident>
     aliases: [rnpc]
 
 permissions:
