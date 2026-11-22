@@ -155,7 +155,8 @@ public final class NpcCommandService {
                     return CompletableFuture.failedFuture(new SecurityException(
                             "Назначать профессию можно только жителю своего города."));
                 }
-                return changeProfessionAndRefresh(residentId, profession);
+                return changeProfessionAndRefresh(residentId, profession,
+                        Math.max(0L, player.getWorld().getFullTime() / 24_000L));
             });
         }
         return lifecycle.find(residentId).thenCompose(found -> {
@@ -163,19 +164,21 @@ public final class NpcCommandService {
                 return CompletableFuture.failedFuture(
                         new IllegalArgumentException("Житель не найден."));
             }
-            return changeProfessionAndRefresh(residentId, profession);
+            return changeProfessionAndRefresh(residentId, profession,
+                    Math.max(0L, player.getWorld().getFullTime() / 24_000L));
         });
     }
 
     private CompletableFuture<ru.raskolnpc.npc.resident.model.ResidentProfile>
             changeProfessionAndRefresh(NpcId residentId,
-                    ru.raskolnpc.npc.resident.model.ResidentProfession profession) {
+                    ru.raskolnpc.npc.resident.model.ResidentProfession profession,
+                    long worldDay) {
         ResidentProfileService profiles = residentProfileService;
         if (profiles == null) {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("Система профилей жителей не инициализирована."));
         }
-        return profiles.changeProfession(residentId, profession)
+        return profiles.changeProfession(residentId, profession, worldDay)
                 .thenApply(profile -> {
                     refreshResidentBehavior();
                     return profile;
