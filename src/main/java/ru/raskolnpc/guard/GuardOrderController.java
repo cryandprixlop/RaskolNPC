@@ -272,7 +272,7 @@ public final class GuardOrderController {
             RelationshipPolicy.Subject actor = new RelationshipPolicy.Subject(
                     guard.ownerUuid(), guard.townId(), guard.nationId());
             return relationships.mayTarget(actor, victim);
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             // Unknown diplomacy or player membership must never become hostility.
             return false;
         }
@@ -347,7 +347,7 @@ public final class GuardOrderController {
     private boolean hasTerritoryAccess(Location location, String nationId) {
         try {
             return territoryAccess.test(location, nationId);
-        } catch (RuntimeException unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
     }
