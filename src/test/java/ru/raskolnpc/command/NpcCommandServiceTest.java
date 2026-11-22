@@ -76,6 +76,7 @@ class NpcCommandServiceTest {
     @Test
     void failsResidentCreationWhenTownAuthorizationFailsBeforePersistence() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
         when(towny.resolveAndAuthorize(eq(player), any()))
@@ -93,6 +94,7 @@ class NpcCommandServiceTest {
     @Test
     void failsResidentCreationWhenTownLimitIsReachedBeforePersistence() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
         when(towny.resolveAndAuthorize(eq(player), any()))
@@ -124,6 +126,7 @@ class NpcCommandServiceTest {
 
     private void assertOverflowingCostRejected(double baseHireCost, double baseDailyRent) {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
         TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
         KingdomGuardService limits = new KingdomGuardService();
@@ -184,6 +187,7 @@ class NpcCommandServiceTest {
     @Test
     void administratorCanChangeProfessionWithoutStandingInTown() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.hasPermission("raskolnpc.admin")).thenReturn(true);
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
                 null, "town-1", null, "{}");
@@ -196,7 +200,7 @@ class NpcCommandServiceTest {
                 ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH,
                 java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
         when(profiles.changeProfession(resident.id(),
-                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH))
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH, 0L))
                 .thenReturn(CompletableFuture.completedFuture(changed));
         NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
                 new NpcRegistry(), mock(NpcEntityManager.class), null,
@@ -206,12 +210,13 @@ class NpcCommandServiceTest {
         assertSame(changed, service.changeResidentProfession(player, resident.id(),
                 ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH).join());
         verify(profiles).changeProfession(resident.id(),
-                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH);
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH, 0L);
     }
 
     @Test
     void townManagerCanChangeProfessionOfResidentInTheirOwnTown() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
@@ -228,7 +233,7 @@ class NpcCommandServiceTest {
                 ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER,
                 java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
         when(profiles.changeProfession(resident.id(),
-                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER))
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER, 0L))
                 .thenReturn(CompletableFuture.completedFuture(changed));
         NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
                 new NpcRegistry(), mock(NpcEntityManager.class), towny,
@@ -239,12 +244,13 @@ class NpcCommandServiceTest {
                 ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER).join());
         verify(towny).resolveAndAuthorize(eq(player), any());
         verify(profiles).changeProfession(resident.id(),
-                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER);
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER, 0L);
     }
 
     @Test
     void townManagerCannotChangeProfessionOfResidentFromAnotherTown() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
