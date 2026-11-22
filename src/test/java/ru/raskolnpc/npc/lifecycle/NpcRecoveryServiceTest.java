@@ -189,6 +189,35 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
+    void tracksReloadedResidentWithoutSpawningDuplicateEntity() {
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = NpcRecord.create(
+                        NpcType.RESIDENT, "Reloaded resident", null, null, null, null)
+                .withEntityBinding(loadedEntity.getUniqueId(),
+                        NpcSpawnLocation.from(loadedEntity.getLocation()));
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        entities.trackLoaded(loadedEntity);
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+
+        assertTrue(world.unloadChunk(0, 0));
+        recovery.onEntitiesUnload(List.of(loadedEntity));
+        assertTrue(entities.find(record.id()).isEmpty());
+
+        world.loadChunk(0, 0);
+        world.addEntity(loadedEntity);
+        recovery.recover();
+        server.getScheduler().performOneTick();
+        recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of(loadedEntity));
+        server.getScheduler().performTicks(3);
+
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+        verifyNoInteractions(provider);
+        verify(repository, never()).update(any(NpcRecord.class));
+    }
+
+    @Test
     void tracksReloadedNpcWithoutSpawningDuplicateEntity() {
         Entity loadedEntity = createTrackedEntity();
         NpcRecord record = recordFor(loadedEntity);
