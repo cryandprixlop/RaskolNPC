@@ -78,7 +78,7 @@ class NpcCommandServiceTest {
         Player player = mock(Player.class);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenThrow(new IllegalStateException("not authorized"));
         NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
         NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
@@ -95,7 +95,7 @@ class NpcCommandServiceTest {
         Player player = mock(Player.class);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenReturn(new TownyResidentService.TownAssignment("town-1", null));
         NpcRegistry registry = new NpcRegistry();
         for (int i = 0; i < 15; i++) {
@@ -215,7 +215,7 @@ class NpcCommandServiceTest {
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenReturn(new TownyResidentService.TownAssignment("town-1", null));
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
                 null, "town-1", null, "{}");
@@ -237,7 +237,7 @@ class NpcCommandServiceTest {
 
         assertSame(changed, service.changeResidentProfession(player, resident.id(),
                 ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER).join());
-        verify(towny).resolveAndAuthorize(eq(player), any(Location.class));
+        verify(towny).resolveAndAuthorize(eq(player), any());
         verify(profiles).changeProfession(resident.id(),
                 ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER);
     }
@@ -248,7 +248,7 @@ class NpcCommandServiceTest {
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenReturn(new TownyResidentService.TownAssignment("town-2", null));
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
                 null, "town-1", null, "{}");
