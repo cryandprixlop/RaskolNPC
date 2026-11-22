@@ -5,7 +5,6 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
-import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillProgress;
 import ru.raskolnpc.storage.ResidentProfileRepository;
 
