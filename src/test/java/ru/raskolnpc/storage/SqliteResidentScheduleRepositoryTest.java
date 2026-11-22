@@ -84,6 +84,35 @@ class SqliteResidentScheduleRepositoryTest {
     }
 
     @Test
+    void schedulesAndDestinationsSurviveDatabaseManagerRestart() {
+        NpcRecord npc = createResident("Restarted resident");
+        ResidentSchedule schedule = new ResidentSchedule(List.of(
+                new ResidentSchedule.Entry(DayOfWeek.FRIDAY, 600, 720,
+                        ResidentSchedule.Activity.WORK,
+                        ResidentDestination.DestinationType.WORK)));
+        ResidentDestination home = new ResidentDestination(npc.id(),
+                ResidentDestination.DestinationType.HOME, UUID.randomUUID(),
+                14.5, 70, -22.5, 135, 0, "Persisted home");
+        repository.saveSchedule(npc.id(), schedule).join();
+        repository.saveDestination(home).join();
+
+        database.close();
+        var plugin = mock(JavaPlugin.class);
+        org.mockito.Mockito.when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        org.mockito.Mockito.when(plugin.getLogger()).thenReturn(
+                Logger.getLogger("RaskolNPC-resident-schedule-restart-test"));
+        database = new DatabaseManager(plugin, "resident-schedule-tests.sqlite", 1);
+        database.initialize().join();
+        npcRepository = new SqliteNpcRepository(database);
+        profileRepository = new SqliteResidentProfileRepository(database);
+        repository = new SqliteResidentScheduleRepository(database);
+
+        assertEquals(schedule, repository.findSchedule(npc.id()).join().orElseThrow());
+        assertEquals(List.of(home), repository.findDestinations(npc.id()).join());
+        assertEquals(npc.id(), repository.findAllBehaviorData().join().getFirst().npcId());
+    }
+
+    @Test
     void loadsResidentWithHomeEvenWhenNoScheduleExists() {
         NpcRecord npc = createResident("HomeOnly");
         ResidentDestination home = new ResidentDestination(npc.id(),
