@@ -333,6 +333,23 @@ class DatabaseMigrationsTest {
     }
 
     @Test
+    void refusesIncompleteMigrationHistoryWithoutApplyingFurtherMigrations() throws Exception {
+        var file = temporaryDirectory.resolve("incomplete-history.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            DatabaseMigrations.migrate(connection);
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 10");
+            }
+
+            SQLException error = assertThrows(SQLException.class,
+                    () -> DatabaseMigrations.migrate(connection));
+            assertTrue(error.getMessage().contains("migration history is incomplete"));
+            assertEquals(21, schemaVersion(connection));
+            assertEquals(20, migrationCount(connection));
+        }
+    }
+
+    @Test
     void guardMoraleIsBoundedAndDeletedWithItsNpc() throws Exception {
         var file = temporaryDirectory.resolve("guard-morale.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
