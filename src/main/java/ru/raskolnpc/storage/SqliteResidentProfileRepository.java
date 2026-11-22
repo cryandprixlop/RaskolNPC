@@ -271,8 +271,15 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
 
     @Override
     public CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession) {
+        return changeProfession(npcId, profession, 0L);
+    }
+
+    @Override
+    public CompletableFuture<Void> changeProfession(
+            NpcId npcId, ResidentProfession profession, long worldDay) {
         java.util.Objects.requireNonNull(npcId, "npcId");
         java.util.Objects.requireNonNull(profession, "profession");
+        if (worldDay < 0) throw new IllegalArgumentException("worldDay cannot be negative");
         return database.transaction(connection -> {
             try (var update = connection.prepareStatement(
                     "UPDATE resident_profiles SET profession = ? WHERE npc_id = ?")) {
@@ -282,8 +289,7 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
                     throw new SQLException("Resident profile does not exist: " + npcId);
                 }
             }
-            // Preserve any existing progress in the selected profession. A new
-            // profession starts at APPRENTICE with zero XP; old skills remain intact.
+            // Preserve every profession's existing XP and atomically record the cooldown origin.
             try (var ensure = connection.prepareStatement("""
                     INSERT OR IGNORE INTO resident_skills(
                         npc_id, profession, skill_level, experience
@@ -293,7 +299,31 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
                 ensure.setString(2, profession.name());
                 ensure.executeUpdate();
             }
+            try (var record = connection.prepareStatement("""
+                    INSERT INTO resident_profession_changes(npc_id, last_change_world_day)
+                    VALUES (?, ?)
+                    ON CONFLICT(npc_id) DO UPDATE SET
+                        last_change_world_day = excluded.last_change_world_day
+                    """)) {
+                record.setString(1, npcId.toString());
+                record.setLong(2, worldDay);
+                record.executeUpdate();
+            }
             return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Long> findLastProfessionChangeDay(NpcId npcId) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT last_change_world_day FROM resident_profession_changes WHERE npc_id = ?")) {
+                statement.setString(1, npcId.toString());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getLong(1) : 0L;
+                }
+            }
         });
     }
 
