@@ -630,6 +630,67 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void failsClosedWhenDiplomacyProviderThrowsLinkageErrorDuringPursuit() {
+        LivingEntity hostileEntity = mock(LivingEntity.class);
+        NpcRecord hostile = NpcRecord.create(
+                NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
+        registry.register(hostile);
+        when(hostileEntity.isValid()).thenReturn(true);
+        when(hostileEntity.isDead()).thenReturn(false);
+        when(hostileEntity.getWorld()).thenReturn(world);
+        when(hostileEntity.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostileEntity));
+        when(entities.getNpcId(hostileEntity)).thenReturn(Optional.of(hostile.id()));
+
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> { throw new NoSuchMethodError("Towny API mismatch"); });
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
+    void failsClosedWhenPlayerResolverThrowsLinkageErrorDuringPursuit() {
+        Player hostilePlayer = mock(Player.class);
+        when(hostilePlayer.isValid()).thenReturn(true);
+        when(hostilePlayer.isDead()).thenReturn(false);
+        when(hostilePlayer.getWorld()).thenReturn(world);
+        when(hostilePlayer.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(entity.getNearbyEntities(8.0, 8.0, 8.0)).thenReturn(List.of(hostilePlayer));
+        RelationshipPolicy policy = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6, policy, 8.0);
+        controller.setPursuitPolicy(policy, 8.0, player -> {
+            throw new NoSuchMethodError("Towny membership API mismatch");
+        });
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
+    void failsClosedWhenTerritoryProviderThrowsLinkageErrorDuringMovement() {
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.PATROL,
+                List.of(point(5.5), point(10.5)), UUID.randomUUID(), 100L);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        orders = new GuardOrderService(registry, repository);
+        orders.loadAll().join();
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.setTerritoryAccess((location, nationId) -> {
+            throw new NoSuchMethodError("Territory API mismatch");
+        });
+
+        assertDoesNotThrow(controller::tick);
+        verify(entity, never()).teleport(any(Location.class));
+    }
+
+    @Test
     void resumesPersistedPatrolWhenVerifiedHostilePlayerLeavesTownyRoster() {
         LivingEntity guardEntity = mock(LivingEntity.class);
         Player hostilePlayer = mock(Player.class);
