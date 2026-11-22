@@ -15,6 +15,7 @@ import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.ResidentProfileService;
 
 import java.util.Comparator;
 import java.util.List;
