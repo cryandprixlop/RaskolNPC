@@ -210,6 +210,39 @@ class NpcCommandServiceTest {
     }
 
     @Test
+    void townManagerCanChangeProfessionOfResidentInTheirOwnTown() {
+        Player player = mock(Player.class);
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
+        when(player.getLocation()).thenReturn(mock(Location.class));
+        TownyResidentService towny = mock(TownyResidentService.class);
+        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+                .thenReturn(new TownyResidentService.TownAssignment("town-1", null));
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        var changed = new ru.raskolnpc.npc.resident.model.ResidentProfile(
+                resident.id(), 30,
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
+        when(profiles.changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER))
+                .thenReturn(CompletableFuture.completedFuture(changed));
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), towny,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertSame(changed, service.changeResidentProfession(player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER).join());
+        verify(towny).resolveAndAuthorize(eq(player), any(Location.class));
+        verify(profiles).changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER);
+    }
+
+    @Test
     void townManagerCannotChangeProfessionOfResidentFromAnotherTown() {
         Player player = mock(Player.class);
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
