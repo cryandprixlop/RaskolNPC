@@ -24,5 +24,12 @@ public interface ResidentProfileRepository {
     /** Changes the active profession without resetting any profession experience. */
     CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession);
 
+    /** Atomically changes profession and records the world's full-time day. */
+    CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession,
+            long worldDay);
+
+    /** Returns the last profession-change day, or zero when no change was recorded. */
+    CompletableFuture<Long> findLastProfessionChangeDay(NpcId npcId);
+
     CompletableFuture<Boolean> delete(NpcId npcId);
 }
