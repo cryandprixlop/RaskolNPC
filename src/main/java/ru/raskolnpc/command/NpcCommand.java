@@ -1443,7 +1443,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             java.util.ArrayList<String> values = new java.util.ArrayList<>();
             if (sender.hasPermission(PERMISSION)) values.addAll(List.of("create", "list", "info", "delete", "integrations"));
-            if (sender.hasPermission(PERMISSION) || canAcceptResidentQuest) values.add("resident");
+            if (sender.hasPermission(PERMISSION) || canAcceptResidentQuest
+                    || canChangeResidentProfession) values.add("resident");
             if (canHireGuard || sender.hasPermission(PERMISSION)) values.add("guard");
             if (canCreateTownResident && !values.contains("create")) values.add("create");
             return startsWith(values, args[0]);
