@@ -270,6 +270,34 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
     }
 
     @Override
+    public CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        return database.transaction(connection -> {
+            try (var update = connection.prepareStatement(
+                    "UPDATE resident_profiles SET profession = ? WHERE npc_id = ?")) {
+                update.setString(1, profession.name());
+                update.setString(2, npcId.toString());
+                if (update.executeUpdate() == 0) {
+                    throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+            // Preserve any existing progress in the selected profession. A new
+            // profession starts at APPRENTICE with zero XP; old skills remain intact.
+            try (var ensure = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO resident_skills(
+                        npc_id, profession, skill_level, experience
+                    ) VALUES (?, ?, 'APPRENTICE', 0)
+                    """)) {
+                ensure.setString(1, npcId.toString());
+                ensure.setString(2, profession.name());
+                ensure.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> delete(NpcId npcId) {
         return database.query(connection -> {
             try (var statement = connection.prepareStatement(
