@@ -92,3 +92,22 @@ Source review confirms:
 **Code-review result:** no source-level defect was identified in the audited rent flow. The design deliberately favors manual reconciliation over a potentially duplicated bank debit when Towny's result is ambiguous.
 
 **Limitations:** this was a source and regression-test review, not a live Towny bank test. The tests must still execute successfully on the current branch head; live Paper/Towny debit, insufficient-balance, server-restart, and 150-NPC acceptance remain **NOT RUN**.
+
+## Follow-up audit — 2026-11-22: guard hiring debit and compensation
+
+**Audited branch head before this report:** `d5f84b016c2fa0856a297417037d33f49ec3b8f7`  
+**Scope:** town-bank hiring debit, journal transitions, NPC creation/spawn failures, compensating refund, and restart behavior.
+
+Source review confirms:
+
+- Hiring requires configured Towny authorization, a valid placement, available nation capacity, a payment journal, and level 1–10. Hire cost and daily rent are checked for finite values before reservation or Towny access.
+- The durable hiring journal is created before the Towny withdrawal. The payer town ID, nation ID, owner UUID, guard name, level, hire cost, and rent are snapshotted in that record.
+- A definitive insufficient-balance result is recorded as `DEBIT_FAILED`; an exception during withdrawal is treated as ambiguous and routed to `REVIEW_REQUIRED`. Neither path creates a guard.
+- NPC creation and entity spawning happen only after a confirmed debit. The journal must advance through expected-state transitions; NPC ID attachment is allowed only once.
+- If spawn fails, compensation is attempted only after entity removal and persistent NPC deletion both succeed. The journal first enters `REFUND_IN_PROGRESS`; only then is the original town bank credited. A failed/ambiguous Towny deposit or failed final journal transition is sent to manual review.
+- Startup moves `IN_PROGRESS`, `REFUND_IN_PROGRESS`, and unresolved `DEBIT_CONFIRMED` records to `REVIEW_REQUIRED`. It never automatically repeats an uncertain debit or refund. Administrator resolutions are recorded with UUID and timestamp and do not themselves call Towny.
+- Existing tests cover one-way journal transitions, duplicate payment creation, one-time NPC ID attachment, restart recovery of unfinished debit/refund operations, administrator resolution audit fields, level-scaled pricing, authorization/capacity checks, failed balance, and the simple service's creation-failure refund.
+
+**Code-review result:** no defect was found in the journaled Towny hiring/refund sequence. Its key safety property is deliberate: uncertain bank outcomes stop for reconciliation instead of triggering a potentially duplicated debit or credit.
+
+**Testing limitation:** the repository has unit/regression tests for the journal and policy service, but this review did not execute them. CI for the report's parent commit was still running at the time of review. Live Towny bank behavior, crash-window simulation against a real Towny economy, and Paper entity-spawn acceptance remain **NOT RUN**.
