@@ -49,8 +49,18 @@ public final class ResidentProfileService {
      */
     public CompletableFuture<ResidentProfile> changeProfession(
             ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession) {
+        return changeProfession(npcId, profession, 0L);
+    }
+
+    /** Changes profession and persists the cooldown origin in the same repository transaction. */
+    public CompletableFuture<ResidentProfile> changeProfession(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession, long worldDay) {
         java.util.Objects.requireNonNull(npcId, "npcId");
         java.util.Objects.requireNonNull(profession, "profession");
+        if (worldDay < 0) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игровой день не может быть отрицательным."));
+        }
         return repository.findByNpcId(npcId).thenCompose(existing -> {
             if (existing.isEmpty()) {
                 return CompletableFuture.failedFuture(
@@ -59,11 +69,17 @@ public final class ResidentProfileService {
             if (existing.get().profession() == profession) {
                 return CompletableFuture.completedFuture(existing.get());
             }
-            return repository.changeProfession(npcId, profession)
+            return repository.changeProfession(npcId, profession, worldDay)
                     .thenCompose(ignored -> repository.findByNpcId(npcId))
                     .thenApply(updated -> updated.orElseThrow(() ->
                             new IllegalStateException("Профиль жителя исчез после смены профессии.")));
         });
+    }
+
+    public CompletableFuture<Long> lastProfessionChangeDay(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findLastProfessionChangeDay(
+                java.util.Objects.requireNonNull(npcId, "npcId"));
     }
 
     /** Creates a profile only when one does not already exist. */
