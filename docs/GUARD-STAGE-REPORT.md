@@ -111,3 +111,28 @@ Source review confirms:
 **Code-review result:** no defect was found in the journaled Towny hiring/refund sequence. Its key safety property is deliberate: uncertain bank outcomes stop for reconciliation instead of triggering a potentially duplicated debit or credit.
 
 **Testing limitation:** the repository has unit/regression tests for the journal and policy service, but this review did not execute them. CI for the report's parent commit was still running at the time of review. Live Towny bank behavior, crash-window simulation against a real Towny economy, and Paper entity-spawn acceptance remain **NOT RUN**.
+
+
+## Final guard-system consistency audit — 2026-11-22
+
+**Audited branch head:** `4e220d66188b469c76e3c37b9ca7e3b5f534c3d1`  
+**Scope:** persisted orders and squad membership, runtime movement, territory boundaries, entity death/unload recovery, deletion/capacity lifecycle, and interactions between combat, morale, equipment and rent.
+
+### Results
+
+- Guard orders are validated by type before persistence. The SQLite repository writes the order header and waypoint replacement in one transaction; startup loads the durable snapshot before the shared movement task starts. Deleted or retyped NPCs are excluded from the runtime order cache.
+- Squad membership is stored separately from per-guard orders. The repository checks that the NPC is a guard and enforces the configured member ceiling transactionally; the service publishes an immutable in-memory formation snapshot so movement does not query SQLite each tick. Shared squad orders are persisted per member and partial failures are counted rather than silently reported as complete.
+- Movement uses one bounded scheduler, checks loaded chunks before moving, and checks hiring-nation territory for the intended step and any sidestep destination. Territory-provider exceptions and linkage failures deny movement. Pursuit candidates are independently checked for registration, hostility, world, range and territory; unknown diplomacy remains non-hostile.
+- Combat checks territory for both attacker and target. When WorldGuard is required, both locations must explicitly allow MOB_DAMAGE; a disabled or failing provider denies the action. Morale retreat takes precedence over normal orders and returns the guard toward its saved post without overwriting the durable order. Equipment repair is a separate authorized server-thread operation; rent state is applied through its own durable payment journal and lifecycle state transitions.
+- Recovery removes stale or pending-deletion entities before considering respawn. Only ACTIVE records are eligible for recovery; intentionally UNLOADED records are not respawned. Recovery checks the saved spawn chunk and does not force-load it. Unexpected death recovery verifies the exact currently-bound entity UUID and checks pending deletion before spawning a replacement.
+- The total NPC creation path reserves capacity before asynchronous insertion and releases the reservation on completion. Guard nation-capacity reservations and payment/deletion journal behavior are covered in their respective service and repository tests. Deletion history is retained where required by the rent/trade audit policies.
+
+**Code-review result:** no additional source-level defect was identified in this consistency pass. This is a source audit; it is not a claim that the current branch's automated tests have executed successfully.
+
+### Remaining validation / release blockers
+
+- CI run `45020506066` for the audited head was still running during this audit; the build step had not completed. No PASS result is claimed.
+- Live Paper startup/restart/shutdown, Towny bank debit/refund and debt cases, SiegeWar start/end diplomacy, WorldGuard region behavior, and the 150-NPC/30-minute performance test remain **NOT RUN**. Use `docs/PAPER-ACCEPTANCE.md` on a disposable staging server and record the exact commit and JAR hash.
+- Complex obstacle-aware pathfinding and synchronized squad formations remain outside the current implementation. Squad members move independently toward deterministic formation offsets; RALLY uses persisted spread destinations.
+
+**Disposition:** PR #1 remains Draft and unmerged. `main` is unchanged; no release is authorized by this audit.
