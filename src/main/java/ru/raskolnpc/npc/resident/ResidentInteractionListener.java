@@ -119,10 +119,10 @@ public final class ResidentInteractionListener implements Listener {
                                     profileAndAssignments.reputation(),
                                     profileAndAssignments.assignments(), reviews, List.of(), -1L);
                         })
-                .thenCombine(profiles.lastProfessionChangeDay(npcId), (context, lastChangeDay) ->
-                        new ConversationContext(context.profile(), context.reputation(),
-                                context.activeAssignments(), context.reviews(),
-                                context.availableQuests(), lastChangeDay))
+                .thenCombine(profiles.lastProfessionChangeDay(npcId), (assembledContext, lastChangeDay) ->
+                        new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
+                                assembledContext.activeAssignments(), assembledContext.reviews(),
+                                assembledContext.availableQuests(), lastChangeDay))
                 .thenCompose(conversationContext -> quests.availableFor(conversationContext.profile(), npcId)
                         .thenApply(available -> new ConversationContext(conversationContext.profile(),
                                 conversationContext.reputation(), conversationContext.activeAssignments(),
