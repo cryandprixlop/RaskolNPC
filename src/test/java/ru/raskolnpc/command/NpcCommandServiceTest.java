@@ -180,6 +180,59 @@ class NpcCommandServiceTest {
         reservation.close(); // The outer operation's fallback close is idempotent.
     }
 
+    @Test
+    void administratorCanChangeProfessionWithoutStandingInTown() {
+        Player player = mock(Player.class);
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(true);
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        var changed = new ru.raskolnpc.npc.resident.model.ResidentProfile(
+                resident.id(), 30,
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
+        when(profiles.changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH))
+                .thenReturn(CompletableFuture.completedFuture(changed));
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), null,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertSame(changed, service.changeResidentProfession(player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH).join());
+        verify(profiles).changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH);
+    }
+
+    @Test
+    void townManagerCannotChangeProfessionOfResidentFromAnotherTown() {
+        Player player = mock(Player.class);
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
+        when(player.getLocation()).thenReturn(mock(Location.class));
+        TownyResidentService towny = mock(TownyResidentService.class);
+        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+                .thenReturn(new TownyResidentService.TownAssignment("town-2", null));
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), towny,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertThrows(CompletionException.class, () -> service.changeResidentProfession(
+                player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH).join());
+        verifyNoInteractions(profiles);
+    }
+
     private NpcCommandService service(TownyResidentService towny, NpcRegistry registry) {
         return new NpcCommandService(mock(Plugin.class), mock(NpcLifecycleService.class),
                 registry, mock(NpcEntityManager.class), towny,
