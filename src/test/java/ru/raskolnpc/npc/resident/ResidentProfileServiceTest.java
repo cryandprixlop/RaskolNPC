@@ -34,7 +34,7 @@ class ResidentProfileServiceTest {
         when(repository.findByNpcId(resident.id())).thenReturn(
                 CompletableFuture.completedFuture(Optional.of(before)),
                 CompletableFuture.completedFuture(Optional.of(after)));
-        when(repository.changeProfession(resident.id(), ResidentProfession.BLACKSMITH))
+        when(repository.changeProfession(resident.id(), ResidentProfession.BLACKSMITH, 0L))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         ResidentProfile changed = new ResidentProfileService(repository)
@@ -43,7 +43,7 @@ class ResidentProfileServiceTest {
         assertEquals(ResidentProfession.BLACKSMITH, changed.profession());
         assertEquals(ResidentSkillLevel.EXPERT, changed.skills().get(ResidentProfession.FARMER));
         assertEquals(ResidentSkillLevel.APPRENTICE, changed.currentSkillLevel());
-        verify(repository).changeProfession(resident.id(), ResidentProfession.BLACKSMITH);
+        verify(repository).changeProfession(resident.id(), ResidentProfession.BLACKSMITH, 0L);
     }
 
     @Test
