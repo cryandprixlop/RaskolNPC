@@ -146,6 +146,38 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void profileAndSkillProgressSurviveDatabaseManagerRestart() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Restarted Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        ResidentProfile profile = new ResidentProfile(npc.id(), 29,
+                ResidentProfession.FARMER,
+                EnumSet.of(ResidentProfile.ResidentTrait.FRIENDLY),
+                61, 72, 83, 44, 95, 77,
+                java.util.Map.of(ResidentProfession.FARMER, ResidentSkillLevel.APPRENTICE));
+        repository.save(profile).join();
+        repository.addSkillExperience(npc.id(), ResidentProfession.FARMER, 300).join();
+
+        database.close();
+        var plugin = mock(JavaPlugin.class);
+        org.mockito.Mockito.when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        org.mockito.Mockito.when(plugin.getLogger()).thenReturn(
+                Logger.getLogger("RaskolNPC-resident-profile-restart-test"));
+        database = new DatabaseManager(plugin, "resident-tests.sqlite", 1);
+        database.initialize().join();
+        npcRepository = new SqliteNpcRepository(database);
+        repository = new SqliteResidentProfileRepository(database);
+
+        ResidentProfile restored = repository.findByNpcId(npc.id()).join().orElseThrow();
+        assertEquals(profile.age(), restored.age());
+        assertEquals(profile.traits(), restored.traits());
+        assertEquals(profile.hunger(), restored.hunger());
+        assertEquals(ResidentSkillLevel.SPECIALIST, restored.currentSkillLevel());
+        assertEquals(300, repository.findSkillProgress(npc.id(),
+                ResidentProfession.FARMER).join().totalExperience());
+    }
+
+    @Test
     void refusesToSaveProfileForNonResidentNpc() {
         NpcRecord npc = NpcRecord.create(NpcType.GUARD, "Guard", null,
                 "town-1", "nation-1", "{}");
