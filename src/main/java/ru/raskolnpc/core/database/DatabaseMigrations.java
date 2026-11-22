@@ -21,12 +21,12 @@ public final class DatabaseMigrations {
         }
 
         int installedVersion = installedVersion(connection);
-        validateMigrationHistory(connection, installedVersion);
         if (installedVersion > CURRENT_SCHEMA_VERSION) {
             throw new SQLException("Database schema version " + installedVersion
                     + " is newer than this RaskolNPC build supports ("
                     + CURRENT_SCHEMA_VERSION + "). Refusing to start to prevent data loss.");
         }
+        validateMigrationHistory(connection, installedVersion);
 
         if (!isApplied(connection, 1)) applyInitialSchema(connection);
         if (!isApplied(connection, 2)) applyEntityBindingSchema(connection);
