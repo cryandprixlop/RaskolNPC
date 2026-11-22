@@ -14,6 +14,7 @@ import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.ResidentScheduleCommandService;
 import ru.raskolnpc.npc.resident.model.ResidentDestination;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSchedule;
 import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardEquipmentRepairService;
@@ -116,6 +117,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[1].equalsIgnoreCase("hire")
                 && sender instanceof Player
                 && service.isGuardHiringEnabled();
+        boolean residentProfessionChange = args.length == 4
+                && args[0].equalsIgnoreCase("resident")
+                && args[1].equalsIgnoreCase("profession")
+                && sender instanceof Player;
         boolean residentQuestAccept = args.length == 5
                 && args[0].equalsIgnoreCase("resident")
                 && args[1].equalsIgnoreCase("quest")
@@ -143,7 +148,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && service.isGuardHiringEnabled();
 
         if (!admin && !townResidentCreation && !guardHiring && !guardRosterViewing
-                && !guardGeneralManagement && !guardOrderManagement && !guardEquipmentRepair && !residentQuestAccept && !residentQuestReadOwn) {
+                && !guardGeneralManagement && !guardOrderManagement && !guardEquipmentRepair
+                && !residentProfessionChange && !residentQuestAccept && !residentQuestReadOwn) {
             messages.send(sender, "general.no-permission", "&cУ вас нет прав на эту команду.");
             return true;
         }
@@ -223,6 +229,39 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
 
 
     private void resident(CommandSender sender, String[] args) {
+        if (args.length == 4 && args[1].equalsIgnoreCase("profession")) {
+            if (!(sender instanceof Player player)) {
+                messages.sendRaw(sender, "&cЭту команду может выполнить только игрок.");
+                return;
+            }
+            var residentId = NpcCommandParser.parseId(args[2]);
+            if (residentId.isEmpty()) {
+                messages.sendRaw(sender, "&cНекорректный UUID жителя.");
+                return;
+            }
+            final ResidentProfession profession;
+            try {
+                profession = ResidentProfession.valueOf(args[3].toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException invalid) {
+                messages.sendRaw(sender, "&eДоступные профессии: "
+                        + java.util.Arrays.stream(ResidentProfession.values())
+                        .map(value -> value.name().toLowerCase(Locale.ROOT))
+                        .collect(java.util.stream.Collectors.joining(", ")) + ".");
+                return;
+            }
+            service.changeResidentProfession(player, residentId.get(), profession)
+                    .whenComplete((profile, error) -> runMain(sender, () -> {
+                        if (error != null) {
+                            messages.sendRaw(sender, "&cНе удалось изменить профессию: "
+                                    + rootMessage(error));
+                            return;
+                        }
+                        messages.sendRaw(sender, "&aПрофессия жителя изменена на &f"
+                                + profession.name().toLowerCase(Locale.ROOT)
+                                + "&a. Опыт всех прежних профессий сохранён.");
+                    }));
+            return;
+        }
         if (args.length == 3 && args[1].equalsIgnoreCase("trade")
                 && args[2].equalsIgnoreCase("review")) {
             if (!sender.hasPermission(PERMISSION)) { deny(sender); return; }
@@ -1396,8 +1435,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && service.isTownyIntegrationEnabled();
         boolean canHireGuard = sender instanceof Player && service.isGuardHiringEnabled();
         boolean canAcceptResidentQuest = sender instanceof Player && residentQuestService != null;
+        boolean canChangeResidentProfession = sender instanceof Player && service.isTownyIntegrationEnabled();
         if (!sender.hasPermission(PERMISSION) && !canCreateTownResident && !canHireGuard
-                && !canAcceptResidentQuest) {
+                && !canAcceptResidentQuest && !canChangeResidentProfession) {
             return List.of();
         }
         if (args.length == 1) {
@@ -1418,6 +1458,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 residentActions.addAll(List.of("schedule", "setpoint", "delpoint", "reload-dialogues", "stock", "trade"));
             }
             if (canAcceptResidentQuest) residentActions.add("quest");
+            if (canChangeResidentProfession || sender.hasPermission(PERMISSION))
+                residentActions.add("profession");
             return startsWith(residentActions, args[1]);
         }
         if (sender.hasPermission(PERMISSION) && args.length == 3
@@ -1428,6 +1470,12 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("trade")
                 && args[2].equalsIgnoreCase("resolve")) {
             return startsWith(List.of("delivered", "cancelled_unpaid", "refunded_not_delivered"), args[4]);
+        }
+        if ((canChangeResidentProfession || sender.hasPermission(PERMISSION))
+                && args.length == 4 && args[0].equalsIgnoreCase("resident")
+                && args[1].equalsIgnoreCase("profession")) {
+            return startsWith(java.util.Arrays.stream(ResidentProfession.values())
+                    .map(value -> value.name().toLowerCase(Locale.ROOT)).toList(), args[3]);
         }
         if (canAcceptResidentQuest && args.length == 3
                 && args[0].equalsIgnoreCase("resident") && args[1].equalsIgnoreCase("quest")) {
