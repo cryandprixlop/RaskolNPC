@@ -232,7 +232,7 @@ class SqliteResidentProfileRepositoryTest {
         repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
                 java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
 
-        assertEquals(0L, repository.findLastProfessionChangeDay(npc.id()).join());
+        assertEquals(-1L, repository.findLastProfessionChangeDay(npc.id()).join());
 
         repository.changeProfession(npc.id(), ResidentProfession.BLACKSMITH, 42L).join();
 
