@@ -194,6 +194,31 @@ class SqliteResidentTradeRepositoryTest {
         assertEquals(7, batchAmount("FINE"));
     }
 
+    @Test
+    void completedTradeAuditSurvivesResidentDeletion() {
+        ResidentTradeTransaction trade = reserve("resident-deletion-audit-key");
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.STOCK_RESERVED,
+                ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAYMENT_PENDING,
+                ResidentTradeTransaction.Status.PAID, "payment-confirmed", null).join());
+        assertTrue(trades.transition(trade.transactionId(),
+                ResidentTradeTransaction.Status.PAID,
+                ResidentTradeTransaction.Status.DELIVERED, null, null).join());
+
+        SqliteNpcDeletionRepository deletions = new SqliteNpcDeletionRepository(database);
+        assertTrue(deletions.deleteAndQueue(resident.id()).join());
+
+        assertTrue(npcs.findById(resident.id()).join().isEmpty());
+        assertTrue(new SqliteResidentProfileRepository(database)
+                .findByNpcId(resident.id()).join().isEmpty());
+        ResidentTradeTransaction retained = trades.find(trade.transactionId()).join().orElseThrow();
+        assertEquals(ResidentTradeTransaction.Status.DELIVERED, retained.status());
+        assertEquals(resident.id(), retained.residentNpcId());
+        assertEquals(List.of(resident.id()), deletions.findPending().join());
+    }
+
     private ResidentTradeTransaction reserve(String key) {
         return trades.reserve(key, UUID.randomUUID(), resident.id(), "IRON_INGOT",
                 ResidentProductQuality.FINE, 3, 125).join().orElseThrow();
