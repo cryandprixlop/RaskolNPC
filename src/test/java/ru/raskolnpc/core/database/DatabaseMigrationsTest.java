@@ -316,6 +316,30 @@ class DatabaseMigrationsTest {
     }
 
     @Test
+    void rollsBackPartiallyAppliedMigrationWhenAnAlterStatementFails() throws Exception {
+        var file = temporaryDirectory.resolve("migration-rollback.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)");
+                statement.execute("INSERT INTO schema_migrations(version) VALUES (1)");
+                statement.execute("""
+                        CREATE TABLE npcs (
+                            id TEXT PRIMARY KEY,
+                            spawn_world_uuid TEXT
+                        )
+                        """);
+            }
+
+            assertThrows(SQLException.class, () -> DatabaseMigrations.migrate(connection));
+
+            assertEquals(1, schemaVersion(connection));
+            assertFalse(columnExists(connection, "npcs", "entity_uuid"),
+                    "The first ALTER TABLE must roll back when a later ALTER fails.");
+            assertTrue(columnExists(connection, "npcs", "spawn_world_uuid"));
+        }
+    }
+
+    @Test
     void refusesDatabaseCreatedByNewerPluginVersionWithoutChangingIt() throws Exception {
         var file = temporaryDirectory.resolve("future.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
