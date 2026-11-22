@@ -48,7 +48,8 @@ public final class ResidentInteractionListener implements Listener {
             int reputation,
             List<ResidentQuest.Assignment> activeAssignments,
             List<ResidentQuestReview> reviews,
-            List<ResidentQuest> availableQuests
+            List<ResidentQuest> availableQuests,
+            long lastProfessionChangeDay
     ) {}
 
     private final Plugin plugin;
@@ -116,12 +117,17 @@ public final class ResidentInteractionListener implements Listener {
                             }
                             return new ConversationContext(profileAndAssignments.profile().get(),
                                     profileAndAssignments.reputation(),
-                                    profileAndAssignments.assignments(), reviews, List.of());
+                                    profileAndAssignments.assignments(), reviews, List.of(), -1L);
                         })
+                .thenCombine(profiles.lastProfessionChangeDay(npcId), (context, lastChangeDay) ->
+                        new ConversationContext(context.profile(), context.reputation(),
+                                context.activeAssignments(), context.reviews(),
+                                context.availableQuests(), lastChangeDay))
                 .thenCompose(conversationContext -> quests.availableFor(conversationContext.profile(), npcId)
                         .thenApply(available -> new ConversationContext(conversationContext.profile(),
                                 conversationContext.reputation(), conversationContext.activeAssignments(),
-                                conversationContext.reviews(), available)));
+                                conversationContext.reviews(), available,
+                                conversationContext.lastProfessionChangeDay())));
 
         context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
@@ -139,6 +145,7 @@ public final class ResidentInteractionListener implements Listener {
                     if (conversation.profile().profession() == ResidentProfession.BLACKSMITH) {
                         sendNearbyGuardRepairActions(player, residentName);
                     }
+                    sendProfessionChangeProposal(player, npcId, residentName, conversation);
                     sendQuestActions(player, npcId, residentName, conversation);
                 });
             } catch (RuntimeException schedulingError) {
@@ -198,6 +205,33 @@ public final class ResidentInteractionListener implements Listener {
             }
         }
         return false;
+    }
+
+
+    /**
+     * A resident may ask to retrain only when their needs and traits permit it.
+     * The clickable command still passes through NpcCommandService's Towny/admin
+     * authorization before any profession can actually be changed.
+     */
+    private void sendProfessionChangeProposal(Player player, NpcId residentId,
+            String residentName, ConversationContext context) {
+        long currentWorldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
+        ResidentProfessionChangePolicy.Decision decision =
+                new ResidentProfessionChangePolicy().evaluate(context.profile(),
+                        currentWorldDay, context.lastProfessionChangeDay());
+        if (!decision.canRequestChange()) return;
+
+        Component prefix = Component.text("[" + residentName + "] ");
+        player.sendMessage(prefix.append(Component.text(
+                "Я хотел бы попробовать себя в другом ремесле. Если ты управляешь городом, "
+                        + "можешь утвердить моё обучение:")));
+        for (ResidentProfession profession : decision.suggestedProfessions()) {
+            Component action = Component.text("  » " + profession.name().toLowerCase(
+                    java.util.Locale.ROOT))
+                    .clickEvent(ClickEvent.runCommand("/raskolnpc resident profession "
+                            + residentId + " " + profession.name()));
+            player.sendMessage(prefix.append(action));
+        }
     }
 
     private void sendQuestActions(Player player, NpcId residentId, String residentName,
