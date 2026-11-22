@@ -42,6 +42,30 @@ public final class ResidentProfileService {
         return repository.addSkillExperience(npcId, profession, amount);
     }
 
+    /**
+     * Changes the resident's active profession. Skill experience for every
+     * profession is retained; returning to a former profession restores its
+     * previous mastery progress.
+     */
+    public CompletableFuture<ResidentProfile> changeProfession(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        return repository.findByNpcId(npcId).thenCompose(existing -> {
+            if (existing.isEmpty()) {
+                return CompletableFuture.failedFuture(
+                        new IllegalArgumentException("Профиль жителя не найден."));
+            }
+            if (existing.get().profession() == profession) {
+                return CompletableFuture.completedFuture(existing.get());
+            }
+            return repository.changeProfession(npcId, profession)
+                    .thenCompose(ignored -> repository.findByNpcId(npcId))
+                    .thenApply(updated -> updated.orElseThrow(() ->
+                            new IllegalStateException("Профиль жителя исчез после смены профессии.")));
+        });
+    }
+
     /** Creates a profile only when one does not already exist. */
     public CompletableFuture<ResidentProfile> createIfMissing(NpcRecord npc) {
         if (npc == null || npc.type() != NpcType.RESIDENT) {
