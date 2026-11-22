@@ -225,6 +225,42 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void professionChangeDayIsPersistedAndUpdatedAtomicallyWithProfession() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+
+        assertEquals(0L, repository.findLastProfessionChangeDay(npc.id()).join());
+
+        repository.changeProfession(npc.id(), ResidentProfession.BLACKSMITH, 42L).join();
+
+        assertEquals(42L, repository.findLastProfessionChangeDay(npc.id()).join());
+        assertEquals(ResidentProfession.BLACKSMITH,
+                repository.findByNpcId(npc.id()).join().orElseThrow().profession());
+
+        repository.changeProfession(npc.id(), ResidentProfession.FARMER, 57L).join();
+        assertEquals(57L, repository.findLastProfessionChangeDay(npc.id()).join());
+    }
+
+    @Test
+    void rejectsNegativeProfessionChangeDayWithoutChangingProfile() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+
+        assertThrows(IllegalArgumentException.class, () ->
+                repository.changeProfession(npc.id(), ResidentProfession.BLACKSMITH, -1L));
+
+        assertEquals(ResidentProfession.FARMER,
+                repository.findByNpcId(npc.id()).join().orElseThrow().profession());
+        assertEquals(0L, repository.findLastProfessionChangeDay(npc.id()).join());
+    }
+
+    @Test
     void changingProfessionRejectsMissingResidentProfile() {
         NpcId missing = NpcId.fromString("00000000-0000-0000-0000-000000000002");
         assertThrows(java.util.concurrent.CompletionException.class,
