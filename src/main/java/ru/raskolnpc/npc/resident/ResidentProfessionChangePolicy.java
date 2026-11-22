@@ -51,14 +51,16 @@ public final class ResidentProfessionChangePolicy {
     public Decision evaluate(ResidentProfile profile, long currentWorldDay,
             long lastProfessionChangeDay) {
         Objects.requireNonNull(profile, "profile");
-        if (currentWorldDay < 0 || lastProfessionChangeDay < 0) {
-            throw new IllegalArgumentException("World days cannot be negative.");
+        if (currentWorldDay < 0 || lastProfessionChangeDay < -1) {
+            throw new IllegalArgumentException("World days cannot be negative; -1 means never changed.");
         }
 
-        long elapsed = currentWorldDay - lastProfessionChangeDay;
-        if (elapsed < COOLDOWN_DAYS) {
-            return new Decision(Status.COOLDOWN,
-                    COOLDOWN_DAYS - Math.max(0, elapsed), List.of());
+        if (lastProfessionChangeDay >= 0) {
+            long elapsed = currentWorldDay - lastProfessionChangeDay;
+            if (elapsed < COOLDOWN_DAYS) {
+                return new Decision(Status.COOLDOWN,
+                        COOLDOWN_DAYS - Math.max(0, elapsed), List.of());
+            }
         }
 
         if (profile.mood() < MIN_MOOD
