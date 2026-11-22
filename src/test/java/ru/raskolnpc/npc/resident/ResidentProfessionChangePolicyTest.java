@@ -28,6 +28,18 @@ class ResidentProfessionChangePolicyTest {
     }
 
     @Test
+    void residentWhoHasNeverChangedProfessionHasNoInitialCooldown() {
+        ResidentProfile profile = profile(EnumSet.of(ResidentProfile.ResidentTrait.CURIOUS),
+                80, 75, 75, 70, ResidentProfession.FARMER);
+
+        var decision = policy.evaluate(profile, 0, -1);
+
+        assertTrue(decision.canRequestChange());
+        assertEquals(ResidentProfession.values().length - 1,
+                decision.suggestedProfessions().size());
+    }
+
+    @Test
     void hardworkingResidentCanRequestChange() {
         ResidentProfile profile = profile(EnumSet.of(ResidentProfile.ResidentTrait.HARD_WORKING),
                 75, 70, 70, 65, ResidentProfession.MINER);
