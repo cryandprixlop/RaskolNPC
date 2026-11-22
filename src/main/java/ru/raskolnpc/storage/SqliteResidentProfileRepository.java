@@ -321,7 +321,7 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
                     "SELECT last_change_world_day FROM resident_profession_changes WHERE npc_id = ?")) {
                 statement.setString(1, npcId.toString());
                 try (ResultSet result = statement.executeQuery()) {
-                    return result.next() ? result.getLong(1) : 0L;
+                    return result.next() ? result.getLong(1) : -1L;
                 }
             }
         });
