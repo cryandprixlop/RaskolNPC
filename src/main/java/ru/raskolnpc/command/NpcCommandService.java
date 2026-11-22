@@ -132,6 +132,8 @@ public final class NpcCommandService {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("Игрок, житель и профессия обязательны."));
         }
+        // Capture Bukkit world time on the command thread before asynchronous repository work.
+        long worldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
         boolean administrator = player.hasPermission("raskolnpc.admin");
         if (!administrator) {
             if (townyResidents == null) {
@@ -155,8 +157,7 @@ public final class NpcCommandService {
                     return CompletableFuture.failedFuture(new SecurityException(
                             "Назначать профессию можно только жителю своего города."));
                 }
-                return changeProfessionAndRefresh(residentId, profession,
-                        Math.max(0L, player.getWorld().getFullTime() / 24_000L));
+                return changeProfessionAndRefresh(residentId, profession, worldDay);
             });
         }
         return lifecycle.find(residentId).thenCompose(found -> {
@@ -164,8 +165,7 @@ public final class NpcCommandService {
                 return CompletableFuture.failedFuture(
                         new IllegalArgumentException("Житель не найден."));
             }
-            return changeProfessionAndRefresh(residentId, profession,
-                    Math.max(0L, player.getWorld().getFullTime() / 24_000L));
+            return changeProfessionAndRefresh(residentId, profession, worldDay);
         });
     }
 
