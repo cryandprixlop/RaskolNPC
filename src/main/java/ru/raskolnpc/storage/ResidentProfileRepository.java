@@ -21,5 +21,8 @@ public interface ResidentProfileRepository {
     CompletableFuture<ResidentSkillProgress> addSkillExperience(
             NpcId npcId, ResidentProfession profession, int amount);
 
+    /** Changes the active profession without resetting any profession experience. */
+    CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession);
+
     CompletableFuture<Boolean> delete(NpcId npcId);
 }
