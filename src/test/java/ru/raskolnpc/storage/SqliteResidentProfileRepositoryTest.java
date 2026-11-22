@@ -188,6 +188,50 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void changingProfessionPreservesExperienceInBothOldAndNewProfessions() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+
+        repository.addSkillExperience(npc.id(), ResidentProfession.FARMER, 700).join();
+        repository.changeProfession(npc.id(), ResidentProfession.BLACKSMITH).join();
+
+        var switched = repository.findByNpcId(npc.id()).join().orElseThrow();
+        assertEquals(ResidentProfession.BLACKSMITH, switched.profession());
+        assertEquals(ResidentSkillLevel.APPRENTICE, switched.currentSkillLevel());
+
+        repository.addSkillExperience(npc.id(), ResidentProfession.BLACKSMITH, 100).join();
+        repository.changeProfession(npc.id(), ResidentProfession.FARMER).join();
+
+        var returned = repository.findByNpcId(npc.id()).join().orElseThrow();
+        assertEquals(ResidentProfession.FARMER, returned.profession());
+        assertEquals(ResidentSkillLevel.EXPERT, returned.currentSkillLevel());
+        assertEquals(ResidentSkillLevel.NOVICE,
+                returned.skills().get(ResidentProfession.BLACKSMITH));
+        int farmerExperience = database.query(connection -> {
+            try (var query = connection.prepareStatement(
+                    "SELECT experience FROM resident_skills WHERE npc_id = ? AND profession = ?")) {
+                query.setString(1, npc.id().toString());
+                query.setString(2, ResidentProfession.FARMER.name());
+                try (var result = query.executeQuery()) {
+                    assertTrue(result.next());
+                    return result.getInt(1);
+                }
+            }
+        }).join();
+        assertEquals(700, farmerExperience);
+    }
+
+    @Test
+    void changingProfessionRejectsMissingResidentProfile() {
+        NpcId missing = NpcId.fromString("00000000-0000-0000-0000-000000000002");
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> repository.changeProfession(missing, ResidentProfession.FARMER).join());
+    }
+
+    @Test
     void refusesToSaveProfileForNonResidentNpc() {
         NpcRecord npc = NpcRecord.create(NpcType.GUARD, "Guard", null,
                 "town-1", "nation-1", "{}");
