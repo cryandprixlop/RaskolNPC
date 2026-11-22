@@ -215,7 +215,7 @@ class SqliteResidentTradeRepositoryTest {
                 .findByNpcId(resident.id()).join().isEmpty());
         ResidentTradeTransaction retained = trades.find(trade.transactionId()).join().orElseThrow();
         assertEquals(ResidentTradeTransaction.Status.DELIVERED, retained.status());
-        assertEquals(resident.id(), retained.residentNpcId());
+        assertEquals(resident.id(), retained.residentId());
         assertEquals(List.of(resident.id()), deletions.findPending().join());
     }
 
