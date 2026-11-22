@@ -173,8 +173,18 @@ class SqliteResidentProfileRepositoryTest {
         assertEquals(profile.traits(), restored.traits());
         assertEquals(profile.hunger(), restored.hunger());
         assertEquals(ResidentSkillLevel.SPECIALIST, restored.currentSkillLevel());
-        assertEquals(300, repository.findSkillProgress(npc.id(),
-                ResidentProfession.FARMER).join().totalExperience());
+        int experience = database.query(connection -> {
+            try (var query = connection.prepareStatement(
+                    "SELECT experience FROM resident_skills WHERE npc_id = ? AND profession = ?")) {
+                query.setString(1, npc.id().toString());
+                query.setString(2, ResidentProfession.FARMER.name());
+                try (var result = query.executeQuery()) {
+                    assertTrue(result.next());
+                    return result.getInt(1);
+                }
+            }
+        }).join();
+        assertEquals(300, experience);
     }
 
     @Test
