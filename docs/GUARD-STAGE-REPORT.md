@@ -73,3 +73,22 @@ Relevant automated test classes present on the branch include `GuardMoraleServic
 GitHub Actions run **#782** for the audited head was still **in progress** at the time of this report. Java 25 and Gradle setup steps had completed; `Build plugin` was running. No successful build or test result is claimed here.
 
 The live Paper/Towny/SiegeWar/WorldGuard acceptance plan and 150-NPC load test in `docs/PAPER-ACCEPTANCE.md` remain **NOT RUN** until executed on a staging server. The PR remains Draft and unmerged; `main` is unchanged.
+
+## Follow-up audit — 2026-11-22: daily guard rent and debt
+
+**Audited branch head:** `6042343d2224a1e5eb3508bf8c242740108a2b84`  
+**Scope:** Town-bank payer binding, daily rent scheduling, durable payment idempotency, restart recovery, debt progression, deletion, and startup ordering.
+
+Source review confirms:
+
+- Hiring snapshots the placement town UUID into `payerTownId`; subsequent daily rent uses that exact town bank, not the king's/player's personal account or the nation account.
+- The rent amount is derived from guard level at hiring. Invalid/non-finite metadata is rejected before a withdrawal; Towny and entity operations are kept on the server thread.
+- A unique database constraint on `(npc_id, rent_due_at)` plus `createIfAbsent` prevents a second journal entry for the same guard and due timestamp. The journal entry is committed before calling Towny.
+- A definitive Towny success/failure is transitioned only from `IN_PROGRESS`. Exceptions and uncertain persistence outcomes are not retried automatically; unresolved `IN_PROGRESS` entries are moved to `REVIEW_REQUIRED` at startup.
+- Confirmed payment/debt effects and NPC state/metadata changes are applied in one SQLite transaction. A paid guard is activated and debt resets to zero; a failed payment increments debt and deactivates the guard. At the configured maximum (clamped to 1–3 days; default 3), a failed payment atomically queues guard deletion and marks the ledger entry applied.
+- Startup loads NPC records, recovers rent payments and hiring journal entries, then recovers entities, marks lifecycle ready, and only then starts rent polling. Without Towny, recovery remains available but new withdrawals and polling are disabled.
+- Existing tests cover unique due-time idempotency, restart conversion of ambiguous payments to review, one-way payment state transitions, atomic NPC/ledger application and rollback, third-failure deletion/history retention, and review resolution auditing.
+
+**Code-review result:** no source-level defect was identified in the audited rent flow. The design deliberately favors manual reconciliation over a potentially duplicated bank debit when Towny's result is ambiguous.
+
+**Limitations:** this was a source and regression-test review, not a live Towny bank test. The tests must still execute successfully on the current branch head; live Paper/Towny debit, insufficient-balance, server-restart, and 150-NPC acceptance remain **NOT RUN**.
