@@ -120,6 +120,68 @@ public final class NpcCommandService {
         return guardAccess != null && townBank != null && guardLimits != null;
     }
 
+    /**
+     * Changes a resident's profession for an administrator or a manager of
+     * the resident's own Towny town. The manager must be standing inside that
+     * town so authorization cannot be borrowed from another settlement.
+     */
+    public CompletableFuture<ru.raskolnpc.npc.resident.model.ResidentProfile>
+            changeResidentProfession(Player player, NpcId residentId,
+                    ru.raskolnpc.npc.resident.model.ResidentProfession profession) {
+        if (player == null || residentId == null || profession == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игрок, житель и профессия обязательны."));
+        }
+        boolean administrator = player.hasPermission("raskolnpc.admin");
+        if (!administrator) {
+            if (townyResidents == null) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                        "Управление профессией доступно только администраторам без Towny."));
+            }
+            final TownyResidentService.TownAssignment actingTown;
+            try {
+                actingTown = townyResidents.resolveAndAuthorize(player,
+                        player.getLocation().clone());
+            } catch (RuntimeException denied) {
+                return CompletableFuture.failedFuture(denied);
+            }
+            return lifecycle.find(residentId).thenCompose(found -> {
+                if (found.isEmpty() || found.get().type() != NpcType.RESIDENT) {
+                    return CompletableFuture.failedFuture(
+                            new IllegalArgumentException("Житель не найден."));
+                }
+                if (actingTown.townId() == null
+                        || !actingTown.townId().equals(found.get().townId())) {
+                    return CompletableFuture.failedFuture(new SecurityException(
+                            "Назначать профессию можно только жителю своего города."));
+                }
+                return changeProfessionAndRefresh(residentId, profession);
+            });
+        }
+        return lifecycle.find(residentId).thenCompose(found -> {
+            if (found.isEmpty() || found.get().type() != NpcType.RESIDENT) {
+                return CompletableFuture.failedFuture(
+                        new IllegalArgumentException("Житель не найден."));
+            }
+            return changeProfessionAndRefresh(residentId, profession);
+        });
+    }
+
+    private CompletableFuture<ru.raskolnpc.npc.resident.model.ResidentProfile>
+            changeProfessionAndRefresh(NpcId residentId,
+                    ru.raskolnpc.npc.resident.model.ResidentProfession profession) {
+        ResidentProfileService profiles = residentProfileService;
+        if (profiles == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Система профилей жителей не инициализирована."));
+        }
+        return profiles.changeProfession(residentId, profession)
+                .thenApply(profile -> {
+                    refreshResidentBehavior();
+                    return profile;
+                });
+    }
+
     public CompletableFuture<NpcRecord> createResident(String name, Player player) {
         Location location = player.getLocation().clone();
         final TownyResidentService.TownAssignment town;
