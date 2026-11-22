@@ -28,7 +28,7 @@ public interface ResidentProfileRepository {
     CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession,
             long worldDay);
 
-    /** Returns the last profession-change day, or zero when no change was recorded. */
+    /** Returns the last profession-change day, or -1 when no change was recorded. */
     CompletableFuture<Long> findLastProfessionChangeDay(NpcId npcId);
 
     CompletableFuture<Boolean> delete(NpcId npcId);
