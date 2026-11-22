@@ -420,6 +420,17 @@ class DatabaseMigrationsTest {
         }
     }
 
+    private static boolean columnExists(java.sql.Connection connection, String table, String column)
+            throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (result.next()) {
+                if (column.equals(result.getString("name"))) return true;
+            }
+        }
+        return false;
+    }
+
     private static void assertColumnExists(java.sql.Connection connection, String table, String column)
             throws SQLException {
         try (var statement = connection.createStatement();
