@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(22, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
@@ -25,6 +25,7 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "resident_business_stock");
             assertTableExists(connection, "resident_business_stock_batches");
             assertTableExists(connection, "resident_trade_transactions");
+            assertTableExists(connection, "resident_profession_changes");
             assertTableExists(connection, "guard_rent_payments");
             assertTableExists(connection, "guard_hiring_payments");
             assertTableExists(connection, "guard_orders");
@@ -40,7 +41,7 @@ class DatabaseMigrationsTest {
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(21, schemaVersion(connection));
-            assertEquals(21, migrationCount(connection));
+            assertEquals(22, migrationCount(connection));
         }
     }
 
