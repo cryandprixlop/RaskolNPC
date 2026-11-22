@@ -256,6 +256,11 @@ class ResidentQuestServiceTest {
         ResidentProfileService profiles = mock(ResidentProfileService.class);
         when(profiles.find(resident.id()))
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(profile)));
+        when(profiles.addSkillExperience(resident.id(), ResidentProfession.BLACKSMITH, 10))
+                .thenReturn(CompletableFuture.completedFuture(
+                        new ru.raskolnpc.npc.resident.model.ResidentSkillProgress(
+                                resident.id(), ResidentProfession.BLACKSMITH, 110,
+                                ru.raskolnpc.npc.resident.model.ResidentSkillLevel.MASTER)));
         ResidentQuestRepository repository = mock(ResidentQuestRepository.class);
         when(repository.produceBusinessStock(resident.id(),
                 Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32,
@@ -269,6 +274,7 @@ class ResidentQuestServiceTest {
         verify(repository).produceBusinessStock(resident.id(),
                 Map.of("IRON_INGOT", 4, "COAL", 2), "IRON_SWORD", 12, 32,
                 ru.raskolnpc.storage.ResidentProductQuality.MASTERWORK);
+        verify(profiles).addSkillExperience(resident.id(), ResidentProfession.BLACKSMITH, 10);
     }
 
     @Test
