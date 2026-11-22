@@ -21,6 +21,7 @@ public final class DatabaseMigrations {
         }
 
         int installedVersion = installedVersion(connection);
+        validateMigrationHistory(connection, installedVersion);
         if (installedVersion > CURRENT_SCHEMA_VERSION) {
             throw new SQLException("Database schema version " + installedVersion
                     + " is newer than this RaskolNPC build supports ("
@@ -48,6 +49,28 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 19)) applyResidentTradeJournalSchema(connection);
         if (!isApplied(connection, 20)) applyResidentTradeOriginSchema(connection);
         if (!isApplied(connection, 21)) applyResidentTradeAuditRetentionSchema(connection);
+    }
+
+    private static void validateMigrationHistory(Connection connection, int installedVersion)
+            throws SQLException {
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery(
+                     "SELECT version FROM schema_migrations ORDER BY version ASC")) {
+            int expected = 1;
+            while (result.next()) {
+                int actual = result.getInt(1);
+                if (actual != expected) {
+                    throw new SQLException("Database migration history is incomplete: expected version "
+                            + expected + " but found " + actual
+                            + ". Refusing to modify a potentially inconsistent database.");
+                }
+                expected++;
+            }
+            if (expected - 1 != installedVersion) {
+                throw new SQLException("Database migration history is inconsistent. "
+                        + "Refusing to modify the database.");
+            }
+        }
     }
 
     private static int installedVersion(Connection connection) throws SQLException {
