@@ -53,8 +53,46 @@ public final class ResidentScheduleCommandService {
 
     public CompletableFuture<Void> setDestination(ResidentDestination destination) {
         Objects.requireNonNull(destination, "destination");
-        return requireResident(destination.npcId()).thenCompose(ignored ->
-                repository.saveDestination(destination)).thenRun(behavior::reload);
+        return npcService.find(destination.npcId()).thenCompose(found -> {
+            if (found.isEmpty()) {
+                return CompletableFuture.failedFuture(
+                        new IllegalArgumentException("NPC с таким UUID не найден."));
+            }
+            var resident = found.get();
+            if (resident.type() != NpcType.RESIDENT) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException(
+                        "Управлять расписанием можно только у NPC-жителя."));
+            }
+            return repository.findDestinations(destination.npcId()).thenCompose(existing -> {
+                try {
+                    validateDestinationWorld(resident, existing, destination);
+                } catch (IllegalArgumentException invalid) {
+                    return CompletableFuture.failedFuture(invalid);
+                }
+                return repository.saveDestination(destination).thenRun(behavior::reload);
+            });
+        });
+    }
+
+    static void validateDestinationWorld(
+            ru.raskolnpc.npc.model.NpcRecord resident,
+            List<ResidentDestination> existing,
+            ResidentDestination destination) {
+        Objects.requireNonNull(resident, "resident");
+        Objects.requireNonNull(existing, "existing");
+        Objects.requireNonNull(destination, "destination");
+
+        var spawn = resident.spawnLocation();
+        if (spawn != null && !spawn.worldId().equals(destination.worldId())) {
+            throw new IllegalArgumentException(
+                    "Точка жителя должна находиться в том же мире, где он был размещён.");
+        }
+        for (ResidentDestination configured : existing) {
+            if (!configured.worldId().equals(destination.worldId())) {
+                throw new IllegalArgumentException(
+                        "Все точки одного жителя должны находиться в одном мире.");
+            }
+        }
     }
 
     public CompletableFuture<Boolean> deleteDestination(NpcId id, ResidentDestination.DestinationType type) {
