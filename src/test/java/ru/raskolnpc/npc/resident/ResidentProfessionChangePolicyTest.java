@@ -81,6 +81,18 @@ class ResidentProfessionChangePolicyTest {
     }
 
     @Test
+    void recentResidentRequestAlsoStartsSevenDayCooldown() {
+        ResidentProfile profile = profile(EnumSet.of(ResidentProfile.ResidentTrait.CURIOUS),
+                80, 75, 75, 70, ResidentProfession.FARMER);
+
+        var decision = policy.evaluate(profile, 15, -1, 10);
+
+        assertEquals(ResidentProfessionChangePolicy.Status.COOLDOWN, decision.status());
+        assertEquals(2, decision.daysUntilAvailable());
+        assertFalse(decision.canRequestChange());
+    }
+
+    @Test
     void futureLastChangeDayFailsClosed() {
         ResidentProfile profile = profile(EnumSet.of(ResidentProfile.ResidentTrait.CURIOUS),
                 80, 75, 75, 70, ResidentProfession.FARMER);
