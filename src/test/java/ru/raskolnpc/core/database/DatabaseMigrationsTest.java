@@ -99,7 +99,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
