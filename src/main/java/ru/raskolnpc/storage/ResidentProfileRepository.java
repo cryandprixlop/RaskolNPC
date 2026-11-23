@@ -31,5 +31,11 @@ public interface ResidentProfileRepository {
     /** Returns the last profession-change day, or -1 when no change was recorded. */
     CompletableFuture<Long> findLastProfessionChangeDay(NpcId npcId);
 
+    /** Returns the last resident-initiated request day, or -1 when none was recorded. */
+    CompletableFuture<Long> findLastProfessionRequestDay(NpcId npcId);
+
+    /** Atomically records a request only if no request was made in the previous seven days. */
+    CompletableFuture<Boolean> recordProfessionRequest(NpcId npcId, long worldDay);
+
     CompletableFuture<Boolean> delete(NpcId npcId);
 }
