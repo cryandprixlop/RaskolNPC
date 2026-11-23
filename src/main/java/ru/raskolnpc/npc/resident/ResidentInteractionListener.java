@@ -226,7 +226,7 @@ public final class ResidentInteractionListener implements Listener {
      * The clickable command still passes through NpcCommandService's Towny/admin
      * authorization before any profession can actually be changed.
      */
-    private boolean mayReceiveProfessionRequest(Player player, NpcRecord resident) {
+    boolean mayReceiveProfessionRequest(Player player, NpcRecord resident) {
         if (player.hasPermission("raskolnpc.admin")) return true;
         TownyResidentService towny = townyResidents;
         if (towny == null || resident.townId() == null) return false;
