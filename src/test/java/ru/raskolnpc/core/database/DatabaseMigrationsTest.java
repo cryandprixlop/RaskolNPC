@@ -471,6 +471,17 @@ class DatabaseMigrationsTest {
         fail("Expected column to exist: " + table + "." + column);
     }
 
+    private static boolean tableExists(java.sql.Connection connection, String table)
+            throws SQLException {
+        try (var statement = connection.prepareStatement(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")) {
+            statement.setString(1, table);
+            try (var result = statement.executeQuery()) {
+                return result.next();
+            }
+        }
+    }
+
     private static void assertTableExists(java.sql.Connection connection, String table)
             throws SQLException {
         try (var statement = connection.prepareStatement(
