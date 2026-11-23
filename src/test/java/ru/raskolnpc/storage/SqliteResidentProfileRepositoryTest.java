@@ -261,6 +261,43 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void professionRequestCooldownIsPersistedAndAllowsOneRequestPerSevenDays() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+
+        assertEquals(-1L, repository.findLastProfessionRequestDay(npc.id()).join());
+        assertTrue(repository.recordProfessionRequest(npc.id(), 10L).join());
+        assertFalse(repository.recordProfessionRequest(npc.id(), 16L).join());
+        assertEquals(10L, repository.findLastProfessionRequestDay(npc.id()).join());
+        assertTrue(repository.recordProfessionRequest(npc.id(), 17L).join());
+        assertEquals(17L, repository.findLastProfessionRequestDay(npc.id()).join());
+    }
+
+    @Test
+    void professionRequestCooldownSurvivesDatabaseRestart() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+        assertTrue(repository.recordProfessionRequest(npc.id(), 25L).join());
+
+        database.close();
+        JavaPlugin plugin = mock(JavaPlugin.class);
+        when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("RaskolNPC-profession-request-restart-test"));
+        database = new DatabaseManager(plugin, "resident-tests.sqlite", 1);
+        database.initialize().join();
+        repository = new SqliteResidentProfileRepository(database);
+
+        assertEquals(25L, repository.findLastProfessionRequestDay(npc.id()).join());
+        assertFalse(repository.recordProfessionRequest(npc.id(), 31L).join());
+    }
+
+    @Test
     void changingProfessionRejectsMissingResidentProfile() {
         NpcId missing = NpcId.fromString("00000000-0000-0000-0000-000000000002");
         assertThrows(java.util.concurrent.CompletionException.class,
