@@ -174,8 +174,13 @@ public final class ResidentBehaviorService {
             ResidentBehaviorData data = cache.get(resident.id());
             if (data == null) continue;
 
-            ResidentSchedule.Entry activeEntry = planner.findCurrent(
-                    data.schedule(), day, minute).orElse(null);
+            Entity entity = entities.find(resident.id()).orElse(null);
+            if (entity == null || !entity.isValid()) continue;
+
+            World residentWorld = entity.getWorld();
+            ResidentSchedule.Entry activeEntry = planner.findCurrentAtWorldTime(
+                    data.schedule(), residentWorld.getFullTime(), residentWorld.getTime())
+                    .orElse(null);
             ResidentDestination.DestinationType destinationType =
                     activeEntry == null
                             ? ResidentDestination.DestinationType.HOME
@@ -194,9 +199,6 @@ public final class ResidentBehaviorService {
             if (targetWorld == null || !targetWorld.isChunkLoaded(
                     ((int) Math.floor(destination.x())) >> 4,
                     ((int) Math.floor(destination.z())) >> 4)) continue;
-
-            Entity entity = entities.find(resident.id()).orElse(null);
-            if (entity == null || !entity.isValid()) continue;
             Location target = new Location(targetWorld, destination.x(), destination.y(),
                     destination.z(), destination.yaw(), destination.pitch());
             movement.moveTowards(entity, target);
