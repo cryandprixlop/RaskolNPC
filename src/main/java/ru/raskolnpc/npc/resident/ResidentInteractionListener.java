@@ -118,7 +118,7 @@ public final class ResidentInteractionListener implements Listener {
                             }
                             return new ConversationContext(profileAndAssignments.profile().get(),
                                     profileAndAssignments.reputation(),
-                                    profileAndAssignments.assignments(), reviews, List.of(), -1L);
+                                    profileAndAssignments.assignments(), reviews, List.of(), -1L, -1L);
                         })
                 .thenCombine(profiles.lastProfessionChangeDay(npcId), (assembledContext, lastChangeDay) ->
                         new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
