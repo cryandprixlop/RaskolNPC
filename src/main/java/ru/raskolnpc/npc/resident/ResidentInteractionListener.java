@@ -49,7 +49,8 @@ public final class ResidentInteractionListener implements Listener {
             List<ResidentQuest.Assignment> activeAssignments,
             List<ResidentQuestReview> reviews,
             List<ResidentQuest> availableQuests,
-            long lastProfessionChangeDay
+            long lastProfessionChangeDay,
+            long lastProfessionRequestDay
     ) {}
 
     private final Plugin plugin;
@@ -122,12 +123,18 @@ public final class ResidentInteractionListener implements Listener {
                 .thenCombine(profiles.lastProfessionChangeDay(npcId), (assembledContext, lastChangeDay) ->
                         new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
                                 assembledContext.activeAssignments(), assembledContext.reviews(),
-                                assembledContext.availableQuests(), lastChangeDay))
+                                assembledContext.availableQuests(), lastChangeDay, -1L))
+                .thenCombine(profiles.lastProfessionRequestDay(npcId), (assembledContext, lastRequestDay) ->
+                        new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
+                                assembledContext.activeAssignments(), assembledContext.reviews(),
+                                assembledContext.availableQuests(), assembledContext.lastProfessionChangeDay(),
+                                lastRequestDay))
                 .thenCompose(conversationContext -> quests.availableFor(conversationContext.profile(), npcId)
                         .thenApply(available -> new ConversationContext(conversationContext.profile(),
                                 conversationContext.reputation(), conversationContext.activeAssignments(),
                                 conversationContext.reviews(), available,
-                                conversationContext.lastProfessionChangeDay())));
+                                conversationContext.lastProfessionChangeDay(),
+                                conversationContext.lastProfessionRequestDay())));
 
         context.whenComplete((conversation, error) -> {
             if (!plugin.isEnabled()) return;
@@ -218,20 +225,38 @@ public final class ResidentInteractionListener implements Listener {
         long currentWorldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
         ResidentProfessionChangePolicy.Decision decision =
                 new ResidentProfessionChangePolicy().evaluate(context.profile(),
-                        currentWorldDay, context.lastProfessionChangeDay());
+                        currentWorldDay, context.lastProfessionChangeDay(),
+                        context.lastProfessionRequestDay());
         if (!decision.canRequestChange()) return;
 
-        Component prefix = Component.text("[" + residentName + "] ");
-        player.sendMessage(prefix.append(Component.text(
-                "Я хотел бы попробовать себя в другом ремесле. Если ты управляешь городом, "
-                        + "можешь утвердить моё обучение:")));
-        for (ResidentProfession profession : decision.suggestedProfessions()) {
-            Component action = Component.text("  » " + profession.name().toLowerCase(
-                    java.util.Locale.ROOT))
-                    .clickEvent(ClickEvent.runCommand("/raskolnpc resident profession "
-                            + residentId + " " + profession.name()));
-            player.sendMessage(prefix.append(action));
-        }
+        profiles.recordProfessionRequest(residentId, currentWorldDay).whenComplete((recorded, error) -> {
+            if (!plugin.isEnabled()) return;
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!plugin.isEnabled() || !player.isOnline()) return;
+                    if (error != null) {
+                        plugin.getLogger().warning("Could not persist resident profession request for "
+                                + residentId + ": " + rootMessage(error));
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(recorded)) return;
+                    Component prefix = Component.text("[" + residentName + "] ");
+                    player.sendMessage(prefix.append(Component.text(
+                            "Я хотел бы попробовать себя в другом ремесле. Если ты управляешь городом, "
+                                    + "можешь утвердить моё обучение:")));
+                    for (ResidentProfession profession : decision.suggestedProfessions()) {
+                        Component action = Component.text("  » " + profession.name().toLowerCase(
+                                java.util.Locale.ROOT))
+                                .clickEvent(ClickEvent.runCommand("/raskolnpc resident profession "
+                                        + residentId + " " + profession.name()));
+                        player.sendMessage(prefix.append(action));
+                    }
+                });
+            } catch (RuntimeException schedulingError) {
+                plugin.getLogger().warning("Could not schedule resident profession request: "
+                        + schedulingError.getMessage());
+            }
+        });
     }
 
     private void sendQuestActions(Player player, NpcId residentId, String residentName,
