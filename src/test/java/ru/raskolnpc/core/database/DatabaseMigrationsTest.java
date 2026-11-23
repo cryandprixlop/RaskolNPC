@@ -40,7 +40,7 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_trade_transactions", "profession");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             assertEquals(22, migrationCount(connection));
         }
     }
@@ -353,7 +353,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(21, migrationCount(connection));
+            assertEquals(23, migrationCount(connection));
         }
     }
 
@@ -370,7 +370,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("migration history is incomplete"));
             assertEquals(21, schemaVersion(connection));
-            assertEquals(20, migrationCount(connection));
+            assertEquals(22, migrationCount(connection));
         }
     }
 
