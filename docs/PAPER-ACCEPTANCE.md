@@ -30,7 +30,18 @@ Run this plan on a disposable staging server with backups. Do not run payment sc
 - Put a destination in an unloaded chunk; verify no chunk is force-loaded and the resident waits until it is loaded.
 - Place a one-block obstacle in a route; verify a safe sidestep or a stationary resident, never a teleport into a solid block.
 
-## 3. Guard behavior and diplomacy
+## 3. Resident professions and Towny authorization
+
+- Interact with a resident whose mood, hunger, energy and rest meet the configured thresholds and whose traits permit retraining; verify that a profession proposal is shown.
+- Repeat with a resident below each threshold and with a resident lacking a motivating trait; verify that no proposal is shown.
+- As the mayor and then an assistant of the resident's Towny town, use the proposal action while standing inside that town; verify the profession changes.
+- Repeat as an ordinary town resident, a manager of a different town, and a player outside any town; verify each unauthorized change is rejected without modifying the profile.
+- Verify a RaskolNPC administrator can change a resident profession without standing in the town.
+- Verify the request cooldown blocks a second proposal before seven in-game days, survives a plugin/server restart, and becomes available after the seventh day.
+- Switch a resident between two professions; verify each profession's previously earned skill experience is retained.
+- Confirm that the current launch behavior is a direct authority-checked profession action, not a queued mayor approval inbox.
+
+## 4. Guard behavior and diplomacy
 
 - Verify HOLD_POSITION, PATROL, DEFEND/RALLY, ESCORT and RETURN_TO_POST.
 - Verify a neutral, allied, unresolved or unregistered entity is never treated as hostile.
@@ -39,7 +50,7 @@ Run this plan on a disposable staging server with backups. Do not run payment sc
 - Make the nearest hostile target ineligible by territory; verify the guard selects another eligible target rather than becoming blocked by the ineligible one.
 - Simulate Towny, diplomacy and territory lookup errors; verify movement/attack fails closed.
 
-## 4. SiegeWar end-to-end
+## 5. SiegeWar end-to-end
 
 Use two disposable Nations and a controlled siege:
 
@@ -52,14 +63,14 @@ Use two disposable Nations and a controlled siege:
 
 Record the SiegeWar version, server build, plugin load order, relevant logs and each observed result. A mocked adapter test is not evidence of this live integration test.
 
-## 5. WorldGuard end-to-end
+## 6. WorldGuard end-to-end
 
 - With WorldGuard enabled, test a region allowing mob damage and one denying it.
 - Confirm both attacker and target locations must return ALLOWED.
 - Confirm missing adapter, null/unknown query results and thrown exceptions deny the attack.
 - Repeat with WorldGuard absent; record the configured optional-integration behavior.
 
-## 6. Load test at 150 NPCs
+## 7. Load test at 150 NPCs
 
 Create a disposable test layout with:
 - 30 guards distributed across the test Nations (respecting the 30-per-Nation cap);
