@@ -139,9 +139,10 @@ public final class RaskolNPC extends JavaPlugin {
                 new SqliteResidentTradeRepository(databaseManager);
         ResidentQuestService residentQuests = new ResidentQuestService(
                 this, residentProfileService, npcRegistry, residentQuestRepository);
-        getServer().getPluginManager().registerEvents(
+        ResidentInteractionListener residentInteractionListener =
                 new ResidentInteractionListener(this, npcEntityManager, npcRegistry,
-                        residentProfileService, residentDialogues, residentQuests), this);
+                        residentProfileService, residentDialogues, residentQuests);
+        getServer().getPluginManager().registerEvents(residentInteractionListener, this);
 
         ResidentScheduleRepository residentSchedules =
                 new SqliteResidentScheduleRepository(databaseManager);
@@ -280,6 +281,8 @@ public final class RaskolNPC extends JavaPlugin {
                         adapterError);
             }
         }
+        residentInteractionListener.setTownyResidentService(townyResidents);
+
         TownyTownBankEconomy guardRentEconomy = null;
         if (townyEnabled) {
             try {
