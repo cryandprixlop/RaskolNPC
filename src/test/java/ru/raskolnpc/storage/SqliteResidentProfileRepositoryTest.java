@@ -277,6 +277,28 @@ class SqliteResidentProfileRepositoryTest {
     }
 
     @Test
+    void concurrentProfessionRequestAttemptsOnlyPersistOneRequest() {
+        NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
+                "town-1", "nation-1", "{}");
+        npcRepository.insert(npc).join();
+        repository.save(new ResidentProfile(npc.id(), 31, ResidentProfession.FARMER,
+                java.util.Set.of(), 70, 70, 70, 70, 70, 70, java.util.Map.of())).join();
+
+        var attempts = java.util.stream.IntStream.range(0, 16)
+                .mapToObj(ignored -> repository.recordProfessionRequest(npc.id(), 42L))
+                .toList();
+
+        long accepted = attempts.stream()
+                .map(java.util.concurrent.CompletableFuture::join)
+                .filter(Boolean.TRUE::equals)
+                .count();
+
+        assertEquals(1L, accepted,
+                "Only one concurrent interaction may start the seven-day request cooldown.");
+        assertEquals(42L, repository.findLastProfessionRequestDay(npc.id()).join());
+    }
+
+    @Test
     void professionRequestCooldownSurvivesDatabaseRestart() {
         NpcRecord npc = NpcRecord.create(NpcType.RESIDENT, "Mira", null,
                 "town-1", "nation-1", "{}");
