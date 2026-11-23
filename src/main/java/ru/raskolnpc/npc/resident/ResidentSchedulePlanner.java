@@ -26,6 +26,21 @@ public final class ResidentSchedulePlanner {
     }
 
     /**
+     * Selects the active entry using the clock of the resident's own world.
+     * Minecraft worlds may have independent day and time values.
+     */
+    public Optional<ResidentSchedule.Entry> findCurrentAtWorldTime(
+            ResidentSchedule schedule, long fullTime, long timeOfDay) {
+        if (timeOfDay < 0 || timeOfDay >= 24000L) {
+            throw new IllegalArgumentException("timeOfDay must be between 0 and 23999.");
+        }
+        long dayNumber = Math.floorDiv(fullTime, 24000L);
+        DayOfWeek day = DayOfWeek.of((int) Math.floorMod(dayNumber, 7L) + 1);
+        int minuteOfDay = (int) (timeOfDay * 1440L / 24000L);
+        return findCurrent(schedule, day, minuteOfDay);
+    }
+
+    /**
      * Returns the active destination, or HOME when no schedule entry is active.
      * A resident therefore has a predictable default routine outside scheduled hours.
      */
