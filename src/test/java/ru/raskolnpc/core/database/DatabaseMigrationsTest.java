@@ -150,7 +150,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT business_id, profession, material, amount, quality,
@@ -228,7 +228,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT transaction_id, business_id, profession
@@ -294,7 +294,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var foreignKeys = statement.executeQuery(
                         "PRAGMA foreign_key_list(resident_trade_transactions)")) {
@@ -369,7 +369,7 @@ class DatabaseMigrationsTest {
             SQLException error = assertThrows(SQLException.class,
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("migration history is incomplete"));
-            assertEquals(21, schemaVersion(connection));
+            assertEquals(23, schemaVersion(connection));
             assertEquals(22, migrationCount(connection));
         }
     }
