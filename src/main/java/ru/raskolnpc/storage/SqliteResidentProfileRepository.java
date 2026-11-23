@@ -328,6 +328,57 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
     }
 
     @Override
+    public CompletableFuture<Long> findLastProfessionRequestDay(NpcId npcId) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT last_request_world_day FROM resident_profession_requests WHERE npc_id = ?")) {
+                statement.setString(1, npcId.toString());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getLong(1) : -1L;
+                }
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> recordProfessionRequest(NpcId npcId, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        if (worldDay < 0) throw new IllegalArgumentException("worldDay cannot be negative");
+        return database.transaction(connection -> {
+            try (var check = connection.prepareStatement(
+                    "SELECT 1 FROM resident_profiles WHERE npc_id = ?")) {
+                check.setString(1, npcId.toString());
+                try (ResultSet result = check.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+
+            try (var insert = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO resident_profession_requests(
+                        npc_id, last_request_world_day
+                    ) VALUES (?, ?)
+                    """)) {
+                insert.setString(1, npcId.toString());
+                insert.setLong(2, worldDay);
+                if (insert.executeUpdate() == 1) return true;
+            }
+
+            if (worldDay < 7) return false;
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_profession_requests
+                    SET last_request_world_day = ?
+                    WHERE npc_id = ? AND last_request_world_day <= ?
+                    """)) {
+                update.setLong(1, worldDay);
+                update.setString(2, npcId.toString());
+                update.setLong(3, worldDay - 7L);
+                return update.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @Override
     public CompletableFuture<Boolean> delete(NpcId npcId) {
         return database.query(connection -> {
             try (var statement = connection.prepareStatement(
