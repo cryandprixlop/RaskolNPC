@@ -26,6 +26,7 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "resident_business_stock_batches");
             assertTableExists(connection, "resident_trade_transactions");
             assertTableExists(connection, "resident_profession_changes");
+            assertTableExists(connection, "resident_profession_requests");
             assertTableExists(connection, "guard_rent_payments");
             assertTableExists(connection, "guard_hiring_payments");
             assertTableExists(connection, "guard_orders");
@@ -42,6 +43,33 @@ class DatabaseMigrationsTest {
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
             assertEquals(23, schemaVersion(connection));
             assertEquals(23, migrationCount(connection));
+        }
+    }
+
+    @Test
+    void versionTwentyTwoUpgradeCreatesProfessionRequestCooldownWithoutLosingExistingSchema() throws Exception {
+        var file = temporaryDirectory.resolve("version-twenty-two.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            DatabaseMigrations.migrate(connection);
+            try (var statement = connection.createStatement()) {
+                statement.execute("DROP TABLE resident_profession_requests");
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 23");
+            }
+
+            assertEquals(22, schemaVersion(connection));
+            assertFalse(tableExists(connection, "resident_profession_requests"));
+
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(23, schemaVersion(connection));
+            assertEquals(23, migrationCount(connection));
+            assertTableExists(connection, "resident_profession_requests");
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("PRAGMA foreign_key_list(resident_profession_requests)")) {
+                assertTrue(result.next());
+                assertEquals("resident_profiles", result.getString("table"));
+                assertEquals("CASCADE", result.getString("on_delete"));
+            }
         }
     }
 
