@@ -61,4 +61,22 @@ class ResidentSchedulePlannerTest {
         assertThrows(IllegalArgumentException.class, () -> planner.destinationFor(
                 new ResidentSchedule(List.of()), DayOfWeek.MONDAY, 1440));
     }
+    @Test
+    void evaluatesScheduleAgainstTheResidentsOwnWorldClock() {
+        var schedule = new ResidentSchedule(List.of(
+                new ResidentSchedule.Entry(DayOfWeek.MONDAY, 480, 600,
+                        ResidentSchedule.Activity.WORK, ResidentDestination.DestinationType.WORK)));
+
+        assertTrue(planner.findCurrentAtWorldTime(schedule, 8_000L, 8_000L).isPresent(),
+                "Day zero at 08:00 must match Monday's work interval.");
+        assertTrue(planner.findCurrentAtWorldTime(schedule, 32_000L, 8_000L).isEmpty(),
+                "A different world day must not reuse Monday's schedule.");
+    }
+
+    @Test
+    void rejectsInvalidWorldTime() {
+        assertThrows(IllegalArgumentException.class, () -> planner.findCurrentAtWorldTime(
+                new ResidentSchedule(List.of()), 0L, 24_000L));
+    }
+
 }
