@@ -22,7 +22,9 @@ class ResidentInteractionListenerTest {
     @Test
     void onlyManagerOfResidentTownCanReceiveProfessionRequest() {
         Player player = mock(Player.class);
-        when(player.getLocation()).thenReturn(mock(Location.class));
+        Location location = mock(Location.class);
+        when(location.clone()).thenReturn(location);
+        when(player.getLocation()).thenReturn(location);
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
         TownyResidentService towny = mock(TownyResidentService.class);
         when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
@@ -37,6 +39,9 @@ class ResidentInteractionListenerTest {
     void ordinaryPlayerCannotReceiveProfessionRequest() {
         Player player = mock(Player.class);
         when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
+        Location location = mock(Location.class);
+        when(location.clone()).thenReturn(location);
+        when(player.getLocation()).thenReturn(location);
         TownyResidentService towny = mock(TownyResidentService.class);
         when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
                 .thenThrow(new SecurityException("not a town manager"));
