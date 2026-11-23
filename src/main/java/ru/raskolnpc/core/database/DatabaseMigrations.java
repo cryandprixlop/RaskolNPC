@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseMigrations {
-    private static final int CURRENT_SCHEMA_VERSION = 22;
+    private static final int CURRENT_SCHEMA_VERSION = 23;
 
     private DatabaseMigrations() {
     }
@@ -50,6 +50,7 @@ public final class DatabaseMigrations {
         if (!isApplied(connection, 20)) applyResidentTradeOriginSchema(connection);
         if (!isApplied(connection, 21)) applyResidentTradeAuditRetentionSchema(connection);
         if (!isApplied(connection, 22)) applyResidentProfessionChangeSchema(connection);
+        if (!isApplied(connection, 23)) applyResidentProfessionRequestSchema(connection);
     }
 
     private static void validateMigrationHistory(Connection connection, int installedVersion)
@@ -1048,6 +1049,33 @@ public final class DatabaseMigrations {
                     )
                     """);
             statement.execute("INSERT INTO schema_migrations(version) VALUES (22)");
+            connection.commit();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            try { connection.rollback(); }
+            catch (SQLException rollbackException) { exception.addSuppressed(rollbackException); }
+            throw exception;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); }
+            catch (SQLException restoreException) {
+                if (failure != null) failure.addSuppressed(restoreException);
+                else throw restoreException;
+            }
+        }
+    }
+
+    private static void applyResidentProfessionRequestSchema(Connection connection) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Throwable failure = null;
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE resident_profession_requests (
+                        npc_id TEXT PRIMARY KEY REFERENCES resident_profiles(npc_id) ON DELETE CASCADE,
+                        last_request_world_day INTEGER NOT NULL CHECK (last_request_world_day >= 0)
+                    )
+                    """);
+            statement.execute("INSERT INTO schema_migrations(version) VALUES (23)");
             connection.commit();
         } catch (SQLException | RuntimeException | Error exception) {
             failure = exception;
