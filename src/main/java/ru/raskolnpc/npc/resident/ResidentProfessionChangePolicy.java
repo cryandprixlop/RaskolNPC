@@ -50,13 +50,20 @@ public final class ResidentProfessionChangePolicy {
      */
     public Decision evaluate(ResidentProfile profile, long currentWorldDay,
             long lastProfessionChangeDay) {
+        return evaluate(profile, currentWorldDay, lastProfessionChangeDay, -1L);
+    }
+
+    public Decision evaluate(ResidentProfile profile, long currentWorldDay,
+            long lastProfessionChangeDay, long lastProfessionRequestDay) {
         Objects.requireNonNull(profile, "profile");
-        if (currentWorldDay < 0 || lastProfessionChangeDay < -1) {
+        if (currentWorldDay < 0 || lastProfessionChangeDay < -1
+                || lastProfessionRequestDay < -1) {
             throw new IllegalArgumentException("World days cannot be negative; -1 means never changed.");
         }
 
-        if (lastProfessionChangeDay >= 0) {
-            long elapsed = currentWorldDay - lastProfessionChangeDay;
+        long cooldownOrigin = Math.max(lastProfessionChangeDay, lastProfessionRequestDay);
+        if (cooldownOrigin >= 0) {
+            long elapsed = currentWorldDay - cooldownOrigin;
             if (elapsed < COOLDOWN_DAYS) {
                 return new Decision(Status.COOLDOWN,
                         COOLDOWN_DAYS - Math.max(0, elapsed), List.of());
