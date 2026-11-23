@@ -82,6 +82,22 @@ public final class ResidentProfileService {
                 java.util.Objects.requireNonNull(npcId, "npcId"));
     }
 
+    public CompletableFuture<Long> lastProfessionRequestDay(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findLastProfessionRequestDay(
+                java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
+    public CompletableFuture<Boolean> recordProfessionRequest(
+            ru.raskolnpc.npc.model.NpcId npcId, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        if (worldDay < 0) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игровой день не может быть отрицательным."));
+        }
+        return repository.recordProfessionRequest(npcId, worldDay);
+    }
+
     /** Creates a profile only when one does not already exist. */
     public CompletableFuture<ResidentProfile> createIfMissing(NpcRecord npc) {
         if (npc == null || npc.type() != NpcType.RESIDENT) {
