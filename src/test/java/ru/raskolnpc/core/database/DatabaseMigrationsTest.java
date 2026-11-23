@@ -47,11 +47,31 @@ class DatabaseMigrationsTest {
     }
 
     @Test
-    void versionTwentyTwoUpgradeCreatesProfessionRequestCooldownWithoutLosingExistingSchema() throws Exception {
+    void versionTwentyTwoUpgradeCreatesProfessionRequestCooldownWithoutLosingResidentData()
+            throws Exception {
         var file = temporaryDirectory.resolve("version-twenty-two.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
-            DatabaseMigrations.migrate(connection);
             try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
+            }
+            DatabaseMigrations.migrate(connection);
+
+            // Seed a real resident profile before simulating a version-22 database.
+            try (var statement = connection.createStatement()) {
+                statement.execute("""
+                        INSERT INTO npcs(id, type, name, state)
+                        VALUES ('resident-migration', 'RESIDENT', 'Mira', 'ACTIVE')
+                        """);
+                statement.execute("""
+                        INSERT INTO resident_profiles(
+                            npc_id, age, profession, hunger, energy, rest, social,
+                            housing_satisfaction, mood
+                        ) VALUES ('resident-migration', 31, 'FARMER', 72, 81, 64, 55, 90, 77)
+                        """);
+                statement.execute("""
+                        INSERT INTO resident_skills(npc_id, profession, skill_level, experience)
+                        VALUES ('resident-migration', 'FARMER', 'SPECIALIST', 425)
+                        """);
                 statement.execute("DROP TABLE resident_profession_requests");
                 statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 23");
             }
@@ -65,10 +85,50 @@ class DatabaseMigrationsTest {
             assertEquals(23, migrationCount(connection));
             assertTableExists(connection, "resident_profession_requests");
             try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("""
+                         SELECT age, profession, hunger, energy, rest, social,
+                                housing_satisfaction, mood
+                         FROM resident_profiles WHERE npc_id = 'resident-migration'
+                         """)) {
+                assertTrue(result.next(), "Existing resident profile must survive the upgrade.");
+                assertEquals(31, result.getInt("age"));
+                assertEquals("FARMER", result.getString("profession"));
+                assertEquals(72, result.getInt("hunger"));
+                assertEquals(81, result.getInt("energy"));
+                assertEquals(64, result.getInt("rest"));
+                assertEquals(55, result.getInt("social"));
+                assertEquals(90, result.getInt("housing_satisfaction"));
+                assertEquals(77, result.getInt("mood"));
+                assertFalse(result.next());
+            }
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("""
+                         SELECT skill_level, experience FROM resident_skills
+                         WHERE npc_id = 'resident-migration' AND profession = 'FARMER'
+                         """)) {
+                assertTrue(result.next(), "Existing resident skill progress must survive the upgrade.");
+                assertEquals("SPECIALIST", result.getString("skill_level"));
+                assertEquals(425, result.getInt("experience"));
+            }
+            try (var statement = connection.createStatement();
                  var result = statement.executeQuery("PRAGMA foreign_key_list(resident_profession_requests)")) {
                 assertTrue(result.next());
                 assertEquals("resident_profiles", result.getString("table"));
                 assertEquals("CASCADE", result.getString("on_delete"));
+            }
+
+            // The new child table must be cleaned up with its resident profile.
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO resident_profession_requests(npc_id, last_request_world_day)
+                        VALUES ('resident-migration', 42)
+                        """);
+                statement.executeUpdate("DELETE FROM npcs WHERE id = 'resident-migration'");
+                try (var result = statement.executeQuery(
+                        "SELECT COUNT(*) FROM resident_profession_requests")) {
+                    assertTrue(result.next());
+                    assertEquals(0, result.getInt(1));
+                }
             }
         }
     }
