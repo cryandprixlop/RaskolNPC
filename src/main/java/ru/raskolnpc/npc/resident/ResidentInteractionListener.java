@@ -13,6 +13,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.Plugin;
+import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
@@ -59,6 +60,7 @@ public final class ResidentInteractionListener implements Listener {
     private final ResidentProfileService profiles;
     private final ResidentDialogueService dialogues;
     private final ResidentQuestService quests;
+    private volatile TownyResidentService townyResidents;
     private final long cooldownMillis;
     // Bukkit interaction events are handled on the server thread.
     private final Map<InteractionKey, Long> lastInteractions = new HashMap<>();
@@ -80,6 +82,10 @@ public final class ResidentInteractionListener implements Listener {
         this.quests = Objects.requireNonNull(quests, "quests");
         if (cooldownMillis < 0) throw new IllegalArgumentException("Cooldown cannot be negative.");
         this.cooldownMillis = cooldownMillis;
+    }
+
+    public void setTownyResidentService(TownyResidentService townyResidents) {
+        this.townyResidents = townyResidents;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -152,7 +158,7 @@ public final class ResidentInteractionListener implements Listener {
                     if (conversation.profile().profession() == ResidentProfession.BLACKSMITH) {
                         sendNearbyGuardRepairActions(player, residentName);
                     }
-                    sendProfessionChangeProposal(player, npcId, residentName, conversation);
+                    sendProfessionChangeProposal(player, record, conversation);
                     sendQuestActions(player, npcId, residentName, conversation);
                 });
             } catch (RuntimeException schedulingError) {
@@ -220,8 +226,24 @@ public final class ResidentInteractionListener implements Listener {
      * The clickable command still passes through NpcCommandService's Towny/admin
      * authorization before any profession can actually be changed.
      */
-    private void sendProfessionChangeProposal(Player player, NpcId residentId,
-            String residentName, ConversationContext context) {
+    private boolean mayReceiveProfessionRequest(Player player, NpcRecord resident) {
+        if (player.hasPermission("raskolnpc.admin")) return true;
+        TownyResidentService towny = townyResidents;
+        if (towny == null || resident.townId() == null) return false;
+        try {
+            TownyResidentService.TownAssignment actingTown =
+                    towny.resolveAndAuthorize(player, player.getLocation().clone());
+            return resident.townId().equals(actingTown.townId());
+        } catch (RuntimeException denied) {
+            return false;
+        }
+    }
+
+    private void sendProfessionChangeProposal(Player player, NpcRecord resident,
+            ConversationContext context) {
+        if (!mayReceiveProfessionRequest(player, resident)) return;
+        NpcId residentId = resident.id();
+        String residentName = resident.name();
         long currentWorldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
         ResidentProfessionChangePolicy.Decision decision =
                 new ResidentProfessionChangePolicy().evaluate(context.profile(),
