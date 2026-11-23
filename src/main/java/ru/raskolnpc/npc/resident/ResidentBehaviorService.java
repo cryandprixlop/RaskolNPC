@@ -258,8 +258,21 @@ public final class ResidentBehaviorService {
             ResidentProfile current = profileCache.get(resident.id());
             if (current == null) continue;
             ResidentBehaviorData data = cache.get(resident.id());
-            ResidentSchedule.Entry active = data == null ? null
-                    : planner.findCurrent(data.schedule(), day, minute).orElse(null);
+            ResidentSchedule.Entry active = null;
+            if (data != null) {
+                // Loaded residents follow the clock of their own world, matching movement.
+                // Unloaded residents retain the server clock fallback so the daily needs
+                // cycle can still progress without loading chunks or entities.
+                Entity entity = entities.find(resident.id()).orElse(null);
+                if (entity != null && entity.isValid()) {
+                    World residentWorld = entity.getWorld();
+                    active = planner.findCurrentAtWorldTime(
+                            data.schedule(), residentWorld.getFullTime(), residentWorld.getTime())
+                            .orElse(null);
+                } else {
+                    active = planner.findCurrent(data.schedule(), day, minute).orElse(null);
+                }
+            }
             ResidentSchedule.Activity activity = active == null
                     ? ResidentSchedule.Activity.REST : active.activity();
             ResidentProfile updated = needsController.advance(current, activity);
