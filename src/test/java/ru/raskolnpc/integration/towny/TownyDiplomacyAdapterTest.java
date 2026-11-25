@@ -47,4 +47,12 @@ class TownyDiplomacyAdapterTest {
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 incompatible.relation(FIRST.toString(), SECOND.toString()));
     }
-}
+
+    @Test
+    void returnsUnknownWhenTownyIsDisabledEvenIfCachedLookupWouldBeHostile() {
+        var disabled = new TownyDiplomacyAdapter(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE, () -> false);
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                disabled.relation(FIRST.toString(), SECOND.toString()));
+    }
+}\n
