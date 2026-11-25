@@ -46,4 +46,4 @@ class TownyGuardTerritoryAccessTest {
                 (queried, nationId) -> true, () -> false);
         assertFalse(access.apply(location, "nation-a"));
     }
-}\n
+}
