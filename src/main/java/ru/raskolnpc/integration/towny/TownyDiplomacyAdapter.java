@@ -2,21 +2,36 @@ package ru.raskolnpc.integration.towny;
 
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.object.Nation;
+import org.bukkit.Bukkit;
 import ru.raskolnpc.integration.RelationshipPolicy;
 
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
 
 /** Reads reciprocal Towny alliances and declared nation enemies by UUID. */
 public final class TownyDiplomacyAdapter implements RelationshipPolicy.Diplomacy {
     private final BiFunction<UUID, UUID, RelationshipPolicy.DiplomacyRelation> relationLookup;
+    private final BooleanSupplier townyEnabled;
 
     public TownyDiplomacyAdapter() {
-        this(TownyDiplomacyAdapter::lookupTownyRelation);
+        this(TownyDiplomacyAdapter::lookupTownyRelation, TownyDiplomacyAdapter::isTownyEnabled);
     }
 
     TownyDiplomacyAdapter(BiFunction<UUID, UUID, RelationshipPolicy.DiplomacyRelation> relationLookup) {
+        this(relationLookup, () -> true);
+    }
+
+    public TownyDiplomacyAdapter(
+            BiFunction<UUID, UUID, RelationshipPolicy.DiplomacyRelation> relationLookup,
+            BooleanSupplier townyEnabled) {
         this.relationLookup = java.util.Objects.requireNonNull(relationLookup, "relationLookup");
+        this.townyEnabled = java.util.Objects.requireNonNull(townyEnabled, "townyEnabled");
+    }
+
+    private static boolean isTownyEnabled() {
+        var plugin = Bukkit.getPluginManager().getPlugin("Towny");
+        return plugin != null && plugin.isEnabled();
     }
 
     @Override
@@ -27,6 +42,7 @@ public final class TownyDiplomacyAdapter implements RelationshipPolicy.Diplomacy
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }
         try {
+            if (!townyEnabled.getAsBoolean()) return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
             RelationshipPolicy.DiplomacyRelation result = relationLookup.apply(firstId, secondId);
             return result == null ? RelationshipPolicy.DiplomacyRelation.UNKNOWN : result;
         } catch (RuntimeException | LinkageError unavailable) {
