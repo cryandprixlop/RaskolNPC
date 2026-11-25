@@ -272,6 +272,10 @@ public final class RaskolNPC extends JavaPlugin {
                         getConfig().getLong("guards.injury.recovery-delay-seconds", 300L))) * 1000L);
         if (territoryAccess != null) {
             guardCombatController.setTerritoryAccess(territoryAccess::apply);
+        } else {
+            // Combat must fail closed if the hiring nation's territory cannot be verified.
+            guardCombatController.setTerritoryAccess((location, nationId) -> false);
+            getLogger().warning("Towny territory access is unavailable; guard combat is disabled.");
         }
         townyKingdomGuardAccess = null;
         TownyResidentService townyResidents = null;
