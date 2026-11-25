@@ -14,6 +14,8 @@ import ru.raskolnpc.storage.GuardEquipmentRepository;
 import java.io.*;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 /** Durable equipment snapshots for guards whose Paper entity is recreated after death. */
 public final class GuardEquipmentPersistenceService {
@@ -22,6 +24,7 @@ public final class GuardEquipmentPersistenceService {
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
     private final GuardEquipmentRepository repository;
+    private final Map<NpcId, CompletableFuture<Void>> saveTails = new ConcurrentHashMap<>();
 
     public GuardEquipmentPersistenceService(Plugin plugin, NpcRegistry registry,
             NpcEntityManager entities, GuardEquipmentRepository repository) {
@@ -37,11 +40,23 @@ public final class GuardEquipmentPersistenceService {
                 || !(entity instanceof LivingEntity living)) return CompletableFuture.completedFuture(null);
         EntityEquipment equipment = living.getEquipment();
         if (equipment == null) return CompletableFuture.completedFuture(null);
+        final byte[] snapshot;
         try {
-            return repository.save(id, encode(equipment));
+            // Bukkit ItemStack serialization must happen on the server thread.
+            snapshot = encode(equipment);
         } catch (IOException exception) {
             return CompletableFuture.failedFuture(exception);
         }
+        // DatabaseManager may use several workers. Serialize writes per NPC so an older
+        // wear snapshot can never overtake and overwrite the final death snapshot.
+        return saveTails.compute(id, (ignored, previous) -> {
+            CompletableFuture<Void> ready = previous == null
+                    ? CompletableFuture.completedFuture(null)
+                    : previous.handle((nothing, previousError) -> null);
+            CompletableFuture<Void> next = ready.thenCompose(nothing -> repository.save(id, snapshot));
+            next.whenComplete((nothing, error) -> saveTails.remove(id, next));
+            return next;
+        });
     }
 
     public CompletableFuture<Void> restore(NpcId id, Entity entity) {
