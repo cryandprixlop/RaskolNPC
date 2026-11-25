@@ -226,6 +226,11 @@ public final class RaskolNPC extends JavaPlugin {
         }
         if (territoryAccess != null) {
             guardOrderController.setTerritoryAccess(territoryAccess::apply);
+        } else {
+            // Guard orders must fail closed when Towny territory cannot be verified.
+            // Never leave the controller's permissive standalone default active in production.
+            guardOrderController.setTerritoryAccess((location, nationId) -> false);
+            getLogger().warning("Towny territory access is unavailable; guard movement orders are disabled.");
         }
         guardOrderController.setPursuitPolicy(relationshipPolicy,
                 Math.max(0.0, Math.min(32.0,
