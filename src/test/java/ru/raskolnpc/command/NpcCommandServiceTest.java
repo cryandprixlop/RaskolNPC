@@ -274,6 +274,35 @@ class NpcCommandServiceTest {
     }
 
     @Test
+    void releasesGuardReservationWhenHiringJournalThrowsBeforeReturningFuture() {
+        Player player = mock(Player.class);
+        when(player.getLocation()).thenReturn(new Location(null, 0, 64, 0));
+        when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
+        when(access.resolvePlacement(eq(player), any(Location.class)))
+                .thenReturn(new TownyKingdomGuardAccess.Placement("town-1", "nation-1", true));
+        TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
+        GuardHiringPaymentRepository journal = mock(GuardHiringPaymentRepository.class);
+        when(journal.create(any())).thenThrow(new IllegalStateException("Journal unavailable"));
+        KingdomGuardService limits = new KingdomGuardService();
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class),
+                mock(NpcLifecycleService.class), new NpcRegistry(),
+                mock(NpcEntityManager.class), null, new TownyNpcLimitService(), 15,
+                access, bank, limits, 30, 100, 10);
+        service.setGuardHiringPaymentRepository(journal);
+
+        assertThrows(CompletionException.class,
+                () -> service.hireGuard("Guard", 1, player).join());
+
+        verify(journal).create(any());
+        verifyNoInteractions(bank);
+        try (KingdomGuardService.Reservation available =
+                     limits.reserve("nation-1", 30, new NpcRegistry())) {
+            assertNotNull(available, "synchronous journal failure must release the guard reservation");
+        }
+    }
+
+    @Test
     void refusesGuardHiringWhenTownyPlacementCannotBeResolvedBeforeJournalOrBankAccess() {
         Player player = mock(Player.class);
         when(player.getLocation()).thenReturn(new Location(null, 0, 64, 0));
