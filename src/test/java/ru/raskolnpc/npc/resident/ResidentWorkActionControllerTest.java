@@ -35,18 +35,32 @@ class ResidentWorkActionControllerTest {
     }
 
     @Test
-    void selectsPresentationParticleForEachProfession() {
+    void selectsPresentationParticleForEveryProfession() {
         ResidentWorkActionController controller = new ResidentWorkActionController();
-        assertEquals(Particle.COMPOSTER, controller.particleFor(ResidentProfession.FARMER));
-        assertEquals(Particle.CRIT, controller.particleFor(ResidentProfession.MINER));
-        assertEquals(Particle.CRIT, controller.particleFor(ResidentProfession.LUMBERJACK));
-        assertEquals(Particle.BUBBLE, controller.particleFor(ResidentProfession.FISHERMAN));
-        assertEquals(Particle.FLAME, controller.particleFor(ResidentProfession.BLACKSMITH));
-        assertEquals(Particle.HAPPY_VILLAGER, controller.particleFor(ResidentProfession.CRAFTSMAN));
-        assertEquals(Particle.HAPPY_VILLAGER, controller.particleFor(ResidentProfession.MERCHANT));
-        assertEquals(Particle.CRIT, controller.particleFor(ResidentProfession.BUILDER));
-        assertEquals(Particle.SMOKE, controller.particleFor(ResidentProfession.COOK));
-        assertEquals(Particle.ENCHANT, controller.particleFor(ResidentProfession.TEACHER));
+        World world = mock(World.class);
+        Villager villager = mock(Villager.class);
+        when(villager.isValid()).thenReturn(true);
+        when(villager.getWorld()).thenReturn(world);
+
+        Map<ResidentProfession, Particle> expected = Map.ofEntries(
+                Map.entry(ResidentProfession.FARMER, Particle.COMPOSTER),
+                Map.entry(ResidentProfession.MINER, Particle.CRIT),
+                Map.entry(ResidentProfession.LUMBERJACK, Particle.CRIT),
+                Map.entry(ResidentProfession.FISHERMAN, Particle.BUBBLE),
+                Map.entry(ResidentProfession.BLACKSMITH, Particle.FLAME),
+                Map.entry(ResidentProfession.CRAFTSMAN, Particle.HAPPY_VILLAGER),
+                Map.entry(ResidentProfession.MERCHANT, Particle.HAPPY_VILLAGER),
+                Map.entry(ResidentProfession.BUILDER, Particle.CRIT),
+                Map.entry(ResidentProfession.COOK, Particle.SMOKE),
+                Map.entry(ResidentProfession.TEACHER, Particle.ENCHANT));
+
+        long tick = 0;
+        for (var entry : expected.entrySet()) {
+            assertTrue(controller.performIfReady(NpcId.create(), villager,
+                    profile(entry.getKey()), tick++));
+        }
+        verify(world, times(expected.size())).spawnParticle(any(Particle.class), any(), eq(2),
+                eq(0.15), eq(0.2), eq(0.15), eq(0.01));
     }
 
     @Test
