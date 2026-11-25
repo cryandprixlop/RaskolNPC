@@ -69,6 +69,24 @@ class GuardOrderControllerTest {
     }
 
     @Test
+    void startLoadsPersistedOrdersBeforeStartingMovementScheduler() {
+        GuardOrder order = new GuardOrder(guard.id(), GuardOrder.Type.DEFEND,
+                List.of(point(5.5)), UUID.randomUUID(), 100L);
+        GuardOrderRepository repository = mock(GuardOrderRepository.class);
+        when(repository.findAll()).thenReturn(CompletableFuture.completedFuture(List.of(order)));
+        GuardOrderService persistedOrders = new GuardOrderService(registry, repository);
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, persistedOrders, 4, 0.6);
+
+        controller.start().join();
+        server.getScheduler().performTicks(20);
+
+        verify(repository).findAll();
+        verify(entity).teleport(any(Location.class));
+        controller.stop();
+    }
+
+    @Test
     void startFailsWhenPersistedGuardOrdersCannotBeLoaded() {
         GuardOrderRepository repository = mock(GuardOrderRepository.class);
         when(repository.findAll()).thenReturn(CompletableFuture.failedFuture(
