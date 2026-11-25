@@ -422,11 +422,13 @@ public final class GuardCombatController implements Listener {
         Location targetLocation = target.getLocation();
         if (!hasTerritoryAccess(attackerLocation, guard.nationId())
                 || !hasTerritoryAccess(targetLocation, guard.nationId())) return false;
-        if (!worldGuardRequired) return true;
+        final boolean currentlyEnabled;
         try {
-            // WorldGuard may be disabled after RaskolNPC starts. A stale RegionQuery
-            // must never keep granting combat permission after its provider is offline.
-            if (!worldGuardEnabled.getAsBoolean()) return false;
+            currentlyEnabled = worldGuardEnabled.getAsBoolean();
+            // Enforce WorldGuard whenever it is currently enabled, even if it was
+            // disabled during RaskolNPC startup. Missing startup adapters fail closed.
+            if (!worldGuardRequired && !currentlyEnabled) return true;
+            if (!currentlyEnabled) return false;
         } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
