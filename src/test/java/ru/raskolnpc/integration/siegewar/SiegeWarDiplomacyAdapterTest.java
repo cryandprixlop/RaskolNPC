@@ -104,6 +104,6 @@ class SiegeWarDiplomacyAdapterTest {
         var disabled = new SiegeWarDiplomacyAdapter(
                 java.util.List::<com.gmail.goosius.siegewar.objects.Siege>of, () -> false);
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
-                disabled.relation(FIRST.toString(), SECOND.toString()));
+                disabled.relation(ATTACKER.toString(), DEFENDER.toString()));
     }
 }\n
