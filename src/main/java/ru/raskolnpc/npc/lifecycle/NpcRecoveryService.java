@@ -6,6 +6,8 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.guard.GuardEquipmentPersistenceService;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcState;
@@ -26,6 +28,7 @@ public final class NpcRecoveryService {
     private final NpcDeletionRepository deletions;
     private final Set<NpcId> deathRecoveries = ConcurrentHashMap.newKeySet();
     private volatile boolean started;
+    private GuardEquipmentPersistenceService guardEquipment;
 
     public NpcRecoveryService(Plugin plugin, NpcRegistry registry,
                               NpcEntityManager entities,
@@ -34,6 +37,10 @@ public final class NpcRecoveryService {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.deletions = Objects.requireNonNull(deletions, "deletions");
+    }
+
+    public void setGuardEquipmentPersistenceService(GuardEquipmentPersistenceService service) {
+        this.guardEquipment = Objects.requireNonNull(service, "service");
     }
 
     public CompletableFuture<Void> recover() {
@@ -96,10 +103,22 @@ public final class NpcRecoveryService {
         NpcRecord record = registry.get(id).orElse(null);
         if (record == null || record.state() != NpcState.ACTIVE
                 || !deadEntity.getUniqueId().equals(record.entityUuid())
-                || !deathRecoveries.add(id)) {
-            return;
-        }
+                || !deathRecoveries.add(id)) return;
 
+        CompletableFuture<Void> snapshot = guardEquipment == null
+                ? CompletableFuture.completedFuture(null) : guardEquipment.save(deadEntity);
+        snapshot.whenComplete((ignored, saveError) -> {
+            if (saveError != null) {
+                deathRecoveries.remove(id);
+                if (plugin.isEnabled()) plugin.getLogger().log(Level.SEVERE,
+                        "Could not save guard equipment before entity recovery: " + id, saveError);
+                return;
+            }
+            continueDeathRecovery(deadEntity, id);
+        });
+    }
+
+    private void continueDeathRecovery(Entity deadEntity, NpcId id) {
         deletions.findPending().whenComplete((pendingIds, error) -> {
             if (error != null) {
                 deathRecoveries.remove(id);
@@ -116,16 +135,14 @@ public final class NpcRecoveryService {
                         || !deadEntity.getUniqueId().equals(current.entityUuid())) {
                     return CompletableFuture.completedFuture(null);
                 }
-
                 Location location = current.spawnLocation() == null
                         ? null : current.spawnLocation().resolve();
                 if (location == null || location.getWorld() == null
                         || !location.getWorld().isChunkLoaded(
                                 location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
-                    // A later chunk-load event will perform normal reconciliation.
                     return CompletableFuture.completedFuture(null);
                 }
-                return entities.spawnAsync(current, location).thenApply(restored -> null);
+                return spawnAndRestoreEquipment(current, location).thenApply(restored -> null);
             }).whenComplete((ignored, recoveryError) -> {
                 deathRecoveries.remove(id);
                 if (recoveryError != null && plugin.isEnabled()) {
@@ -204,11 +221,23 @@ public final class NpcRecoveryService {
             return CompletableFuture.completedFuture(null);
         }
 
-        return entities.spawnAsync(record, location).whenComplete((restored, error) -> {
+        return spawnAndRestoreEquipment(record, location).whenComplete((restored, error) -> {
             if (error != null && plugin.isEnabled()) {
                 plugin.getLogger().log(Level.SEVERE,
                         "Could not restore NPC " + record.id() + ".", error);
             }
+        });
+    }
+
+    private CompletableFuture<NpcRecord> spawnAndRestoreEquipment(NpcRecord record, Location location) {
+        return entities.spawnAsync(record, location).thenCompose(restored -> {
+            if (guardEquipment == null || record.type() != NpcType.GUARD) {
+                return CompletableFuture.completedFuture(restored);
+            }
+            Entity spawned = entities.find(record.id()).orElse(null);
+            if (spawned == null) return CompletableFuture.failedFuture(
+                    new IllegalStateException("Recovered guard entity is not tracked: " + record.id()));
+            return guardEquipment.restore(record.id(), spawned).thenApply(ignored -> restored);
         });
     }
 

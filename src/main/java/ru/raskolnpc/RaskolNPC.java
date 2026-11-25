@@ -8,6 +8,7 @@ import ru.raskolnpc.guard.GuardRentService;
 import ru.raskolnpc.guard.GuardCombatController;
 import ru.raskolnpc.guard.GuardMoraleService;
 import ru.raskolnpc.guard.GuardEquipmentWearService;
+import ru.raskolnpc.guard.GuardEquipmentPersistenceService;
 import ru.raskolnpc.guard.GuardEquipmentRepairService;
 import ru.raskolnpc.guard.GuardOrderService;
 import ru.raskolnpc.guard.GuardOrderController;
@@ -52,6 +53,8 @@ import ru.raskolnpc.storage.GuardRentPaymentRepository;
 import ru.raskolnpc.storage.GuardOrderRepository;
 import ru.raskolnpc.storage.GuardSquadRepository;
 import ru.raskolnpc.storage.SqliteGuardConditionRepository;
+import ru.raskolnpc.storage.GuardEquipmentRepository;
+import ru.raskolnpc.storage.SqliteGuardEquipmentRepository;
 import ru.raskolnpc.storage.SqliteGuardSquadRepository;
 import ru.raskolnpc.storage.SqliteGuardOrderRepository;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
@@ -129,6 +132,11 @@ public final class RaskolNPC extends JavaPlugin {
         guardOrderController.setSquadService(guardSquadService);
         npcRecoveryService = new NpcRecoveryService(
                 this, npcRegistry, npcEntityManager, deletionRepository);
+        GuardEquipmentRepository guardEquipmentRepository =
+                new SqliteGuardEquipmentRepository(databaseManager);
+        npcRecoveryService.setGuardEquipmentPersistenceService(
+                new GuardEquipmentPersistenceService(this, npcRegistry, npcEntityManager,
+                        guardEquipmentRepository));
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
