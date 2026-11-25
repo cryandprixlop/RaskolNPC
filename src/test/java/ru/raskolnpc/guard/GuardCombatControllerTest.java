@@ -681,4 +681,54 @@ class GuardCombatControllerTest {
 
         verify(target, never()).damage(anyDouble(), any(Entity.class));
     }
+
+    @Test
+    void stopsTargetingPlayerImmediatelyWhenPlayerLeavesTheirTownyNation() {
+        Player player = mock(Player.class);
+        when(player.isValid()).thenReturn(true);
+        when(player.isDead()).thenReturn(false);
+        when(player.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(player));
+        java.util.concurrent.atomic.AtomicReference<RelationshipPolicy.Subject> subject =
+                new java.util.concurrent.atomic.AtomicReference<>(
+                        new RelationshipPolicy.Subject(UUID.randomUUID(), "town-b", "nation-b"));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L,
+                ignored -> Optional.ofNullable(subject.get()));
+
+        controller.tick();
+        verify(player).damage(2.0, attacker);
+
+        subject.set(new RelationshipPolicy.Subject(UUID.randomUUID(), "town-c", "nation-a"));
+        controller.tick();
+
+        verify(player, times(1)).damage(2.0, attacker);
+    }
+
+    @Test
+    void clearsRetaliationAndSquadTargetWhenPlayerQuits() {
+        Player player = mock(Player.class);
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(player.isValid()).thenReturn(true);
+        when(player.isDead()).thenReturn(false);
+        when(player.getLocation()).thenReturn(new Location(world, 2.5, 64, 0.5));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(player));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L,
+                ignored -> Optional.of(new RelationshipPolicy.Subject(
+                        player.getUniqueId(), "town-b", "nation-b")));
+
+        controller.onGuardDamaged(new EntityDamageByEntityEvent(
+                player, attacker, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1.0));
+        when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of());
+
+        controller.onPlayerQuit(new org.bukkit.event.player.PlayerQuitEvent(player, ""));
+        controller.tick();
+
+        verify(player, never()).damage(anyDouble(), any(Entity.class));
+    }
 }
