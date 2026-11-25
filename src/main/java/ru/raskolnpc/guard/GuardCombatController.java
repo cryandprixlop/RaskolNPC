@@ -9,6 +9,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.Location;
@@ -303,6 +304,18 @@ public final class GuardCombatController implements Listener {
         if (selected == null) return null;
         squadTargets.put(squadId, selected);
         return isTargetEligible(guard, attacker, selected) ? selected : null;
+    }
+
+
+    /** Releases player entity references immediately when a target disconnects. */
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        requireMainThread();
+        UUID playerId = event.getPlayer().getUniqueId();
+        retaliationTargets.entrySet().removeIf(entry ->
+                entry.getValue().target().getUniqueId().equals(playerId));
+        squadTargets.entrySet().removeIf(entry ->
+                entry.getValue().getUniqueId().equals(playerId));
     }
 
     /** Clears runtime combat state for entities leaving loaded chunks. */
