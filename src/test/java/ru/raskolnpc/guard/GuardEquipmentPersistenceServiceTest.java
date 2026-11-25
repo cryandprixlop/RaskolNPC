@@ -108,7 +108,12 @@ class GuardEquipmentPersistenceServiceTest {
         when(repository.find(guardRecord.id()))
                 .thenReturn(CompletableFuture.completedFuture(Optional.of(saved[0])));
 
-        guard.getEquipment().clear();
+        guard.getEquipment().setItemInMainHand(null);
+        guard.getEquipment().setItemInOffHand(null);
+        guard.getEquipment().setHelmet(null);
+        guard.getEquipment().setChestplate(null);
+        guard.getEquipment().setLeggings(null);
+        guard.getEquipment().setBoots(null);
         CompletableFuture<Void> restored = service.restore(guardRecord.id(), guard);
         server.getScheduler().performTicks(2);
         assertDoesNotThrow(restored::join);
