@@ -51,17 +51,21 @@ class SqliteGuardHiringPaymentRepositoryTest {
     void startupMovesUnfinishedDebitAndRefundAttemptsToManualReview() {
         payments.create(payment("debit-pending")).join();
         payments.create(payment("refund-pending")).join();
+        payments.create(payment("confirmed-unresolved")).join();
         payments.create(payment("complete")).join();
         payments.transition("refund-pending", "IN_PROGRESS", "DEBIT_CONFIRMED", null).join();
         payments.transition("refund-pending", "DEBIT_CONFIRMED", "REFUND_IN_PROGRESS", null).join();
+        payments.transition("confirmed-unresolved", "IN_PROGRESS", "DEBIT_CONFIRMED", null).join();
         payments.transition("complete", "IN_PROGRESS", "DEBIT_CONFIRMED", null).join();
         payments.transition("complete", "DEBIT_CONFIRMED", "COMPLETED", null).join();
 
-        assertEquals(2, payments.moveUnfinishedToReview("restart").join());
+        assertEquals(3, payments.moveUnfinishedToReview("restart").join());
         assertEquals("REVIEW_REQUIRED",
                 payments.findById("debit-pending").join().orElseThrow().status());
         assertEquals("REVIEW_REQUIRED",
                 payments.findById("refund-pending").join().orElseThrow().status());
+        assertEquals("REVIEW_REQUIRED",
+                payments.findById("confirmed-unresolved").join().orElseThrow().status());
         assertEquals("COMPLETED",
                 payments.findById("complete").join().orElseThrow().status());
     }
@@ -78,6 +82,24 @@ class SqliteGuardHiringPaymentRepositoryTest {
         assertEquals("DEBIT_CONFIRMED", resolved.status());
         assertEquals(admin.toString(), resolved.resolvedBy());
         assertNotNull(resolved.resolvedAt());
+    }
+
+    @Test
+    void rejectsUnsupportedResolutionAndMissingAdministratorWithoutChangingReview() {
+        payments.create(payment("invalid-resolution")).join();
+        payments.transition("invalid-resolution", "IN_PROGRESS", "REVIEW_REQUIRED",
+                "unknown bank result").join();
+
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> payments.resolveReview("invalid-resolution", "COMPLETED",
+                        UUID.randomUUID()).join());
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> payments.resolveReview("invalid-resolution", "DEBIT_CONFIRMED", null).join());
+
+        GuardHiringPayment unchanged = payments.findById("invalid-resolution").join().orElseThrow();
+        assertEquals("REVIEW_REQUIRED", unchanged.status());
+        assertNull(unchanged.resolvedBy());
+        assertNull(unchanged.resolvedAt());
     }
 
     @Test

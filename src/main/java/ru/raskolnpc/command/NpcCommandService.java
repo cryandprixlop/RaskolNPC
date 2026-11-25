@@ -265,16 +265,7 @@ public final class NpcCommandService {
                 placement.nationId(), name, level, hireCost, dailyRent,
                 "IN_PROGRESS", null, null, null);
 
-        final CompletableFuture<Boolean> journalCreation;
-        try {
-            journalCreation = java.util.Objects.requireNonNull(
-                    journal.create(payment), "Hiring journal returned no future.");
-        } catch (RuntimeException journalError) {
-            reservation.close();
-            return CompletableFuture.failedFuture(journalError);
-        }
-
-        return journalCreation.thenCompose(created -> {
+        return journal.create(payment).thenCompose(created -> {
             if (!created) return CompletableFuture.failedFuture(
                     new IllegalStateException("Не удалось зарегистрировать операцию найма."));
             return onMainThread(() -> {
