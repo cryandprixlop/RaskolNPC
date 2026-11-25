@@ -55,4 +55,17 @@ class TownyDiplomacyAdapterTest {
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 disabled.relation(FIRST.toString(), SECOND.toString()));
     }
+
+    @Test
+    void observesTownyDisableAndReenableWithoutRecreatingAdapter() {
+        java.util.concurrent.atomic.AtomicBoolean enabled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var adapter = new TownyDiplomacyAdapter(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE, enabled::get);
+
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                adapter.relation(FIRST.toString(), SECOND.toString()));
+        enabled.set(true);
+        assertEquals(RelationshipPolicy.DiplomacyRelation.HOSTILE,
+                adapter.relation(FIRST.toString(), SECOND.toString()));
+    }
 }
