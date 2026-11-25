@@ -88,6 +88,51 @@ class GuardEquipmentPersistenceServiceTest {
         verifyNoInteractions(repository);
     }
 
+
+    @Test
+    void roundTripsDurabilityAndAllEquipmentSlots() {
+        guard.getEquipment().setItemInMainHand(damagedItem(Material.IRON_SWORD, 7));
+        guard.getEquipment().setItemInOffHand(new ItemStack(Material.SHIELD));
+        guard.getEquipment().setHelmet(damagedItem(Material.IRON_HELMET, 3));
+        guard.getEquipment().setChestplate(damagedItem(Material.IRON_CHESTPLATE, 5));
+        guard.getEquipment().setLeggings(damagedItem(Material.IRON_LEGGINGS, 6));
+        guard.getEquipment().setBoots(damagedItem(Material.IRON_BOOTS, 2));
+        final byte[][] saved = new byte[1][];
+        when(repository.save(eq(guardRecord.id()), any(byte[].class))).thenAnswer(invocation -> {
+            saved[0] = ((byte[]) invocation.getArgument(1)).clone();
+            return CompletableFuture.completedFuture(null);
+        });
+
+        service.save(guard).join();
+        assertNotNull(saved[0]);
+        when(repository.find(guardRecord.id()))
+                .thenReturn(CompletableFuture.completedFuture(Optional.of(saved[0])));
+
+        guard.getEquipment().clear();
+        CompletableFuture<Void> restored = service.restore(guardRecord.id(), guard);
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(restored::join);
+
+        assertEquals(7, damage(guard.getEquipment().getItemInMainHand()));
+        assertEquals(Material.SHIELD, guard.getEquipment().getItemInOffHand().getType());
+        assertEquals(3, damage(guard.getEquipment().getHelmet()));
+        assertEquals(5, damage(guard.getEquipment().getChestplate()));
+        assertEquals(6, damage(guard.getEquipment().getLeggings()));
+        assertEquals(2, damage(guard.getEquipment().getBoots()));
+    }
+
+    private static ItemStack damagedItem(Material material, int damage) {
+        ItemStack item = new ItemStack(material);
+        Damageable meta = (Damageable) item.getItemMeta();
+        meta.setDamage(damage);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static int damage(ItemStack item) {
+        return item == null ? -1 : ((Damageable) item.getItemMeta()).getDamage();
+    }
+
     private static ItemStack damagedSword(int damage) {
         ItemStack sword = new ItemStack(Material.IRON_SWORD);
         Damageable meta = (Damageable) sword.getItemMeta();

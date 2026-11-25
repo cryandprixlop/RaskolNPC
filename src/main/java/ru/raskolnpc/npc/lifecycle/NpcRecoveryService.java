@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcType;
@@ -94,6 +95,19 @@ public final class NpcRecoveryService {
      * Recovers an NPC after an unexpected entity death. A durable deletion request
      * always wins; only the exact currently-bound entity of an active record qualifies.
      */
+    /**
+     * Guard equipment is restored from the durable snapshot, so it must not
+     * also enter the vanilla death-drop list. Other NPC drops remain untouched.
+     */
+    public void onEntityDeath(EntityDeathEvent event) {
+        Objects.requireNonNull(event, "event");
+        Entity deadEntity = event.getEntity();
+        NpcId id = entities.getNpcId(deadEntity).orElse(null);
+        NpcRecord record = id == null ? null : registry.get(id).orElse(null);
+        if (record != null && record.type() == NpcType.GUARD) event.getDrops().clear();
+        onEntityDeath(deadEntity);
+    }
+
     public void onEntityDeath(Entity deadEntity) {
         if (!Bukkit.isPrimaryThread() || !plugin.isEnabled()) return;
         var taggedId = entities.getNpcId(deadEntity);

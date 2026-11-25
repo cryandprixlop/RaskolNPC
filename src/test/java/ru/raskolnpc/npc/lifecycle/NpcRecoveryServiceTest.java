@@ -3,6 +3,10 @@ package ru.raskolnpc.npc.lifecycle;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -275,6 +279,27 @@ class NpcRecoveryServiceTest {
                 updated.id().equals(record.id())
                         && restoredEntityId.equals(updated.entityUuid())));
         assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
+
+    @Test
+    void doesNotDropGuardEquipmentThatWillBeRestoredFromSnapshot() {
+        LivingEntity deadGuard = mock(LivingEntity.class);
+        NpcRecord guard = NpcRecord.create(
+                NpcType.GUARD, "Guard", null, null, null, null);
+        registry.put(guard);
+        when(tagger.read(deadGuard)).thenReturn(Optional.of(guard.id()));
+        when(deadGuard.getUniqueId()).thenReturn(UUID.randomUUID());
+        List<ItemStack> drops = new java.util.ArrayList<>(
+                List.of(new ItemStack(Material.IRON_SWORD)));
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(deadGuard);
+        when(event.getDrops()).thenReturn(drops);
+
+        recovery.onEntityDeath(event);
+
+        assertTrue(drops.isEmpty(),
+                "Guard gear is persisted and restored; it must not be duplicated as a death drop.");
     }
 
     @Test
