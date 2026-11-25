@@ -15,16 +15,24 @@ public final class IntegrationCapabilities {
     private final PluginManager plugins;
     private final boolean townyConfigured;
     private final boolean worldGuardAdapterAvailable;
+    private final boolean siegeWarAdapterAvailable;
 
     public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured) {
-        this(plugins, townyConfigured, false);
+        this(plugins, townyConfigured, false, false);
     }
 
     public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured,
                                    boolean worldGuardAdapterAvailable) {
+        this(plugins, townyConfigured, worldGuardAdapterAvailable, false);
+    }
+
+    public IntegrationCapabilities(PluginManager plugins, boolean townyConfigured,
+                                   boolean worldGuardAdapterAvailable,
+                                   boolean siegeWarAdapterAvailable) {
         this.plugins = Objects.requireNonNull(plugins, "plugins");
         this.townyConfigured = townyConfigured;
         this.worldGuardAdapterAvailable = worldGuardAdapterAvailable;
+        this.siegeWarAdapterAvailable = siegeWarAdapterAvailable;
     }
 
     public List<Capability> snapshot() {
@@ -59,11 +67,13 @@ public final class IntegrationCapabilities {
                                 : "No region-protection adapter is configured."
                                 : "No region-protection adapter is configured."),
                 new Capability("SiegeWar diplomacy",
-                        siegeWarPresent ? Status.AVAILABLE
+                        siegeWarPresent ? siegeWarAdapterAvailable ? Status.AVAILABLE : Status.DETECTED_UNSUPPORTED
                                 : siegeWar != null ? Status.DISABLED : Status.NOT_CONFIGURED,
                         siegeWar == null ? null : siegeWar.getDescription().getVersion(),
                         siegeWarPresent
+                                ? siegeWarAdapterAvailable
                                 ? "Verified SiegeWar API adapter can identify active attacker/defender nation pairs."
+                                : "SiegeWar is enabled, but its API adapter could not be initialized; relations remain unknown."
                                 : "SiegeWar is not enabled; unknown relations remain neutral.")
         );
     }
