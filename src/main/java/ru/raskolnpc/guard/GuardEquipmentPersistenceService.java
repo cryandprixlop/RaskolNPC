@@ -49,14 +49,14 @@ public final class GuardEquipmentPersistenceService {
         }
         // DatabaseManager may use several workers. Serialize writes per NPC so an older
         // wear snapshot can never overtake and overwrite the final death snapshot.
-        return saveTails.compute(id, (ignored, previous) -> {
+        CompletableFuture<Void> next = saveTails.compute(id, (ignored, previous) -> {
             CompletableFuture<Void> ready = previous == null
                     ? CompletableFuture.completedFuture(null)
                     : previous.handle((nothing, previousError) -> null);
-            CompletableFuture<Void> next = ready.thenCompose(nothing -> repository.save(id, snapshot));
-            next.whenComplete((nothing, error) -> saveTails.remove(id, next));
-            return next;
+            return ready.thenCompose(nothing -> repository.save(id, snapshot));
         });
+        next.whenComplete((nothing, error) -> saveTails.remove(id, next));
+        return next;
     }
 
     public CompletableFuture<Void> restore(NpcId id, Entity entity) {
