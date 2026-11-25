@@ -50,7 +50,7 @@ class TownyPlayerSubjectResolverTest {
             towny.when(TownyAPI::getInstance).thenReturn(api);
 
             RelationshipPolicy.Subject subject =
-                    new TownyPlayerSubjectResolver().resolve(player).orElseThrow();
+                    new TownyPlayerSubjectResolver(() -> true).resolve(player).orElseThrow();
 
             assertEquals(playerId, subject.ownerId());
             assertEquals(townId.toString(), subject.townId());
@@ -72,7 +72,7 @@ class TownyPlayerSubjectResolverTest {
             towny.when(TownyAPI::getInstance).thenReturn(api);
 
             RelationshipPolicy.Subject subject =
-                    new TownyPlayerSubjectResolver().resolve(player).orElseThrow();
+                    new TownyPlayerSubjectResolver(() -> true).resolve(player).orElseThrow();
 
             assertEquals(playerId, subject.ownerId());
             assertNull(subject.townId());
@@ -90,14 +90,14 @@ class TownyPlayerSubjectResolverTest {
         try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
             towny.when(TownyAPI::getInstance).thenReturn(api);
 
-            assertTrue(new TownyPlayerSubjectResolver().resolve(player).isEmpty());
+            assertTrue(new TownyPlayerSubjectResolver(() -> true).resolve(player).isEmpty());
         }
     }
 
     @Test
     void rejectsNullPlayer() {
         assertThrows(NullPointerException.class,
-                () -> new TownyPlayerSubjectResolver().resolve(null));
+                () -> new TownyPlayerSubjectResolver(() -> true).resolve(null));
     }
 
     @Test
