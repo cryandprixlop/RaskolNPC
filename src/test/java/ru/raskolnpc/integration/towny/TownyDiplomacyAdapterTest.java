@@ -55,4 +55,4 @@ class TownyDiplomacyAdapterTest {
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 disabled.relation(FIRST.toString(), SECOND.toString()));
     }
-}\n
+}
