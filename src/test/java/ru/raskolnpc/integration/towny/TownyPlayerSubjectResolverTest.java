@@ -106,4 +106,4 @@ class TownyPlayerSubjectResolverTest {
         TownyPlayerSubjectResolver resolver = new TownyPlayerSubjectResolver(() -> false);
         assertTrue(resolver.resolve(player).isEmpty());
     }
-}\n
+}
