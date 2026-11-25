@@ -46,4 +46,17 @@ class TownyGuardTerritoryAccessTest {
                 (queried, nationId) -> true, () -> false);
         assertFalse(access.apply(location, "nation-a"));
     }
+
+    @Test
+    void observesTownyDisableAndReenableWithoutRecreatingAccessAdapter() {
+        World world = mock(World.class);
+        Location location = new Location(world, 10, 64, 10);
+        java.util.concurrent.atomic.AtomicBoolean enabled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        TownyGuardTerritoryAccess access = new TownyGuardTerritoryAccess(
+                (queried, nationId) -> true, enabled::get);
+
+        assertFalse(access.apply(location, "nation-a"));
+        enabled.set(true);
+        assertTrue(access.apply(location, "nation-a"));
+    }
 }
