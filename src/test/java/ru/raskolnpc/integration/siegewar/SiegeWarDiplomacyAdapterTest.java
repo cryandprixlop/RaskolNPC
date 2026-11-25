@@ -98,4 +98,12 @@ class SiegeWarDiplomacyAdapterTest {
         when(siege.getDefendingNationIfPossibleElseTown()).thenReturn(defender);
         return siege;
     }
-}
+
+    @Test
+    void returnsUnknownWhenSiegeWarIsDisabledEvenIfCachedSiegeWouldBeHostile() {
+        var disabled = new SiegeWarDiplomacyAdapter(
+                java.util.List::<com.gmail.goosius.siegewar.objects.Siege>of, () -> false);
+        assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
+                disabled.relation(FIRST.toString(), SECOND.toString()));
+    }
+}\n
