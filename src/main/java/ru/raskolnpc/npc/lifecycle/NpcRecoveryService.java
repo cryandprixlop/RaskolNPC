@@ -251,7 +251,16 @@ public final class NpcRecoveryService {
             Entity spawned = entities.find(record.id()).orElse(null);
             if (spawned == null) return CompletableFuture.failedFuture(
                     new IllegalStateException("Recovered guard entity is not tracked: " + record.id()));
-            return guardEquipment.restore(record.id(), spawned).thenApply(ignored -> restored);
+            return guardEquipment.restore(record.id(), spawned).handle((ignored, restoreError) ->
+                    restoreError).thenCompose(restoreError -> {
+                if (restoreError == null) return CompletableFuture.completedFuture(restored);
+                // Never leave a newly spawned guard active with default/empty gear when
+                // its durable equipment snapshot could not be applied.
+                return runOnMainThread(() -> {
+                    if (spawned.isValid()) entities.removeEntity(spawned);
+                    return CompletableFuture.completedFuture(null);
+                }).thenCompose(ignored -> CompletableFuture.failedFuture(restoreError));
+            });
         });
     }
 
