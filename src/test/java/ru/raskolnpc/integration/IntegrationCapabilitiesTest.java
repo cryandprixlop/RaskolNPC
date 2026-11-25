@@ -34,7 +34,7 @@ class IntegrationCapabilitiesTest {
         when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
         when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
 
-        var snapshot = new IntegrationCapabilities(manager, false, true).snapshot();
+        var snapshot = new IntegrationCapabilities(manager, false, true, true).snapshot();
         var worldGuard = snapshot.stream()
                 .filter(value -> value.name().equals("WorldGuard region protection"))
                 .findFirst().orElseThrow();
@@ -68,7 +68,7 @@ class IntegrationCapabilitiesTest {
         when(manager.getPlugin("WorldGuard")).thenReturn(worldGuardPlugin);
         when(manager.getPlugin("SiegeWar")).thenReturn(null);
 
-        var worldGuard = new IntegrationCapabilities(manager, false, false).snapshot().stream()
+        var worldGuard = new IntegrationCapabilities(manager, false, false, false).snapshot().stream()
                 .filter(value -> value.name().equals("WorldGuard region protection"))
                 .findFirst().orElseThrow();
         assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, worldGuard.status());
@@ -97,8 +97,22 @@ class IntegrationCapabilitiesTest {
         when(manager.getPlugin("WorldGuard")).thenReturn(null);
         when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
 
-        var siegeWar = new IntegrationCapabilities(manager, false).snapshot().getLast();
+        var siegeWar = new IntegrationCapabilities(manager, false, false, false).snapshot().getLast();
         assertEquals(IntegrationCapabilities.Status.DISABLED, siegeWar.status());
+    }
+
+
+    @Test
+    void reportsEnabledSiegeWarAsUnsupportedWhenItsAdapterCannotInitialize() {
+        PluginManager manager = mock(PluginManager.class);
+        Plugin siegeWarPlugin = plugin("3.7.0", true);
+        when(manager.getPlugin("Towny")).thenReturn(null);
+        when(manager.getPlugin("WorldGuard")).thenReturn(null);
+        when(manager.getPlugin("SiegeWar")).thenReturn(siegeWarPlugin);
+
+        var siegeWar = new IntegrationCapabilities(manager, false, false, false).snapshot().getLast();
+        assertEquals(IntegrationCapabilities.Status.DETECTED_UNSUPPORTED, siegeWar.status());
+        assertTrue(siegeWar.details().contains("adapter could not be initialized"));
     }
 
     private static Plugin plugin(String version, boolean enabled) {
