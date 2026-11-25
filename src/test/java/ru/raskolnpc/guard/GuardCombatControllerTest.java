@@ -625,4 +625,47 @@ class GuardCombatControllerTest {
         }
     }
 
+
+    @Test
+    void stopsRetaliatingWhenDiplomacyChangesFromHostileToNeutral() {
+        java.util.concurrent.atomic.AtomicReference<RelationshipPolicy.DiplomacyRelation> relation =
+                new java.util.concurrent.atomic.AtomicReference<>(
+                        RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> relation.get());
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.onGuardDamaged(new EntityDamageByEntityEvent(
+                attacker, target, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1.0));
+        relation.set(RelationshipPolicy.DiplomacyRelation.NEUTRAL);
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
+    @Test
+    void resumesCombatWhenWorldGuardIsReenabledAfterStartup() {
+        java.util.concurrent.atomic.AtomicBoolean worldGuardEnabled =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        WorldGuardProtectionAdapter worldGuard = mock(WorldGuardProtectionAdapter.class);
+        when(worldGuard.checkMobDamage(any(Location.class)))
+                .thenReturn(WorldGuardProtectionAdapter.Decision.ALLOWED);
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, worldGuard, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), true,
+                worldGuardEnabled::get);
+
+        controller.tick();
+        verifyNoInteractions(worldGuard);
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+
+        worldGuardEnabled.set(true);
+        controller.tick();
+
+        verify(worldGuard, times(2)).checkMobDamage(any(Location.class));
+        verify(target).damage(2.0, attacker);
+    }
 }
