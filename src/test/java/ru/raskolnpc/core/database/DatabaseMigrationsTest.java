@@ -83,6 +83,13 @@ class DatabaseMigrationsTest {
                 assertEquals("npcs", result.getString("table"));
                 assertEquals("CASCADE", result.getString("on_delete"));
             }
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("DELETE FROM npcs WHERE id = 'guard-equipment-migration'");
+                try (var result = statement.executeQuery("SELECT COUNT(*) FROM guard_equipment")) {
+                    assertTrue(result.next());
+                    assertEquals(0, result.getInt(1), "Equipment snapshots must be removed with their NPC.");
+                }
+            }
         }
     }
 
