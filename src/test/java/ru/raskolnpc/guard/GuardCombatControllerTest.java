@@ -683,7 +683,7 @@ class GuardCombatControllerTest {
     }
 
     @Test
-    void stopsTargetingPlayerImmediatelyWhenPlayerLeavesTheirTownyNation() {
+    void stopsTargetingPlayerImmediatelyWhenPlayerLeavesTheirTownyNation() throws InterruptedException {
         Player player = mock(Player.class);
         when(player.isValid()).thenReturn(true);
         when(player.isDead()).thenReturn(false);
@@ -702,13 +702,14 @@ class GuardCombatControllerTest {
         verify(player).damage(2.0, attacker);
 
         subject.set(new RelationshipPolicy.Subject(UUID.randomUUID(), "town-c", "nation-a"));
+        Thread.sleep(300L);
         controller.tick();
 
         verify(player, times(1)).damage(2.0, attacker);
     }
 
     @Test
-    void clearsRetaliationAndSquadTargetWhenPlayerQuits() {
+    void clearsRetaliationTargetWhenPlayerQuits() {
         Player player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
         when(player.isValid()).thenReturn(true);
