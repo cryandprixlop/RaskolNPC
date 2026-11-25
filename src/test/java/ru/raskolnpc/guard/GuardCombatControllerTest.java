@@ -668,4 +668,17 @@ class GuardCombatControllerTest {
         verify(worldGuard, times(2)).checkMobDamage(any(Location.class));
         verify(target).damage(2.0, attacker);
     }
+
+    @Test
+    void failsClosedWhenWorldGuardBecomesEnabledAfterStartupWithoutAdapter() {
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0,
+                1000L, ru.raskolnpc.integration.PlayerSubjectResolver.none(), false, () -> true);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
 }
