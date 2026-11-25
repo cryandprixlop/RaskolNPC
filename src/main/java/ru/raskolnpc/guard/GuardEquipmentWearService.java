@@ -35,12 +35,18 @@ public final class GuardEquipmentWearService implements Listener {
     private int weaponWearPerHit = 1;
     private int armorWearPerHit = 1;
     private boolean listenerRegistered;
+    private GuardEquipmentPersistenceService persistenceService;
 
     public GuardEquipmentWearService(Plugin plugin, NpcRegistry registry,
                                      NpcEntityManager entities) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
+    }
+
+    public void setPersistenceService(GuardEquipmentPersistenceService service) {
+        requireMainThread();
+        this.persistenceService = Objects.requireNonNull(service, "service");
     }
 
     public void setWearPerHit(int weaponWearPerHit, int armorWearPerHit) {
@@ -78,7 +84,10 @@ public final class GuardEquipmentWearService implements Listener {
         if (equipment == null) return;
         ItemStack weapon = equipment.getItemInMainHand();
         ItemStack worn = applyWear(weapon, weaponWearPerHit);
-        if (worn != weapon) equipment.setItemInMainHand(worn);
+        if (worn != weapon) {
+            equipment.setItemInMainHand(worn);
+            persist(attacker);
+        }
     }
 
     /** Every qualifying hit wears each equipped, damageable armor piece once. */
@@ -102,7 +111,20 @@ public final class GuardEquipmentWearService implements Listener {
                 changed = true;
             }
         }
-        if (changed) equipment.setArmorContents(armor);
+        if (changed) {
+            equipment.setArmorContents(armor);
+            persist(guard);
+        }
+    }
+
+    private void persist(Entity entity) {
+        if (persistenceService == null) return;
+        persistenceService.save(entity).exceptionally(error -> {
+            if (plugin.isEnabled()) plugin.getLogger().log(
+                    java.util.logging.Level.SEVERE,
+                    "Could not persist worn guard equipment.", error);
+            return null;
+        });
     }
 
     private boolean isGuard(NpcId id) {

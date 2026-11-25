@@ -83,6 +83,7 @@ public final class RaskolNPC extends JavaPlugin {
     private GuardCombatController guardCombatController;
     private GuardMoraleService guardMoraleService;
     private GuardEquipmentWearService guardEquipmentWearService;
+    private GuardEquipmentPersistenceService guardEquipmentPersistenceService;
     private GuardOrderController guardOrderController;
     private ResidentProfileService residentProfileService;
     private ResidentBehaviorService residentBehaviorService;
@@ -134,9 +135,9 @@ public final class RaskolNPC extends JavaPlugin {
                 this, npcRegistry, npcEntityManager, deletionRepository);
         GuardEquipmentRepository guardEquipmentRepository =
                 new SqliteGuardEquipmentRepository(databaseManager);
-        npcRecoveryService.setGuardEquipmentPersistenceService(
-                new GuardEquipmentPersistenceService(this, npcRegistry, npcEntityManager,
-                        guardEquipmentRepository));
+        guardEquipmentPersistenceService = new GuardEquipmentPersistenceService(
+                this, npcRegistry, npcEntityManager, guardEquipmentRepository);
+        npcRecoveryService.setGuardEquipmentPersistenceService(guardEquipmentPersistenceService);
         getServer().getPluginManager().registerEvents(
                 new NpcEntityListener(npcEntityManager, npcRecoveryService), this);
 
@@ -248,6 +249,7 @@ public final class RaskolNPC extends JavaPlugin {
                 new SqliteGuardConditionRepository(databaseManager));
         guardEquipmentWearService = new GuardEquipmentWearService(
                 this, npcRegistry, npcEntityManager);
+        guardEquipmentWearService.setPersistenceService(guardEquipmentPersistenceService);
         guardEquipmentWearService.setWearPerHit(
                 Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.weapon-wear-per-hit", 1))),
                 Math.max(0, Math.min(100, getConfig().getInt("guards.equipment.armor-wear-per-hit", 1))));
@@ -343,7 +345,8 @@ public final class RaskolNPC extends JavaPlugin {
         commandHandler.setGuardOrderService(guardOrderService);
         commandHandler.setGuardSquadService(guardSquadService);
         commandHandler.setGuardEquipmentRepairService(
-                new GuardEquipmentRepairService(npcRegistry, npcEntityManager));
+                new GuardEquipmentRepairService(npcRegistry, npcEntityManager,
+                        guardEquipmentPersistenceService));
         Objects.requireNonNull(getCommand("raskolnpc"),
                 "raskolnpc command is missing from plugin.yml")
                 .setExecutor(commandHandler);

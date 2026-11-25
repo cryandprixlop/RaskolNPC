@@ -27,10 +27,17 @@ public final class GuardEquipmentRepairService {
 
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
+    private final GuardEquipmentPersistenceService persistenceService;
 
     public GuardEquipmentRepairService(NpcRegistry registry, NpcEntityManager entities) {
+        this(registry, entities, null);
+    }
+
+    public GuardEquipmentRepairService(NpcRegistry registry, NpcEntityManager entities,
+                                       GuardEquipmentPersistenceService persistenceService) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
+        this.persistenceService = persistenceService;
     }
 
     public RepairResult repair(Player player, NpcId guardId) {
@@ -109,6 +116,18 @@ public final class GuardEquipmentRepairService {
         repairSlot(equipment, Slot.CHESTPLATE);
         repairSlot(equipment, Slot.LEGGINGS);
         repairSlot(equipment, Slot.BOOTS);
+        if (persistenceService != null) {
+            persistenceService.save(guard).exceptionally(error -> {
+                org.bukkit.plugin.Plugin plugin = org.bukkit.Bukkit.getPluginManager()
+                        .getPlugins().length == 0 ? null
+                        : org.bukkit.Bukkit.getPluginManager().getPlugins()[0];
+                if (plugin != null && plugin.isEnabled()) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                            "Could not persist repaired guard equipment.", error);
+                }
+                return null;
+            });
+        }
 
         return new RepairResult(true, "Экипировка стража отремонтирована.",
                 damagedItems, restoredDurability, Map.copyOf(required), unsupportedItems);
