@@ -17,7 +17,7 @@ class DatabaseMigrationsTest {
         var file = temporaryDirectory.resolve("fresh.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
             DatabaseMigrations.migrate(connection);
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             assertTableExists(connection, "npcs");
             assertTableExists(connection, "resident_profiles");
             assertTableExists(connection, "resident_schedules");
@@ -34,6 +34,7 @@ class DatabaseMigrationsTest {
             assertTableExists(connection, "guard_squads");
             assertTableExists(connection, "guard_squad_members");
             assertTableExists(connection, "guard_conditions");
+            assertTableExists(connection, "guard_equipment");
             assertColumnExists(connection, "guard_conditions", "injury_severity");
             assertColumnExists(connection, "guard_conditions", "last_injury_recovery_at");
             assertColumnExists(connection, "resident_skills", "experience");
@@ -41,8 +42,47 @@ class DatabaseMigrationsTest {
             assertColumnExists(connection, "resident_trade_transactions", "profession");
 
             assertDoesNotThrow(() -> DatabaseMigrations.migrate(connection));
+            assertEquals(24, schemaVersion(connection));
+            assertEquals(24, migrationCount(connection));
+        }
+    }
+
+
+    @Test
+    void versionTwentyThreeUpgradeAddsGuardEquipmentWithoutLosingNpcRecords() throws Exception {
+        var file = temporaryDirectory.resolve("version-twenty-three.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + file)) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys = ON");
+            }
+            DatabaseMigrations.migrate(connection);
+            try (var statement = connection.createStatement()) {
+                statement.execute("""
+                        INSERT INTO npcs(id, type, name, state)
+                        VALUES ('guard-equipment-migration', 'GUARD', 'Sentinel', 'ACTIVE')
+                        """);
+                statement.execute("DROP TABLE guard_equipment");
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 24");
+            }
+
             assertEquals(23, schemaVersion(connection));
-            assertEquals(23, migrationCount(connection));
+            DatabaseMigrations.migrate(connection);
+
+            assertEquals(24, schemaVersion(connection));
+            assertTableExists(connection, "guard_equipment");
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery(
+                         "SELECT type, name FROM npcs WHERE id = 'guard-equipment-migration'")) {
+                assertTrue(result.next());
+                assertEquals("GUARD", result.getString("type"));
+                assertEquals("Sentinel", result.getString("name"));
+            }
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("PRAGMA foreign_key_list(guard_equipment)")) {
+                assertTrue(result.next());
+                assertEquals("npcs", result.getString("table"));
+                assertEquals("CASCADE", result.getString("on_delete"));
+            }
         }
     }
 
@@ -81,7 +121,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             assertEquals(23, migrationCount(connection));
             assertTableExists(connection, "resident_profession_requests");
             try (var statement = connection.createStatement();
@@ -187,7 +227,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var result = statement.executeQuery(
                         "SELECT order_type, updated_at FROM guard_orders WHERE npc_id = 'guard-1'")) {
@@ -238,7 +278,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT business_id, profession, material, amount, quality,
@@ -316,7 +356,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
                          SELECT transaction_id, business_id, profession
@@ -382,7 +422,7 @@ class DatabaseMigrationsTest {
 
             DatabaseMigrations.migrate(connection);
 
-            assertEquals(23, schemaVersion(connection));
+            assertEquals(24, schemaVersion(connection));
             try (var statement = connection.createStatement()) {
                 try (var foreignKeys = statement.executeQuery(
                         "PRAGMA foreign_key_list(resident_trade_transactions)")) {
@@ -457,8 +497,8 @@ class DatabaseMigrationsTest {
             SQLException error = assertThrows(SQLException.class,
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("migration history is incomplete"));
-            assertEquals(23, schemaVersion(connection));
-            assertEquals(22, migrationCount(connection));
+            assertEquals(24, schemaVersion(connection));
+            assertEquals(23, migrationCount(connection));
         }
     }
 
