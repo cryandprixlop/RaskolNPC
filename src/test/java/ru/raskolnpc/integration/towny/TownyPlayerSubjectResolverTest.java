@@ -24,7 +24,7 @@ class TownyPlayerSubjectResolverTest {
         try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
             towny.when(TownyAPI::getInstance).thenReturn(api);
 
-            assertTrue(new TownyPlayerSubjectResolver().resolve(player).isEmpty());
+            assertTrue(new TownyPlayerSubjectResolver(() -> true).resolve(player).isEmpty());
         }
     }
 
@@ -99,4 +99,11 @@ class TownyPlayerSubjectResolverTest {
         assertThrows(NullPointerException.class,
                 () -> new TownyPlayerSubjectResolver().resolve(null));
     }
-}
+
+    @Test
+    void returnsEmptyWithoutCallingTownyWhenPluginIsDisabled() {
+        Player player = mock(Player.class);
+        TownyPlayerSubjectResolver resolver = new TownyPlayerSubjectResolver(() -> false);
+        assertTrue(resolver.resolve(player).isEmpty());
+    }
+}\n
