@@ -19,6 +19,8 @@ import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.storage.GuardEquipmentRepository;
+import java.util.concurrent.CompletableFuture;
 
 import java.util.Optional;
 
@@ -115,6 +117,23 @@ class GuardEquipmentWearServiceTest {
         service.onGuardDamaged(new EntityDamageEvent(
                 guard, EntityDamageEvent.DamageCause.FALL, 4.0));
         assertEquals(0, damage(guard.getEquipment().getHelmet()));
+    }
+
+
+    @Test
+    void persistsWeaponWearAfterDamageIsApplied() {
+        GuardEquipmentRepository repository = mock(GuardEquipmentRepository.class);
+        when(repository.save(eq(guardRecord.id()), any(byte[].class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        GuardEquipmentPersistenceService persistence =
+                new GuardEquipmentPersistenceService(plugin, registry, entities, repository);
+        service.setPersistenceService(persistence);
+        guard.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+
+        service.onGuardAttack(new EntityDamageByEntityEvent(
+                guard, mock(Entity.class), EntityDamageEvent.DamageCause.ENTITY_ATTACK, 2.0));
+
+        verify(repository).save(eq(guardRecord.id()), any(byte[].class));
     }
 
     private static int damage(ItemStack item) {

@@ -14,6 +14,9 @@ import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.storage.GuardEquipmentRepository;
+import org.bukkit.plugin.Plugin;
+import java.util.concurrent.CompletableFuture;
 
 import java.util.Optional;
 
@@ -101,6 +104,25 @@ class GuardEquipmentRepairServiceTest {
 
         assertFalse(result.repaired());
         assertEquals("Страж не найден.", result.message());
+    }
+
+
+    @Test
+    void persistsEquipmentAfterSuccessfulRepair() {
+        GuardEquipmentRepository repository = mock(GuardEquipmentRepository.class);
+        when(repository.save(eq(record.id()), any(byte[].class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        Plugin plugin = MockBukkit.createMockPlugin();
+        GuardEquipmentPersistenceService persistence =
+                new GuardEquipmentPersistenceService(plugin, registry, entities, repository);
+        service = new GuardEquipmentRepairService(registry, entities, persistence);
+        guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 2));
+
+        var result = service.repair(player, record.id());
+
+        assertTrue(result.repaired());
+        verify(repository).save(eq(record.id()), any(byte[].class));
     }
 
     private static ItemStack damaged(Material material, int damage) {

@@ -118,13 +118,8 @@ public final class GuardEquipmentRepairService {
         repairSlot(equipment, Slot.BOOTS);
         if (persistenceService != null) {
             persistenceService.save(guard).exceptionally(error -> {
-                org.bukkit.plugin.Plugin plugin = org.bukkit.Bukkit.getPluginManager()
-                        .getPlugins().length == 0 ? null
-                        : org.bukkit.Bukkit.getPluginManager().getPlugins()[0];
-                if (plugin != null && plugin.isEnabled()) {
-                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                            "Could not persist repaired guard equipment.", error);
-                }
+                org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Could not persist repaired guard equipment.", error);
                 return null;
             });
         }
