@@ -37,4 +37,13 @@ class TownyGuardTerritoryAccessTest {
         assertFalse(new TownyGuardTerritoryAccess((queried, nationId) -> true)
                 .apply(null, "nation-a"));
     }
-}
+
+    @Test
+    void deniesTerritoryAccessWhenTownyIsDisabledEvenIfLookupWouldAllowIt() {
+        World world = mock(World.class);
+        Location location = new Location(world, 10, 64, 10);
+        TownyGuardTerritoryAccess access = new TownyGuardTerritoryAccess(
+                (queried, nationId) -> true, () -> false);
+        assertFalse(access.apply(location, "nation-a"));
+    }
+}\n
