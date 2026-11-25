@@ -189,6 +189,7 @@ public final class RaskolNPC extends JavaPlugin {
             }
         }
         java.util.List<RelationshipPolicy.Diplomacy> diplomacyProviders = new java.util.ArrayList<>();
+        boolean siegeWarAdapterAvailable = false;
         if (townyEnabled) {
             try {
                 diplomacyProviders.add(new TownyDiplomacyAdapter());
@@ -201,6 +202,7 @@ public final class RaskolNPC extends JavaPlugin {
         if (siegeWarEnabled) {
             try {
                 diplomacyProviders.add(new SiegeWarDiplomacyAdapter());
+                siegeWarAdapterAvailable = true;
             } catch (RuntimeException | LinkageError adapterError) {
                 getLogger().log(Level.WARNING,
                         "SiegeWar was detected but its API adapter could not initialize. "
@@ -320,7 +322,7 @@ public final class RaskolNPC extends JavaPlugin {
                 this, commandService, new NpcCommandMessages(this));
         commandHandler.setIntegrationCapabilities(new IntegrationCapabilities(
                 getServer().getPluginManager(), townyEnabled,
-                worldGuardProtectionAdapter != null));
+                worldGuardProtectionAdapter != null, siegeWarAdapterAvailable));
         commandHandler.setGuardOrderService(guardOrderService);
         commandHandler.setGuardSquadService(guardSquadService);
         commandHandler.setGuardEquipmentRepairService(
