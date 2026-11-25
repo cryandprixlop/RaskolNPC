@@ -89,6 +89,22 @@ class ResidentWorkActionControllerTest {
         assertTrue(controller.performIfReady(id, villager, profile(ResidentProfession.FARMER), 11));
     }
 
+
+    @Test
+    void respectsExplicitlyConfiguredWorkInterval() {
+        ResidentWorkActionController controller = new ResidentWorkActionController();
+        controller.setActionIntervalTicks(40L);
+        Villager villager = mock(Villager.class);
+        World world = mock(World.class);
+        when(villager.isValid()).thenReturn(true);
+        when(villager.getWorld()).thenReturn(world);
+        ResidentProfile profile = profile(ResidentProfession.BLACKSMITH);
+
+        assertTrue(controller.performIfReady(profile.npcId(), villager, profile, 100L));
+        assertFalse(controller.performIfReady(profile.npcId(), villager, profile, 139L));
+        assertTrue(controller.performIfReady(profile.npcId(), villager, profile, 140L));
+    }
+
     private static ResidentProfile profile(ResidentProfession profession) {
         return new ResidentProfile(NpcId.create(), 30, profession, Set.of(),
                 75, 75, 75, 75, 75, 75, Map.of());
