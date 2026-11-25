@@ -3,11 +3,13 @@ package ru.raskolnpc.integration.siegewar;
 import com.gmail.goosius.siegewar.SiegeWarAPI;
 import com.gmail.goosius.siegewar.objects.Siege;
 import com.palmergames.bukkit.towny.object.Government;
+import org.bukkit.Bukkit;
 import ru.raskolnpc.integration.RelationshipPolicy;
 
 import java.util.Collection;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -16,13 +18,25 @@ import java.util.function.Supplier;
  */
 public final class SiegeWarDiplomacyAdapter implements RelationshipPolicy.Diplomacy {
     private final Supplier<? extends Collection<Siege>> activeSieges;
+    private final BooleanSupplier siegeWarEnabled;
 
     public SiegeWarDiplomacyAdapter() {
-        this(SiegeWarAPI::getActiveSieges);
+        this(SiegeWarAPI::getActiveSieges, SiegeWarDiplomacyAdapter::isSiegeWarEnabled);
     }
 
     SiegeWarDiplomacyAdapter(Supplier<? extends Collection<Siege>> activeSieges) {
+        this(activeSieges, () -> true);
+    }
+
+    public SiegeWarDiplomacyAdapter(
+            Supplier<? extends Collection<Siege>> activeSieges, BooleanSupplier siegeWarEnabled) {
         this.activeSieges = Objects.requireNonNull(activeSieges, "activeSieges");
+        this.siegeWarEnabled = Objects.requireNonNull(siegeWarEnabled, "siegeWarEnabled");
+    }
+
+    private static boolean isSiegeWarEnabled() {
+        var plugin = Bukkit.getPluginManager().getPlugin("SiegeWar");
+        return plugin != null && plugin.isEnabled();
     }
 
     @Override
@@ -35,6 +49,7 @@ public final class SiegeWarDiplomacyAdapter implements RelationshipPolicy.Diplom
         }
 
         try {
+            if (!siegeWarEnabled.getAsBoolean()) return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
             Collection<Siege> sieges = activeSieges.get();
             if (sieges == null) return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
             for (Siege siege : sieges) {
@@ -51,7 +66,7 @@ public final class SiegeWarDiplomacyAdapter implements RelationshipPolicy.Diplom
                 }
             }
         } catch (RuntimeException | LinkageError unavailable) {
-            // SiegeWar may be shutting down or its API may temporarily be unavailable.
+            // SiegeWar may be shutting down or its API may be temporarily unavailable.
             return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
         }
         return RelationshipPolicy.DiplomacyRelation.UNKNOWN;
