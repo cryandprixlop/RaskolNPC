@@ -106,4 +106,4 @@ class SiegeWarDiplomacyAdapterTest {
         assertEquals(RelationshipPolicy.DiplomacyRelation.UNKNOWN,
                 disabled.relation(ATTACKER.toString(), DEFENDER.toString()));
     }
-}\n
+}
