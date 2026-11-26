@@ -285,11 +285,13 @@ class NpcRecoveryServiceTest {
     @Test
     void doesNotDropGuardEquipmentThatWillBeRestoredFromSnapshot() {
         LivingEntity deadGuard = mock(LivingEntity.class);
-        NpcRecord guard = NpcRecord.create(
-                NpcType.GUARD, "Guard", null, null, null, null);
+        UUID deadGuardId = UUID.randomUUID();
+        when(deadGuard.getUniqueId()).thenReturn(deadGuardId);
+        NpcRecord guard = recordAt(new Location(world, 2, 65, 2))
+                .withEntityBinding(deadGuardId, NpcSpawnLocation.from(
+                        new Location(world, 2, 65, 2)));
         registry.put(guard);
         when(tagger.read(deadGuard)).thenReturn(Optional.of(guard.id()));
-        when(deadGuard.getUniqueId()).thenReturn(UUID.randomUUID());
         List<ItemStack> drops = new java.util.ArrayList<>(
                 List.of(new ItemStack(Material.IRON_SWORD)));
         EntityDeathEvent event = mock(EntityDeathEvent.class);
@@ -300,6 +302,31 @@ class NpcRecoveryServiceTest {
 
         assertTrue(drops.isEmpty(),
                 "Guard gear is persisted and restored; it must not be duplicated as a death drop.");
+    }
+
+    @Test
+    void preservesDropsWhenStaleGuardEntityDiesAfterItsReplacementIsBound() {
+        UUID currentEntityId = UUID.randomUUID();
+        UUID staleEntityId = UUID.randomUUID();
+        NpcRecord guard = recordAt(new Location(world, 2, 65, 2))
+                .withEntityBinding(currentEntityId, NpcSpawnLocation.from(
+                        new Location(world, 2, 65, 2)));
+        registry.put(guard);
+
+        LivingEntity staleGuard = mock(LivingEntity.class);
+        when(staleGuard.getUniqueId()).thenReturn(staleEntityId);
+        when(tagger.read(staleGuard)).thenReturn(Optional.of(guard.id()));
+        List<ItemStack> drops = new java.util.ArrayList<>(
+                List.of(new ItemStack(Material.IRON_SWORD)));
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(staleGuard);
+        when(event.getDrops()).thenReturn(drops);
+
+        recovery.onEntityDeath(event);
+
+        assertEquals(1, drops.size(),
+                "A stale entity must not have its legitimate drops cleared.");
+        verify(deletions, never()).findPending();
     }
 
     @Test
