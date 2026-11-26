@@ -18,7 +18,7 @@ repositories {
         content { includeGroup("com.github.TownyAdvanced") }
     }
     maven("https://maven.enginehub.org/repo/") {
-        content { includeGroup("com.sk89q.worldguard") }
+        content { includeGroupByRegex("com\\.sk89q\\..*") }
     }
 }
 
