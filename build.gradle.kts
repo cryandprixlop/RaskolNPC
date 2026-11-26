@@ -18,7 +18,10 @@ repositories {
         content { includeGroup("com.github.TownyAdvanced") }
     }
     maven("https://maven.enginehub.org/repo/") {
-        content { includeGroupByRegex("com\\.sk89q\\..*") }
+        content {
+                includeGroupByRegex("com\\.sk89q\\..*")
+                includeGroupByRegex("org\\.enginehub\\..*")
+            }
     }
 }
 
