@@ -136,6 +136,33 @@ class GuardEquipmentWearServiceTest {
         verify(repository).save(eq(guardRecord.id()), any(byte[].class));
     }
 
+    @Test
+    void persistsArmorWearAfterDamageIsApplied() {
+        GuardEquipmentRepository repository = mock(GuardEquipmentRepository.class);
+        final byte[][] saved = new byte[1][];
+        when(repository.save(eq(guardRecord.id()), any(byte[].class))).thenAnswer(invocation -> {
+            saved[0] = ((byte[]) invocation.getArgument(1)).clone();
+            return CompletableFuture.completedFuture(null);
+        });
+        GuardEquipmentPersistenceService persistence =
+                new GuardEquipmentPersistenceService(plugin, registry, entities, repository);
+        service.setPersistenceService(persistence);
+        guard.getEquipment().setHelmet(new ItemStack(Material.IRON_HELMET));
+
+        service.onGuardDamaged(new EntityDamageEvent(
+                guard, EntityDamageEvent.DamageCause.FALL, 4.0));
+
+        assertNotNull(saved[0], "Armor wear must be persisted after it is applied.");
+        guard.getEquipment().setHelmet(null);
+        when(repository.find(guardRecord.id()))
+                .thenReturn(CompletableFuture.completedFuture(Optional.of(saved[0])));
+
+        CompletableFuture<Void> restored = persistence.restore(guardRecord.id(), guard);
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(restored::join);
+        assertEquals(1, damage(guard.getEquipment().getHelmet()));
+    }
+
     private static int damage(ItemStack item) {
         if (item == null || !(item.getItemMeta() instanceof Damageable damageable)) return 0;
         return damageable.getDamage();
