@@ -94,17 +94,19 @@ public final class NpcRecoveryService {
     /**
      * Recovers an NPC after an unexpected entity death. A durable deletion request
      * always wins; only the exact currently-bound entity of an active record qualifies.
-     */
-    /**
-     * Guard equipment is restored from the durable snapshot, so it must not
-     * also enter the vanilla death-drop list. Other NPC drops remain untouched.
+     * Guard equipment is restored from the durable snapshot, so only that entity's
+     * vanilla death drops are cleared. Other and stale entities keep their drops.
      */
     public void onEntityDeath(EntityDeathEvent event) {
         Objects.requireNonNull(event, "event");
         Entity deadEntity = event.getEntity();
         NpcId id = entities.getNpcId(deadEntity).orElse(null);
         NpcRecord record = id == null ? null : registry.get(id).orElse(null);
-        if (record != null && record.type() == NpcType.GUARD) event.getDrops().clear();
+        if (record != null && record.type() == NpcType.GUARD
+                && record.state() == NpcState.ACTIVE
+                && deadEntity.getUniqueId().equals(record.entityUuid())) {
+            event.getDrops().clear();
+        }
         onEntityDeath(deadEntity);
     }
 
