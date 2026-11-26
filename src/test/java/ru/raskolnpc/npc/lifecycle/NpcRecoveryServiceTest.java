@@ -6,6 +6,9 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.EntityEquipment;
+import ru.raskolnpc.guard.GuardEquipmentPersistenceService;
+import ru.raskolnpc.storage.GuardEquipmentRepository;
 import org.bukkit.Material;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -326,6 +329,36 @@ class NpcRecoveryServiceTest {
 
         assertEquals(1, drops.size(),
                 "A stale entity must not have its legitimate drops cleared.");
+        verify(deletions, never()).findPending();
+    }
+
+    @Test
+    void doesNotRespawnGuardWhenEquipmentSnapshotCannotBeSaved() {
+        world.loadChunk(0, 0);
+        UUID deadGuardId = UUID.randomUUID();
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        NpcRecord guard = recordAt(savedLocation).withEntityBinding(
+                deadGuardId, NpcSpawnLocation.from(savedLocation));
+        registry.put(guard);
+
+        LivingEntity deadGuard = mock(LivingEntity.class);
+        EntityEquipment equipment = mock(EntityEquipment.class);
+        when(deadGuard.getUniqueId()).thenReturn(deadGuardId);
+        when(deadGuard.getEquipment()).thenReturn(equipment);
+        when(tagger.read(deadGuard)).thenReturn(Optional.of(guard.id()));
+
+        GuardEquipmentRepository equipmentRepository = mock(GuardEquipmentRepository.class);
+        when(equipmentRepository.save(eq(guard.id()), any(byte[].class)))
+                .thenReturn(CompletableFuture.failedFuture(
+                        new IllegalStateException("simulated SQLite write failure")));
+        recovery.setGuardEquipmentPersistenceService(
+                new GuardEquipmentPersistenceService(plugin, registry, entities, equipmentRepository));
+
+        recovery.onEntityDeath(deadGuard);
+        server.getScheduler().performTicks(3);
+
+        verify(equipmentRepository).save(eq(guard.id()), any(byte[].class));
+        verifyNoInteractions(provider);
         verify(deletions, never()).findPending();
     }
 
