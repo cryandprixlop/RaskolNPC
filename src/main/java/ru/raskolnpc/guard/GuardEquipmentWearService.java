@@ -25,8 +25,8 @@ import java.util.Objects;
 /**
  * Applies native Minecraft item durability to guard weapons and armor.
  *
- * Item durability is stored with the entity equipment in the world's entity data,
- * so it survives chunk unloads and server restarts without a second persistence model.
+ * Changed equipment snapshots are persisted to SQLite so durability survives
+ * entity death and recreation as well as chunk unloads and server restarts.
  */
 public final class GuardEquipmentWearService implements Listener {
     private final Plugin plugin;
