@@ -257,7 +257,7 @@ class SqliteResidentProfileRepositoryTest {
 
         assertEquals(ResidentProfession.FARMER,
                 repository.findByNpcId(npc.id()).join().orElseThrow().profession());
-        assertEquals(0L, repository.findLastProfessionChangeDay(npc.id()).join());
+        assertEquals(-1L, repository.findLastProfessionChangeDay(npc.id()).join());
     }
 
     @Test

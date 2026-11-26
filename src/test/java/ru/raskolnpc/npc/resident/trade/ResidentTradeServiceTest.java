@@ -173,9 +173,9 @@ class ResidentTradeServiceTest {
         verify(repository, times(1)).transition(trade.transactionId(),
                 ResidentTradeTransaction.Status.STOCK_RESERVED,
                 ResidentTradeTransaction.Status.PAYMENT_PENDING, null, null);
-        verify(repository, never()).transition(trade.transactionId(),
-                ResidentTradeTransaction.Status.STOCK_RESERVED,
-                ResidentTradeTransaction.Status.REVIEW_REQUIRED, null, anyString());
+        verify(repository, never()).transition(eq(trade.transactionId()),
+                eq(ResidentTradeTransaction.Status.STOCK_RESERVED),
+                eq(ResidentTradeTransaction.Status.REVIEW_REQUIRED), isNull(), anyString());
         verifyNoInteractions(economy, delivery);
     }
 
@@ -266,7 +266,7 @@ class ResidentTradeServiceTest {
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, null,
                 "Provider confirmed payment but PAID state could not be persisted. Persistence error: IllegalStateException: sqlite unavailable");
         verifyNoInteractions(delivery);
-        verify(economy, never()).charge(anyString(), any(), anyLong());
+        verify(economy).charge(trade.transactionId(), trade.buyerId(), trade.totalPriceMinor());
         verify(economy, never()).refund(anyString(), any(), anyLong());
     }
 

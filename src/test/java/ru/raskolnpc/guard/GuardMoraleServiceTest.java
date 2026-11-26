@@ -146,6 +146,7 @@ class GuardMoraleServiceTest {
         var allyId = ally.id();
         registry.register(ally);
         when(entities.find(allyId)).thenReturn(java.util.Optional.of(allyEntity));
+        when(allyEntity.getUniqueId()).thenReturn(ally.entityUuid());
         when(allyEntity.isValid()).thenReturn(true);
         when(allyEntity.isDead()).thenReturn(false);
         when(allyEntity.getLocation()).thenReturn(new Location(server.addSimpleWorld("world"), 1, 64, 1));

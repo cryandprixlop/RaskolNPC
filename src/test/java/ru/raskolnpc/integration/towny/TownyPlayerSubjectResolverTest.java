@@ -42,7 +42,7 @@ class TownyPlayerSubjectResolverTest {
         TownyAPI api = mock(TownyAPI.class);
         when(api.getResident(player)).thenReturn(resident);
         when(resident.getTownOrNull()).thenReturn(town);
-        when(api.getTownNationOrNull(town)).thenReturn(nation);
+        doReturn(nation).when(api).getTownNationOrNull(town);
         when(town.getUUID()).thenReturn(townId);
         when(nation.getUUID()).thenReturn(nationId);
 

@@ -40,10 +40,10 @@ class ResidentTradeServiceTest {
 
     @Test
     void paidTradeIsDeliveredAndMarkedCompleted() {
-        when(payments.charge(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.charge(tradeWithStatus(ResidentTradeTransaction.Status.PAYMENT_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.PAID, "charge-1", null)));
-        when(delivery.deliver(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(delivery.deliver(tradeWithStatus(ResidentTradeTransaction.Status.PAID))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradeDeliveryProvider.Result(
                         ResidentTradeDeliveryProvider.Outcome.DELIVERED, null)));
 
@@ -59,7 +59,7 @@ class ResidentTradeServiceTest {
 
     @Test
     void declinedPaymentReleasesReservedStockWithoutDelivery() {
-        when(payments.charge(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.charge(tradeWithStatus(ResidentTradeTransaction.Status.PAYMENT_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.DECLINED, null, "insufficient funds")));
 
@@ -70,7 +70,7 @@ class ResidentTradeServiceTest {
 
     @Test
     void unknownPaymentOutcomeRequiresReconciliationAndNeverDelivers() {
-        when(payments.charge(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.charge(tradeWithStatus(ResidentTradeTransaction.Status.PAYMENT_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.UNKNOWN, null, "timeout")));
 
@@ -82,13 +82,13 @@ class ResidentTradeServiceTest {
 
     @Test
     void definitiveDeliveryFailureTriggersRefund() {
-        when(payments.charge(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.charge(tradeWithStatus(ResidentTradeTransaction.Status.PAYMENT_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.PAID, "charge-2", null)));
-        when(delivery.deliver(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(delivery.deliver(tradeWithStatus(ResidentTradeTransaction.Status.PAID))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradeDeliveryProvider.Result(
                         ResidentTradeDeliveryProvider.Outcome.FAILED, "inventory full")));
-        when(payments.refund(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.refund(tradeWithStatus(ResidentTradeTransaction.Status.REFUND_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.REFUNDED, "refund-2", null)));
 
@@ -101,10 +101,10 @@ class ResidentTradeServiceTest {
 
     @Test
     void uncertainDeliveryDoesNotTriggerRefundThatCouldDuplicateItems() {
-        when(payments.charge(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(payments.charge(tradeWithStatus(ResidentTradeTransaction.Status.PAYMENT_PENDING))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradePaymentProvider.Result(
                         ResidentTradePaymentProvider.Outcome.PAID, "charge-3", null)));
-        when(delivery.deliver(trade)).thenReturn(CompletableFuture.completedFuture(
+        when(delivery.deliver(tradeWithStatus(ResidentTradeTransaction.Status.PAID))).thenReturn(CompletableFuture.completedFuture(
                 new ResidentTradeDeliveryProvider.Result(
                         ResidentTradeDeliveryProvider.Outcome.UNKNOWN, "player disconnected")));
 
@@ -112,6 +112,12 @@ class ResidentTradeServiceTest {
         verify(repository).transition("trade-1", ResidentTradeTransaction.Status.PAID,
                 ResidentTradeTransaction.Status.REVIEW_REQUIRED, null, "player disconnected");
         verify(payments, never()).refund(any());
+    }
+
+    private ResidentTradeTransaction tradeWithStatus(ResidentTradeTransaction.Status status) {
+        return argThat(candidate -> candidate != null
+                && candidate.transactionId().equals(trade.transactionId())
+                && candidate.status() == status);
     }
 
     private ResidentTradeService.Result purchase() {

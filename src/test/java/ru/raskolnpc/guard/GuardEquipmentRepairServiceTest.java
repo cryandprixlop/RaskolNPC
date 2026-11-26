@@ -47,6 +47,7 @@ class GuardEquipmentRepairServiceTest {
         registry.register(record);
         entities = mock(NpcEntityManager.class);
         when(entities.find(record.id())).thenReturn(Optional.of(guard));
+        when(entities.getNpcId(guard)).thenReturn(Optional.of(record.id()));
         service = new GuardEquipmentRepairService(registry, entities);
     }
 
