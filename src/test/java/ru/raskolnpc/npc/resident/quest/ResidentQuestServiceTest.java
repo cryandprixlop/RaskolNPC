@@ -282,8 +282,8 @@ class ResidentQuestServiceTest {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getDataFolder()).thenReturn(temporaryDirectory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getLogger("resident-stock-batch-api-test"));
-        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\\n");
-        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\\n");
+        Files.writeString(temporaryDirectory.resolve("resident-quests.yml"), "quests: {}\n");
+        Files.writeString(temporaryDirectory.resolve("production-recipes.yml"), "recipes: {}\n");
 
         NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Merchant",
                 null, "town", "nation", "{}");

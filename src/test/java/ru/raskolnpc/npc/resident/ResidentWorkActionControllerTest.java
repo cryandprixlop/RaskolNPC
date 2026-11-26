@@ -1,5 +1,6 @@
 package ru.raskolnpc.npc.resident;
 
+import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Villager;
@@ -24,6 +25,7 @@ class ResidentWorkActionControllerTest {
         World world = mock(World.class);
         when(villager.isValid()).thenReturn(true);
         when(villager.getWorld()).thenReturn(world);
+        when(villager.getLocation()).thenReturn(new Location(world, 0.0, 64.0, 0.0));
 
         assertTrue(controller.performIfReady(id, villager, profile(ResidentProfession.FARMER), 10));
         assertFalse(controller.performIfReady(id, villager, profile(ResidentProfession.FARMER), 69));
@@ -41,6 +43,7 @@ class ResidentWorkActionControllerTest {
         Villager villager = mock(Villager.class);
         when(villager.isValid()).thenReturn(true);
         when(villager.getWorld()).thenReturn(world);
+        when(villager.getLocation()).thenReturn(new Location(world, 0.0, 64.0, 0.0));
 
         Map<ResidentProfession, Particle> expected = Map.ofEntries(
                 Map.entry(ResidentProfession.FARMER, Particle.COMPOSTER),
@@ -83,7 +86,9 @@ class ResidentWorkActionControllerTest {
         verify(villager, never()).swingMainHand();
 
         when(villager.isValid()).thenReturn(true);
-        when(villager.getWorld()).thenReturn(mock(World.class));
+        World world = mock(World.class);
+        when(villager.getWorld()).thenReturn(world);
+        when(villager.getLocation()).thenReturn(new Location(world, 0.0, 64.0, 0.0));
         assertTrue(controller.performIfReady(id, villager, profile(ResidentProfession.FARMER), 10));
         controller.clear();
         assertTrue(controller.performIfReady(id, villager, profile(ResidentProfession.FARMER), 11));
