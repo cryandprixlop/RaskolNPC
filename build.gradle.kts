@@ -6,11 +6,20 @@ group = "ru.raskolnpc"
 version = "0.1.0-SNAPSHOT"
 
 repositories {
-    mavenCentral()
+    mavenCentral {
+        content {
+            excludeGroup("com.github.TownyAdvanced")
+            excludeGroup("com.sk89q.worldguard")
+        }
+    }
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.glaremasters.me/repository/towny/")
-    maven("https://jitpack.io")
-    maven("https://maven.enginehub.org/repo/")
+    maven("https://jitpack.io") {
+        content { includeGroup("com.github.TownyAdvanced") }
+    }
+    maven("https://maven.enginehub.org/repo/") {
+        content { includeGroup("com.sk89q.worldguard") }
+    }
 }
 
 dependencies {
