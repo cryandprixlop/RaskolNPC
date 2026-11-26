@@ -53,7 +53,6 @@ class GuardSquadCombatTest {
                 NpcType.GUARD, "Follower decoy", null, "town-c", "nation-c", "{}");
         for (NpcRecord record : List.of(
                 firstGuard, secondGuard, focusRecord, nearerToFollowerRecord)) {
-            registry.register(record);
         }
 
         List<NpcRecord> orderedGuards = List.of(firstGuard, secondGuard).stream()
@@ -75,6 +74,10 @@ class GuardSquadCombatTest {
         configure(followerEntity, followerLocation);
         configure(focusTarget, focusLocation);
         configure(followerDecoy, decoyLocation);
+        registerActive(registry, firstGuard, leaderEntity);
+        registerActive(registry, secondGuard, followerEntity);
+        registerActive(registry, focusRecord, focusTarget);
+        registerActive(registry, nearerToFollowerRecord, followerDecoy);
         when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(focusTarget));
         when(followerEntity.getNearbyEntities(12.0, 12.0, 12.0))
@@ -138,6 +141,10 @@ class GuardSquadCombatTest {
         configure(livingFollower, followerLocation);
         configure(nearbyTarget, new Location(world, 2.5, 64, 0.5));
         configure(distantTarget, new Location(world, 7.5, 64, 0.5));
+        registerActive(registry, firstGuard, unavailableLeader);
+        registerActive(registry, secondGuard, livingFollower);
+        registerActive(registry, nearbyTargetRecord, nearbyTarget);
+        registerActive(registry, distantTargetRecord, distantTarget);
         when(unavailableLeader.isValid()).thenReturn(false);
         when(livingFollower.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(distantTarget, nearbyTarget));
@@ -198,6 +205,10 @@ class GuardSquadCombatTest {
         configure(followerEntity, new Location(world, 0.5, 64, 1.5));
         configure(firstTarget, new Location(world, 2.5, 64, 0.5));
         configure(replacementTarget, new Location(world, 4.5, 64, 0.5));
+        registerActive(registry, firstGuard, leaderEntity);
+        registerActive(registry, secondGuard, followerEntity);
+        registerActive(registry, firstTargetRecord, firstTarget);
+        registerActive(registry, replacementTargetRecord, replacementTarget);
         when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(firstTarget, replacementTarget));
         when(followerEntity.getNearbyEntities(12.0, 12.0, 12.0))
@@ -237,6 +248,12 @@ class GuardSquadCombatTest {
 
         verify(replacementTarget).damage(2.0, leaderEntity);
         verify(replacementTarget).damage(2.0, followerEntity);
+    }
+
+    private void registerActive(NpcRegistry registry, NpcRecord record, LivingEntity entity) {
+        UUID entityUuid = UUID.randomUUID();
+        when(entity.getUniqueId()).thenReturn(entityUuid);
+        registry.put(record.withEntityBinding(entityUuid, null));
     }
 
     private void configure(LivingEntity entity, Location location) {

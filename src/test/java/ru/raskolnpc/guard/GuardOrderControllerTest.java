@@ -187,7 +187,7 @@ class GuardOrderControllerTest {
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
-        registry.register(hostile);
+        registerActiveHostile(hostile, hostileEntity);
 
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -230,8 +230,8 @@ class GuardOrderControllerTest {
                 NpcType.GUARD, "Outside hostile", null, "enemy-town", "enemy-nation", "{}");
         NpcRecord insideRecord = NpcRecord.create(
                 NpcType.GUARD, "Inside hostile", null, "enemy-town-2", "enemy-nation-2", "{}");
-        registry.register(outsideRecord);
-        registry.register(insideRecord);
+        registerActiveHostile(outsideRecord, outsideTarget);
+        registerActiveHostile(insideRecord, insideTarget);
 
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -275,8 +275,8 @@ class GuardOrderControllerTest {
                 NpcType.GUARD, "Farther hostile", null, "enemy-town", "enemy-nation", "{}");
         NpcRecord nearerRecord = NpcRecord.create(
                 NpcType.GUARD, "Nearer hostile", null, "enemy-town", "enemy-nation", "{}");
-        registry.register(fartherRecord);
-        registry.register(nearerRecord);
+        registerActiveHostile(fartherRecord, fartherHostile);
+        registerActiveHostile(nearerRecord, nearerHostile);
 
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -314,7 +314,7 @@ class GuardOrderControllerTest {
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
-        registry.register(hostile);
+        registerActiveHostile(hostile, hostileEntity);
 
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -909,4 +909,9 @@ class GuardOrderControllerTest {
         verify(entity, never()).teleport(any(Location.class));
     }
 
+    private void registerActiveHostile(NpcRecord record, LivingEntity entity) {
+        UUID entityUuid = UUID.randomUUID();
+        when(entity.getUniqueId()).thenReturn(entityUuid);
+        registry.put(record.withEntityBinding(entityUuid, null));
+    }
 }

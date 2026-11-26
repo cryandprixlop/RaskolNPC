@@ -47,8 +47,6 @@ class GuardCombatUnloadCleanupTest {
                 NpcType.GUARD, "Guard", null, "town-a", "nation-a", "{}");
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "town-b", "nation-b", "{}");
-        registry.register(guard);
-        registry.register(hostile);
 
         LivingEntity firstEntity = mock(LivingEntity.class);
         LivingEntity reloadedEntity = mock(LivingEntity.class);
@@ -56,6 +54,13 @@ class GuardCombatUnloadCleanupTest {
         configure(firstEntity, new Location(world, 0.5, 64, 0.5));
         configure(reloadedEntity, new Location(world, 0.5, 64, 0.5));
         configure(target, new Location(world, 2.5, 64, 0.5));
+        UUID guardEntityUuid = UUID.randomUUID();
+        when(firstEntity.getUniqueId()).thenReturn(guardEntityUuid);
+        when(reloadedEntity.getUniqueId()).thenReturn(guardEntityUuid);
+        registerActive(registry, guard, firstEntity);
+        UUID targetEntityUuid = UUID.randomUUID();
+        when(target.getUniqueId()).thenReturn(targetEntityUuid);
+        registry.put(hostile.withEntityBinding(targetEntityUuid, null));
         when(firstEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(target));
         when(reloadedEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(target));
 
@@ -90,9 +95,6 @@ class GuardCombatUnloadCleanupTest {
                 NpcType.GUARD, "First hostile", null, "town-b", "nation-b", "{}");
         NpcRecord nextHostile = NpcRecord.create(
                 NpcType.GUARD, "Next hostile", null, "town-c", "nation-c", "{}");
-        for (NpcRecord record : List.of(leader, follower, firstHostile, nextHostile)) {
-            registry.register(record);
-        }
 
         LivingEntity leaderEntity = mock(LivingEntity.class);
         LivingEntity followerEntity = mock(LivingEntity.class);
@@ -102,6 +104,10 @@ class GuardCombatUnloadCleanupTest {
         configure(followerEntity, new Location(world, 0.5, 64, 1.5));
         configure(firstTarget, new Location(world, 2.5, 64, 0.5));
         configure(nextTarget, new Location(world, 4.5, 64, 0.5));
+        registerActive(registry, leader, leaderEntity);
+        registerActive(registry, follower, followerEntity);
+        registerActive(registry, firstHostile, firstTarget);
+        registerActive(registry, nextHostile, nextTarget);
         when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(firstTarget, nextTarget));
         when(followerEntity.getNearbyEntities(12.0, 12.0, 12.0))
@@ -138,6 +144,12 @@ class GuardCombatUnloadCleanupTest {
 
         verify(nextTarget).damage(2.0, leaderEntity);
         verify(nextTarget).damage(2.0, followerEntity);
+    }
+
+    private void registerActive(NpcRegistry registry, NpcRecord record, LivingEntity entity) {
+        UUID entityUuid = UUID.randomUUID();
+        when(entity.getUniqueId()).thenReturn(entityUuid);
+        registry.put(record.withEntityBinding(entityUuid, null));
     }
 
     private void configure(LivingEntity entity, Location location) {

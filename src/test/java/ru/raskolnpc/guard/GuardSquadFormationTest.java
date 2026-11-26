@@ -74,12 +74,14 @@ class GuardSquadFormationTest {
     void movementControllerUsesTheCachedSquadFormationTarget() {
         NpcRegistry registry = new NpcRegistry();
         NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
-        registry.register(guard);
         LivingEntity entity = mock(LivingEntity.class);
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(entity.isValid()).thenReturn(true);
         when(entity.isDead()).thenReturn(false);
         when(entity.getLocation()).thenReturn(origin);
+        UUID entityUuid = UUID.randomUUID();
+        when(entity.getUniqueId()).thenReturn(entityUuid);
+        registry.put(guard.withEntityBinding(entityUuid, null));
         NpcEntityManager entities = mock(NpcEntityManager.class);
         when(entities.find(guard.id())).thenReturn(Optional.of(entity));
 
