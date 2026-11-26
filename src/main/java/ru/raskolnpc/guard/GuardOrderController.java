@@ -13,6 +13,7 @@ import ru.raskolnpc.guard.model.GuardOrder;
 import ru.raskolnpc.integration.RelationshipPolicy;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
 import java.util.Map;
@@ -265,7 +266,9 @@ public final class GuardOrderController {
                 var targetId = entities.getNpcId(candidate).orElse(null);
                 if (targetId == null || targetId.equals(guard.id())) return false;
                 NpcRecord target = registry.get(targetId).orElse(null);
-                if (target == null) return false;
+                if (target == null || target.state() != NpcState.ACTIVE
+                        || target.entityUuid() == null
+                        || !target.entityUuid().equals(candidate.getUniqueId())) return false;
                 victim = new RelationshipPolicy.Subject(
                         target.ownerUuid(), target.townId(), target.nationId());
             }

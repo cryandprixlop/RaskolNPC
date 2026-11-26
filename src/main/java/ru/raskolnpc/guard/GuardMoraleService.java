@@ -119,7 +119,9 @@ public final class GuardMoraleService implements Listener {
         requireMainThread();
         if (amount <= 0) return;
         NpcRecord record = registry.get(guardId).orElse(null);
-        if (record == null || record.type() != NpcType.GUARD) return;
+        Entity entity = entities.find(guardId).orElse(null);
+        if (!(entity instanceof LivingEntity living) || !living.isValid() || living.isDead()
+                || !isCurrentGuardEntity(record, living)) return;
         long now = System.currentTimeMillis();
         GuardCondition previous = conditions.getOrDefault(guardId,
                 new GuardCondition(guardId, 100, 0, Math.max(1, now)));
@@ -230,10 +232,11 @@ public final class GuardMoraleService implements Listener {
 
             if (now - current.lastCombatAt() >= injuryRecoveryMillis) {
                 Entity entity = entities.find(entry.getKey()).orElse(null);
-                if (entity instanceof LivingEntity living && living.isValid() && !living.isDead()) {
-                double maximum = living.getMaxHealth();
-                if (Double.isFinite(maximum) && maximum > 0 && living.getHealth() < maximum) {
-                    living.setHealth(Math.min(maximum, living.getHealth() + 1.0));
+                if (entity instanceof LivingEntity living && living.isValid() && !living.isDead()
+                        && isCurrentGuardEntity(record, living)) {
+                    double maximum = living.getMaxHealth();
+                    if (Double.isFinite(maximum) && maximum > 0 && living.getHealth() < maximum) {
+                        living.setHealth(Math.min(maximum, living.getHealth() + 1.0));
                     }
                 }
             }

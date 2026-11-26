@@ -260,7 +260,7 @@ public final class GuardCombatController implements Listener {
             NpcId allyId = entities.getNpcId(nearby).orElse(null);
             if (allyId == null || allyId.equals(guard.id())) continue;
             NpcRecord ally = registry.get(allyId).orElse(null);
-            if (guard.nationId() != null && ally != null && ally.type() == NpcType.GUARD
+            if (guard.nationId() != null && isCurrentGuardEntity(ally, living)
                     && Objects.equals(ally.nationId(), guard.nationId())) allies++;
         }
         if (hostiles >= allies + 2) {
@@ -290,7 +290,8 @@ public final class GuardCombatController implements Listener {
         NpcRecord leaderRecord = registry.get(leaderId).orElse(guard);
         Entity leaderEntity = entities.find(leaderId).orElse(null);
         LivingEntity selector = leaderEntity instanceof LivingEntity living
-                && living.isValid() && !living.isDead() ? living : attacker;
+                && living.isValid() && !living.isDead()
+                && isCurrentGuardEntity(leaderRecord, living) ? living : attacker;
         NpcRecord selectorRecord = selector == attacker ? guard : leaderRecord;
 
         Entity lockedTarget = squadTargets.get(squadId);
@@ -403,6 +404,13 @@ public final class GuardCombatController implements Listener {
                 && isVerifiedHostile(guard, target);
     }
 
+    private static boolean isCurrentGuardEntity(NpcRecord record, Entity entity) {
+        return record != null && record.type() == NpcType.GUARD
+                && record.state() == NpcState.ACTIVE
+                && record.entityUuid() != null
+                && record.entityUuid().equals(entity.getUniqueId());
+    }
+
     private boolean isVerifiedHostile(NpcRecord guard, Entity candidate) {
         try {
             RelationshipPolicy.Subject victim;
@@ -413,7 +421,9 @@ public final class GuardCombatController implements Listener {
                 NpcId targetId = entities.getNpcId(candidate).orElse(null);
                 if (targetId == null || targetId.equals(guard.id())) return false;
                 NpcRecord target = registry.get(targetId).orElse(null);
-                if (target == null) return false;
+                if (target == null || target.state() != NpcState.ACTIVE
+                        || target.entityUuid() == null
+                        || !target.entityUuid().equals(candidate.getUniqueId())) return false;
                 victim = new RelationshipPolicy.Subject(
                         target.ownerUuid(), target.townId(), target.nationId());
             }
