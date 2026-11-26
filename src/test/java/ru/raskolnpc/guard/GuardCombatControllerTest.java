@@ -734,4 +734,24 @@ class GuardCombatControllerTest {
 
         verify(player, never()).damage(anyDouble(), any(Entity.class));
     }
+
+    @Test
+    void doesNotAttackUsingAStaleGuardEntityBinding() {
+        LivingEntity staleGuard = mock(LivingEntity.class);
+        when(staleGuard.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(staleGuard.isValid()).thenReturn(true);
+        when(staleGuard.isDead()).thenReturn(false);
+        when(staleGuard.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
+        when(staleGuard.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(target));
+        when(entities.find(guard.id())).thenReturn(Optional.of(staleGuard));
+        RelationshipPolicy relationships = new RelationshipPolicy(
+                (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
+        GuardCombatController controller = new GuardCombatController(
+                plugin, registry, entities, relationships, null, 4, 12.0, 2.0, 1000L);
+
+        controller.tick();
+
+        verify(target, never()).damage(anyDouble(), any(Entity.class));
+    }
+
 }

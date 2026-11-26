@@ -212,7 +212,9 @@ public final class GuardCombatController implements Listener {
         if (moraleService != null && moraleService.isRetreating(guard.id())) return;
         Entity guardEntity = entities.find(guard.id()).orElse(null);
         if (!(guardEntity instanceof LivingEntity attacker)
-                || !attacker.isValid() || attacker.isDead()) return;
+                || !attacker.isValid() || attacker.isDead()
+                || guard.state() != NpcState.ACTIVE || guard.entityUuid() == null
+                || !guard.entityUuid().equals(attacker.getUniqueId())) return;
         evaluateNumericalPressure(guard, attacker);
         if (moraleService != null && moraleService.isRetreating(guard.id())) return;
         long now = System.currentTimeMillis();

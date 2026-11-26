@@ -12,6 +12,7 @@ import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardEquipmentRepository;
@@ -19,6 +20,7 @@ import org.bukkit.plugin.Plugin;
 import java.util.concurrent.CompletableFuture;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -40,7 +42,8 @@ class GuardEquipmentRepairServiceTest {
         player.teleport(new Location(world, 0, 64, 0));
         guard = world.spawn(new Location(world, 2, 64, 0), Skeleton.class);
         registry = new NpcRegistry();
-        record = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
+        record = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}")
+                .withEntityBinding(guard.getUniqueId(), null);
         registry.register(record);
         entities = mock(NpcEntityManager.class);
         when(entities.find(record.id())).thenReturn(Optional.of(guard));
@@ -136,4 +139,31 @@ class GuardEquipmentRepairServiceTest {
     private static int damage(ItemStack item) {
         return item != null && item.getItemMeta() instanceof Damageable meta ? meta.getDamage() : 0;
     }
+
+    @Test
+    void refusesRepairWhenGuardIsInactive() {
+        registry.put(record.withState(NpcState.INACTIVE));
+        guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 2));
+
+        var result = service.repair(player, record.id());
+
+        assertFalse(result.repaired());
+        assertEquals(100, damage(guard.getEquipment().getHelmet()));
+        assertEquals(2, player.getInventory().getItem(0).getAmount());
+    }
+
+    @Test
+    void refusesRepairWhenEntityBindingIsStale() {
+        registry.put(record.withEntityBinding(UUID.randomUUID(), null));
+        guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 2));
+
+        var result = service.repair(player, record.id());
+
+        assertFalse(result.repaired());
+        assertEquals(100, damage(guard.getEquipment().getHelmet()));
+        assertEquals(2, player.getInventory().getItem(0).getAmount());
+    }
+
 }

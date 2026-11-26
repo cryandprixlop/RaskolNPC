@@ -10,6 +10,7 @@ import org.bukkit.inventory.meta.Damageable;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
@@ -52,6 +53,10 @@ public final class GuardEquipmentRepairService {
         Optional<Entity> entityOptional = entities.find(guardId);
         if (entityOptional.isEmpty() || !(entityOptional.get() instanceof LivingEntity guard)) {
             return RepairResult.failure("Страж должен быть загружен в мире.");
+        }
+        if (record.state() != NpcState.ACTIVE || record.entityUuid() == null
+                || !record.entityUuid().equals(guard.getUniqueId())) {
+            return RepairResult.failure("Страж неактивен или его сущность устарела.");
         }
         if (!guard.getWorld().equals(player.getWorld())
                 || guard.getLocation().distanceSquared(player.getLocation()) > REPAIR_DISTANCE_SQUARED) {

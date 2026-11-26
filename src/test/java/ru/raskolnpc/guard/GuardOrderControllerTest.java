@@ -53,6 +53,7 @@ class GuardOrderControllerTest {
         registry.put(guard);
 
         entity = mock(LivingEntity.class);
+        when(entity.getUniqueId()).thenReturn(guard.entityUuid());
         when(entity.isValid()).thenReturn(true);
         when(entity.isDead()).thenReturn(false);
         when(entity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
@@ -182,6 +183,7 @@ class GuardOrderControllerTest {
     @Test
     void pursuesOnlyVerifiedHostileRegisteredNpcWithinConfiguredRadius() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
@@ -221,6 +223,7 @@ class GuardOrderControllerTest {
     @Test
     void skipsNearestHostileOutsideHiringTerritoryAndPursuesEligibleTarget() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity outsideTarget = mock(LivingEntity.class);
         LivingEntity insideTarget = mock(LivingEntity.class);
         NpcRecord outsideRecord = NpcRecord.create(
@@ -265,6 +268,7 @@ class GuardOrderControllerTest {
     @Test
     void pursuesNearestOfMultipleVerifiedHostileTargets() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity fartherHostile = mock(LivingEntity.class);
         LivingEntity nearerHostile = mock(LivingEntity.class);
         NpcRecord fartherRecord = NpcRecord.create(
@@ -306,6 +310,7 @@ class GuardOrderControllerTest {
     @Test
     void pursuesVerifiedHostileNpcEvenWhenGuardHasNoAssignedOrder() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
@@ -338,6 +343,7 @@ class GuardOrderControllerTest {
     @Test
     void doesNotPursueUnknownOrUnregisteredTargets() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity unknownEntity = mock(LivingEntity.class);
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -376,6 +382,7 @@ class GuardOrderControllerTest {
     @Test
     void pursuesPlayerOnlyWhenTownySubjectIsVerifiedHostile() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         Player enemyPlayer = mock(Player.class);
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -405,6 +412,7 @@ class GuardOrderControllerTest {
     @Test
     void resumesDurablePatrolWhenTargetLosesHostileStatus() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
@@ -453,6 +461,7 @@ class GuardOrderControllerTest {
     @Test
     void resumesDefendPostWhenHostileThreatBecomesNeutral() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity hostileEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Hostile", null, "enemy-town", "enemy-nation", "{}");
@@ -501,6 +510,7 @@ class GuardOrderControllerTest {
     @Test
     void doesNotPursueDeadRegisteredTarget() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         LivingEntity deadEntity = mock(LivingEntity.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.GUARD, "Dead target", null, "enemy-town", "enemy-nation", "{}");
@@ -711,6 +721,7 @@ class GuardOrderControllerTest {
     @Test
     void resumesPersistedPatrolWhenVerifiedHostilePlayerLeavesTownyRoster() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         Player hostilePlayer = mock(Player.class);
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -757,6 +768,7 @@ class GuardOrderControllerTest {
     @Test
     void resumesReturnToPostWhenVerifiedHostilePlayerLeavesTownyRoster() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         Player hostilePlayer = mock(Player.class);
         Location origin = new Location(world, 2.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -801,6 +813,7 @@ class GuardOrderControllerTest {
     @Test
     void resumesPersistedPatrolWhenVerifiedTownyPlayerBecomesNeutral() {
         LivingEntity guardEntity = mock(LivingEntity.class);
+        when(guardEntity.getUniqueId()).thenReturn(guard.entityUuid());
         Player hostilePlayer = mock(Player.class);
         Location origin = new Location(world, 0.5, 64, 0.5);
         when(guardEntity.isValid()).thenReturn(true);
@@ -867,5 +880,33 @@ class GuardOrderControllerTest {
         verify(entity, never()).getNearbyEntities(anyDouble(), anyDouble(), anyDouble());
     }
 
+
+    
+    @Test
+    void doesNotMoveAStaleGuardEntityBinding() {
+        LivingEntity staleGuard = mock(LivingEntity.class);
+        when(staleGuard.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(staleGuard.isValid()).thenReturn(true);
+        when(staleGuard.isDead()).thenReturn(false);
+        when(staleGuard.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
+        when(entities.find(guard.id())).thenReturn(Optional.of(staleGuard));
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.tick();
+
+        verify(staleGuard, never()).teleport(any(Location.class));
+    }
+
+    @Test
+    void doesNotMoveAnInactiveGuard() {
+        registry.put(guard.withState(ru.raskolnpc.npc.model.NpcState.INACTIVE));
+
+        GuardOrderController controller =
+                new GuardOrderController(plugin, registry, entities, orders, 4, 0.6);
+        controller.tick();
+
+        verify(entity, never()).teleport(any(Location.class));
+    }
 
 }

@@ -200,7 +200,9 @@ public final class GuardOrderController {
     private void execute(NpcRecord record, GuardOrder order) {
         Entity entity = entities.find(record.id()).orElse(null);
         if (!(entity instanceof LivingEntity livingEntity)
-                || !livingEntity.isValid() || livingEntity.isDead()) return;
+                || !livingEntity.isValid() || livingEntity.isDead()
+                || record.state() != NpcState.ACTIVE || record.entityUuid() == null
+                || !record.entityUuid().equals(livingEntity.getUniqueId())) return;
 
         if (moraleService != null && moraleService.isRetreating(record.id())) {
             Location post = record.spawnLocation() == null
