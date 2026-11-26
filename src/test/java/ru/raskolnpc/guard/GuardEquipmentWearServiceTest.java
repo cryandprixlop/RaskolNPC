@@ -43,9 +43,10 @@ class GuardEquipmentWearServiceTest {
         registry = new NpcRegistry();
         entities = mock(NpcEntityManager.class);
         guardRecord = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
-        registry.register(guardRecord);
         var world = server.addSimpleWorld("equipment-wear");
         guard = world.spawn(new Location(world, 0, 64, 0), Skeleton.class);
+        guardRecord = guardRecord.withEntityBinding(guard.getUniqueId(), null);
+        registry.register(guardRecord);
         when(entities.getNpcId(guard)).thenReturn(Optional.of(guardRecord.id()));
         service = new GuardEquipmentWearService(plugin, registry, entities);
     }

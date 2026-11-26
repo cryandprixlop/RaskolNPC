@@ -17,6 +17,7 @@ import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
@@ -79,7 +80,7 @@ public final class GuardEquipmentWearService implements Listener {
         if (weaponWearPerHit == 0
                 || !(event.getDamager() instanceof LivingEntity attacker)) return;
         NpcId guardId = entities.getNpcId(attacker).orElse(null);
-        if (!isGuard(guardId)) return;
+        if (!isCurrentGuard(guardId, attacker)) return;
         EntityEquipment equipment = attacker.getEquipment();
         if (equipment == null) return;
         ItemStack weapon = equipment.getItemInMainHand();
@@ -97,7 +98,7 @@ public final class GuardEquipmentWearService implements Listener {
         if (armorWearPerHit == 0
                 || !(event.getEntity() instanceof LivingEntity guard)) return;
         NpcId guardId = entities.getNpcId(guard).orElse(null);
-        if (!isGuard(guardId)) return;
+        if (!isCurrentGuard(guardId, guard)) return;
         EntityEquipment equipment = guard.getEquipment();
         if (equipment == null) return;
 
@@ -127,10 +128,13 @@ public final class GuardEquipmentWearService implements Listener {
         });
     }
 
-    private boolean isGuard(NpcId id) {
+    private boolean isCurrentGuard(NpcId id, Entity entity) {
         if (id == null) return false;
         NpcRecord record = registry.get(id).orElse(null);
-        return record != null && record.type() == NpcType.GUARD;
+        return record != null && record.type() == NpcType.GUARD
+                && record.state() == NpcState.ACTIVE
+                && record.entityUuid() != null
+                && record.entityUuid().equals(entity.getUniqueId());
     }
 
     private static ItemStack applyWear(ItemStack item, int amount) {

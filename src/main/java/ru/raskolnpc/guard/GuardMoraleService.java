@@ -16,6 +16,7 @@ import ru.raskolnpc.guard.model.GuardCondition;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.GuardConditionRepository;
@@ -151,7 +152,7 @@ public final class GuardMoraleService implements Listener {
         if (alliedDeathPenalty == 0) return;
         NpcId fallenId = entities.getNpcId(event.getEntity()).orElse(null);
         NpcRecord fallen = fallenId == null ? null : registry.get(fallenId).orElse(null);
-        if (fallen == null || fallen.type() != NpcType.GUARD || fallen.nationId() == null) return;
+        if (!isCurrentGuardEntity(fallen, event.getEntity()) || fallen.nationId() == null) return;
         Location origin = event.getEntity().getLocation();
         if (origin.getWorld() == null) return;
         double radiusSquared = 12.0 * 12.0;
@@ -189,7 +190,7 @@ public final class GuardMoraleService implements Listener {
         NpcId guardId = entities.getNpcId(event.getEntity()).orElse(null);
         if (guardId == null) return;
         NpcRecord record = registry.get(guardId).orElse(null);
-        if (record == null || record.type() != NpcType.GUARD) return;
+        if (!isCurrentGuardEntity(record, event.getEntity())) return;
         if (!Double.isFinite(event.getFinalDamage()) || event.getFinalDamage() <= 0) return;
 
         GuardCondition previous = conditions.getOrDefault(guardId,
@@ -246,6 +247,13 @@ public final class GuardMoraleService implements Listener {
                 persist(recovered);
             }
         }
+    }
+
+    private static boolean isCurrentGuardEntity(NpcRecord record, Entity entity) {
+        return record != null && record.type() == NpcType.GUARD
+                && record.state() == NpcState.ACTIVE
+                && record.entityUuid() != null
+                && record.entityUuid().equals(entity.getUniqueId());
     }
 
     private void persist(GuardCondition condition) {

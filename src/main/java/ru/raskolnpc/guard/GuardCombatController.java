@@ -21,6 +21,7 @@ import ru.raskolnpc.integration.worldguard.WorldGuardProtectionAdapter;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 
@@ -356,7 +357,9 @@ public final class GuardCombatController implements Listener {
         NpcId guardId = entities.getNpcId(event.getEntity()).orElse(null);
         if (guardId == null) return;
         NpcRecord guard = registry.get(guardId).orElse(null);
-        if (guard == null || guard.type() != NpcType.GUARD) return;
+        if (guard == null || guard.type() != NpcType.GUARD
+                || guard.state() != NpcState.ACTIVE || guard.entityUuid() == null
+                || !guard.entityUuid().equals(event.getEntity().getUniqueId())) return;
         if (!(event.getEntity() instanceof LivingEntity victim)
                 || !victim.isValid() || victim.isDead()
                 || !(event.getDamager() instanceof LivingEntity damager)

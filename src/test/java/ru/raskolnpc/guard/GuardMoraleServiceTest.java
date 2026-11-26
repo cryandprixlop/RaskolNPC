@@ -39,8 +39,11 @@ class GuardMoraleServiceTest {
         plugin = MockBukkit.createMockPlugin();
         registry = new NpcRegistry();
         guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town", "nation", "{}");
-        registry.register(guard);
         guardEntity = mock(LivingEntity.class);
+        java.util.UUID guardEntityId = java.util.UUID.randomUUID();
+        when(guardEntity.getUniqueId()).thenReturn(guardEntityId);
+        guard = guard.withEntityBinding(guardEntityId, null);
+        registry.register(guard);
         entities = mock(NpcEntityManager.class);
         when(entities.getNpcId(guardEntity)).thenReturn(java.util.Optional.of(guard.id()));
         repository = mock(GuardConditionRepository.class);
@@ -138,8 +141,9 @@ class GuardMoraleServiceTest {
     @Test
     void nearbySameNationGuardsLoseMoraleWhenAnAllyDies() {
         NpcRecord ally = NpcRecord.create(NpcType.GUARD, "Ally", null, "town", "nation", "{}");
-        registry.register(ally);
         LivingEntity allyEntity = mock(LivingEntity.class);
+        ally = ally.withEntityBinding(java.util.UUID.randomUUID(), null);
+        registry.register(ally);
         when(entities.find(ally.id())).thenReturn(java.util.Optional.of(allyEntity));
         when(allyEntity.isValid()).thenReturn(true);
         when(allyEntity.isDead()).thenReturn(false);

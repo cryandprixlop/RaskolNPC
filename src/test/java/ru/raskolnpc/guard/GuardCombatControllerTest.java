@@ -52,6 +52,8 @@ class GuardCombatControllerTest {
 
         attacker = mock(LivingEntity.class);
         target = mock(LivingEntity.class);
+        when(attacker.getUniqueId()).thenReturn(UUID.randomUUID());
+        registry.put(guard.withEntityBinding(attacker.getUniqueId(), null));
         when(attacker.isValid()).thenReturn(true);
         when(attacker.isDead()).thenReturn(false);
         when(target.isValid()).thenReturn(true);
