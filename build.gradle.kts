@@ -19,9 +19,10 @@ repositories {
     }
     maven("https://maven.enginehub.org/repo/") {
         content {
-                includeGroupByRegex("com\\.sk89q\\..*")
-                includeGroupByRegex("org\\.enginehub\\..*")
-            }
+            includeGroup("com.sk89q")
+            includeGroupByRegex("com\\.sk89q\\..*")
+            includeGroupByRegex("org\\.enginehub\\..*")
+        }
     }
 }
 
