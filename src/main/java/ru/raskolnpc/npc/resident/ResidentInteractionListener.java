@@ -17,6 +17,7 @@ import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
@@ -94,7 +95,8 @@ public final class ResidentInteractionListener implements Listener {
         NpcId npcId = entities.getNpcId(event.getRightClicked()).orElse(null);
         if (npcId == null) return;
         var record = registry.get(npcId).orElse(null);
-        if (record == null || record.type() != NpcType.RESIDENT) return;
+        if (record == null || record.type() != NpcType.RESIDENT
+                || !isCurrentResidentEntity(record, event.getRightClicked().getUniqueId())) return;
         event.setCancelled(true);
 
         Player player = event.getPlayer();
@@ -313,6 +315,13 @@ public final class ResidentInteractionListener implements Listener {
         }
     }
 
+
+    static boolean isCurrentResidentEntity(NpcRecord record, UUID entityUuid) {
+        return record != null && entityUuid != null
+                && record.type() == NpcType.RESIDENT
+                && record.state() == NpcState.ACTIVE
+                && entityUuid.equals(record.entityUuid());
+    }
 
     private static String rootMessage(Throwable error) {
         Throwable current = error;

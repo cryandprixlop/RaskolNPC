@@ -13,6 +13,7 @@ import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -55,6 +56,21 @@ class ResidentInteractionListenerTest {
         when(player.hasPermission("raskolnpc.admin")).thenReturn(true);
 
         assertTrue(listener(null).mayReceiveProfessionRequest(player, resident("town-1")));
+    }
+
+    @Test
+    void acceptsOnlyCurrentActiveResidentEntityBinding() {
+        UUID currentEntityId = UUID.randomUUID();
+        NpcRecord active = resident("town-1").withEntityBinding(currentEntityId, null);
+
+        assertTrue(ResidentInteractionListener.isCurrentResidentEntity(active, currentEntityId));
+        assertFalse(ResidentInteractionListener.isCurrentResidentEntity(active, UUID.randomUUID()));
+    }
+
+    @Test
+    void rejectsUnloadedOrUnboundResidentEntity() {
+        assertFalse(ResidentInteractionListener.isCurrentResidentEntity(
+                resident("town-1"), UUID.randomUUID()));
     }
 
     private static ResidentInteractionListener listener(TownyResidentService towny) {

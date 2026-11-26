@@ -143,8 +143,9 @@ class GuardMoraleServiceTest {
         NpcRecord ally = NpcRecord.create(NpcType.GUARD, "Ally", null, "town", "nation", "{}");
         LivingEntity allyEntity = mock(LivingEntity.class);
         ally = ally.withEntityBinding(java.util.UUID.randomUUID(), null);
+        var allyId = ally.id();
         registry.register(ally);
-        when(entities.find(ally.id())).thenReturn(java.util.Optional.of(allyEntity));
+        when(entities.find(allyId)).thenReturn(java.util.Optional.of(allyEntity));
         when(allyEntity.isValid()).thenReturn(true);
         when(allyEntity.isDead()).thenReturn(false);
         when(allyEntity.getLocation()).thenReturn(new Location(server.addSimpleWorld("world"), 1, 64, 1));
@@ -155,9 +156,9 @@ class GuardMoraleServiceTest {
 
         service.onGuardDeath(event);
 
-        assertEquals(92, service.morale(ally.id()));
+        assertEquals(92, service.morale(allyId));
         verify(repository).save(argThat(condition ->
-                condition.npcId().equals(ally.id()) && condition.morale() == 92));
+                condition.npcId().equals(allyId) && condition.morale() == 92));
     }
 
     @Test
