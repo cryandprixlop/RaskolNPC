@@ -129,7 +129,7 @@ class DatabaseMigrationsTest {
             DatabaseMigrations.migrate(connection);
 
             assertEquals(24, schemaVersion(connection));
-            assertEquals(23, migrationCount(connection));
+            assertEquals(24, migrationCount(connection));
             assertTableExists(connection, "resident_profession_requests");
             try (var statement = connection.createStatement();
                  var result = statement.executeQuery("""
@@ -488,7 +488,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(23, migrationCount(connection));
+            assertEquals(24, migrationCount(connection));
         }
     }
 

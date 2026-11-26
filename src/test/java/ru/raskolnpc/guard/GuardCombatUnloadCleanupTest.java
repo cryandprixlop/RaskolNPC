@@ -57,7 +57,7 @@ class GuardCombatUnloadCleanupTest {
         UUID guardEntityUuid = UUID.randomUUID();
         when(firstEntity.getUniqueId()).thenReturn(guardEntityUuid);
         when(reloadedEntity.getUniqueId()).thenReturn(guardEntityUuid);
-        registerActive(registry, guard, firstEntity);
+        registry.put(guard.withEntityBinding(guardEntityUuid, null));
         UUID targetEntityUuid = UUID.randomUUID();
         when(target.getUniqueId()).thenReturn(targetEntityUuid);
         registry.put(hostile.withEntityBinding(targetEntityUuid, null));

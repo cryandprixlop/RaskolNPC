@@ -48,12 +48,12 @@ class GuardCombatControllerTest {
         guard = NpcRecord.create(NpcType.GUARD, "Guard", null, "town-a", "nation-a", "{}");
         enemy = NpcRecord.create(NpcType.GUARD, "Enemy", null, "town-b", "nation-b", "{}");
         registry.register(guard);
-        registry.register(enemy);
 
         attacker = mock(LivingEntity.class);
         target = mock(LivingEntity.class);
         when(attacker.getUniqueId()).thenReturn(UUID.randomUUID());
         registry.put(guard.withEntityBinding(attacker.getUniqueId(), null));
+        bindActive(enemy, target);
         when(attacker.isValid()).thenReturn(true);
         when(attacker.isDead()).thenReturn(false);
         when(target.isValid()).thenReturn(true);
@@ -66,6 +66,12 @@ class GuardCombatControllerTest {
         when(entities.find(guard.id())).thenReturn(Optional.of(attacker));
         when(entities.getNpcId(attacker)).thenReturn(Optional.of(guard.id()));
         when(entities.getNpcId(target)).thenReturn(Optional.of(enemy.id()));
+    }
+
+    private void bindActive(NpcRecord record, LivingEntity entity) {
+        UUID entityUuid = UUID.randomUUID();
+        when(entity.getUniqueId()).thenReturn(entityUuid);
+        registry.put(record.withEntityBinding(entityUuid, null));
     }
 
     @AfterEach
@@ -145,11 +151,11 @@ class GuardCombatControllerTest {
     void prioritizesVerifiedHostileAttackerForTenSecondRetaliationWindow() {
         NpcRecord nearerEnemy = NpcRecord.create(
                 NpcType.GUARD, "Nearer enemy", null, "town-c", "nation-c", "{}");
-        registry.register(nearerEnemy);
         LivingEntity nearerTarget = mock(LivingEntity.class);
         when(nearerTarget.isValid()).thenReturn(true);
         when(nearerTarget.isDead()).thenReturn(false);
         when(nearerTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
+        bindActive(nearerEnemy, nearerTarget);
         when(entities.getNpcId(nearerTarget)).thenReturn(Optional.of(nearerEnemy.id()));
         when(attacker.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(nearerTarget, target));
 
@@ -503,11 +509,11 @@ class GuardCombatControllerTest {
     void skipsNearestHostileOutsideHiringTerritoryAndAttacksEligibleTarget() {
         NpcRecord eligibleEnemy = NpcRecord.create(
                 NpcType.RESIDENT, "Eligible enemy", null, "town-c", "nation-c", "{}");
-        registry.register(eligibleEnemy);
         LivingEntity eligibleTarget = mock(LivingEntity.class);
         when(eligibleTarget.isValid()).thenReturn(true);
         when(eligibleTarget.isDead()).thenReturn(false);
         when(eligibleTarget.getLocation()).thenReturn(new Location(world, 4.5, 64, 0.5));
+        bindActive(eligibleEnemy, eligibleTarget);
         when(target.getLocation()).thenReturn(new Location(world, 0.5, 64, 1.5));
         when(attacker.getNearbyEntities(12.0, 12.0, 12.0))
                 .thenReturn(List.of(target, eligibleTarget));
@@ -532,9 +538,6 @@ class GuardCombatControllerTest {
                 NpcType.GUARD, "Second guard", null, "town-c", "nation-c", "{}");
         NpcRecord secondEnemy = NpcRecord.create(
                 NpcType.RESIDENT, "Second enemy", null, "town-d", "nation-d", "{}");
-        registry.register(secondGuard);
-        registry.register(secondEnemy);
-
         LivingEntity secondAttacker = mock(LivingEntity.class);
         LivingEntity secondTarget = mock(LivingEntity.class);
         when(secondAttacker.isValid()).thenReturn(true);
@@ -545,6 +548,8 @@ class GuardCombatControllerTest {
         when(secondTarget.isValid()).thenReturn(true);
         when(secondTarget.isDead()).thenReturn(false);
         when(secondTarget.getLocation()).thenReturn(new Location(world, 12.5, 64, 0.5));
+        bindActive(secondGuard, secondAttacker);
+        bindActive(secondEnemy, secondTarget);
         when(entities.find(secondGuard.id())).thenReturn(Optional.of(secondAttacker));
         when(entities.getNpcId(secondTarget)).thenReturn(Optional.of(secondEnemy.id()));
 
@@ -590,11 +595,11 @@ class GuardCombatControllerTest {
     void processesMaximumServerGuardPopulationAcrossFairBatches() {
         NpcRecord hostile = NpcRecord.create(
                 NpcType.RESIDENT, "Hostile", null, "enemy-town", "enemy-nation", "{}");
-        registry.register(hostile);
         LivingEntity sharedTarget = mock(LivingEntity.class);
         when(sharedTarget.isValid()).thenReturn(true);
         when(sharedTarget.isDead()).thenReturn(false);
         when(sharedTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
+        bindActive(hostile, sharedTarget);
         when(entities.getNpcId(sharedTarget)).thenReturn(Optional.of(hostile.id()));
 
         List<LivingEntity> guards = new java.util.ArrayList<>(149);
@@ -603,12 +608,12 @@ class GuardCombatControllerTest {
             NpcRecord record = NpcRecord.create(
                     NpcType.GUARD, "Guard " + index, null,
                     "town-" + index, "kingdom-" + kingdom, "{}");
-            registry.register(record);
             LivingEntity guardEntity = mock(LivingEntity.class);
             when(guardEntity.isValid()).thenReturn(true);
             when(guardEntity.isDead()).thenReturn(false);
             when(guardEntity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
             when(guardEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(sharedTarget));
+            bindActive(record, guardEntity);
             when(entities.find(record.id())).thenReturn(Optional.of(guardEntity));
             guards.add(guardEntity);
         }
