@@ -120,7 +120,7 @@ class DatabaseMigrationsTest {
                         VALUES ('resident-migration', 'FARMER', 'SPECIALIST', 425)
                         """);
                 statement.execute("DROP TABLE resident_profession_requests");
-                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 23");
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version IN (23, 24)");
             }
 
             assertEquals(22, schemaVersion(connection));
@@ -488,7 +488,7 @@ class DatabaseMigrationsTest {
                     () -> DatabaseMigrations.migrate(connection));
             assertTrue(error.getMessage().contains("newer than this RaskolNPC build supports"));
             assertEquals(99, schemaVersion(connection));
-            assertEquals(24, migrationCount(connection));
+            assertEquals(25, migrationCount(connection));
         }
     }
 
