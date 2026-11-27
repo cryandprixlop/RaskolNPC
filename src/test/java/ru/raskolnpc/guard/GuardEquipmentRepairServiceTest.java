@@ -121,7 +121,8 @@ class GuardEquipmentRepairServiceTest {
                 new GuardEquipmentPersistenceService(plugin, registry, entities, repository);
         service = new GuardEquipmentRepairService(registry, entities, persistence);
         guard.getEquipment().setHelmet(damaged(Material.IRON_HELMET, 100));
-        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 2));
+        // A 100-durability repair on an iron helmet costs three ingots at 4x durability scaling.
+        player.getInventory().addItem(new ItemStack(Material.IRON_INGOT, 3));
 
         var result = service.repair(player, record.id());
 
