@@ -329,6 +329,31 @@ class NpcCommandServiceTest {
         }
     }
 
+    @Test
+    void concurrentGuardHiresCannotExceedNationLimitWhenOnlyOneSlotRemains() {
+        NpcRegistry registry = new NpcRegistry();
+        for (int i = 0; i < 29; i++) {
+            registry.put(NpcRecord.create(NpcType.GUARD, "Guard " + i,
+                    null, "town-1", "nation-1", "{}"));
+        }
+
+        KingdomGuardService limits = new KingdomGuardService();
+        KingdomGuardService.Reservation first =
+                limits.reserve("nation-1", 30, registry);
+
+        assertThrows(ru.raskolnpc.integration.towny.TownyIntegrationException.class,
+                () -> limits.reserve("nation-1", 30, registry),
+                "a second in-flight hire must not take the final slot");
+
+        first.close();
+
+        try (KingdomGuardService.Reservation replacement =
+                     limits.reserve("nation-1", 30, registry)) {
+            assertNotNull(replacement,
+                    "the slot must become available again after a failed hire releases its reservation");
+        }
+    }
+
     private NpcCommandService service(TownyResidentService towny, NpcRegistry registry) {
         return new NpcCommandService(mock(Plugin.class), mock(NpcLifecycleService.class),
                 registry, mock(NpcEntityManager.class), towny,
