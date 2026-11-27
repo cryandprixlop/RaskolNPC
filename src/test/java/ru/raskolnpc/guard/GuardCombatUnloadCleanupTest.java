@@ -140,6 +140,10 @@ class GuardCombatUnloadCleanupTest {
         verify(firstTarget).damage(2.0, followerEntity);
 
         controller.onEntitiesUnload(List.of(firstTarget));
+        // A chunk-unloaded entity is no longer a valid nearby combat candidate.
+        when(firstTarget.isValid()).thenReturn(false);
+        when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(nextTarget));
+        when(followerEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(nextTarget));
         controller.tick();
 
         verify(nextTarget).damage(2.0, leaderEntity);
