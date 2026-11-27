@@ -221,6 +221,92 @@ class GuardRentServiceTest {
     }
 
     @Test
+    void thirdConsecutiveRentFailureQueuesDeletionAndRemovesGuard() {
+        try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+            bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+            Plugin plugin = mock(Plugin.class);
+            when(plugin.isEnabled()).thenReturn(true);
+            NpcRegistry registry = new NpcRegistry();
+            NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Third debt guard",
+                    null, "town-id", null,
+                    "{\\"dailyRent\\":10,\\"overdueDays\\":2,\\"nextRentAt\\":300}");
+            registry.put(guard);
+
+            GuardRentPaymentRepository payments = mock(GuardRentPaymentRepository.class);
+            NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+            NpcEntityManager entities = mock(NpcEntityManager.class);
+            GuardRentPayment thirdFailure = new GuardRentPayment(
+                    "third-failure", guard.id(), 300, "town-id", 10,
+                    GuardRentPaymentStatus.FAILED, 3, 400, "insufficient funds", null, null);
+
+            when(payments.moveUnfinishedToReview(anyString()))
+                    .thenReturn(CompletableFuture.completedFuture(0));
+            when(payments.findByStatus(GuardRentPaymentStatus.PAID))
+                    .thenReturn(CompletableFuture.completedFuture(List.of()));
+            when(payments.findByStatus(GuardRentPaymentStatus.FAILED))
+                    .thenReturn(CompletableFuture.completedFuture(List.of(thirdFailure)));
+            when(payments.applyDebtAndQueueDeletion("third-failure", guard.id()))
+                    .thenReturn(CompletableFuture.completedFuture(true));
+            when(lifecycle.completeDeletion(guard.id()))
+                    .thenReturn(CompletableFuture.completedFuture(true));
+
+            GuardRentService service = new GuardRentService(
+                    plugin, registry, lifecycle, entities,
+                    mock(TownyTownBankEconomy.class), payments, 3);
+
+            assertDoesNotThrow(() -> service.recoverPendingPayments().join());
+
+            verify(payments).applyDebtAndQueueDeletion("third-failure", guard.id());
+            verify(entities).remove(guard.id());
+            verify(lifecycle).completeDeletion(guard.id());
+            assertTrue(registry.get(guard.id()).isEmpty());
+        }
+    }
+
+    @Test
+    void secondConsecutiveRentFailureMarksGuardInactiveWithoutDeletingIt() {
+        try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+            bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+            Plugin plugin = mock(Plugin.class);
+            when(plugin.isEnabled()).thenReturn(true);
+            NpcRegistry registry = new NpcRegistry();
+            NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Second debt guard",
+                    null, "town-id", null,
+                    "{\\"dailyRent\\":10,\\"overdueDays\\":1,\\"nextRentAt\\":200}");
+            registry.put(guard);
+
+            GuardRentPaymentRepository payments = mock(GuardRentPaymentRepository.class);
+            NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+            NpcEntityManager entities = mock(NpcEntityManager.class);
+            GuardRentPayment secondFailure = new GuardRentPayment(
+                    "second-failure", guard.id(), 200, "town-id", 10,
+                    GuardRentPaymentStatus.FAILED, 2, 300, "insufficient funds", null, null);
+
+            when(payments.moveUnfinishedToReview(anyString()))
+                    .thenReturn(CompletableFuture.completedFuture(0));
+            when(payments.findByStatus(GuardRentPaymentStatus.PAID))
+                    .thenReturn(CompletableFuture.completedFuture(List.of()));
+            when(payments.findByStatus(GuardRentPaymentStatus.FAILED))
+                    .thenReturn(CompletableFuture.completedFuture(List.of(secondFailure)));
+            when(payments.applyDebt("second-failure", any(NpcRecord.class)))
+                    .thenReturn(CompletableFuture.completedFuture(true));
+
+            GuardRentService service = new GuardRentService(
+                    plugin, registry, lifecycle, entities,
+                    mock(TownyTownBankEconomy.class), payments, 3);
+
+            assertDoesNotThrow(() -> service.recoverPendingPayments().join());
+
+            verify(payments).applyDebt(eq("second-failure"), any(NpcRecord.class));
+            verify(entities, never()).remove(guard.id());
+            verify(lifecycle, never()).completeDeletion(guard.id());
+            NpcRecord updated = registry.get(guard.id()).orElseThrow();
+            assertEquals(NpcState.INACTIVE, updated.state());
+            assertEquals(2.0, GuardRentService.number(updated.dataJson(), "overdueDays", -1));
+        }
+    }
+
+    @Test
     void startAndPollingAreRejectedWithoutTownyEconomy() {
         try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
