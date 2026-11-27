@@ -593,14 +593,20 @@ class GuardCombatControllerTest {
 
     @Test
     void processesMaximumServerGuardPopulationAcrossFairBatches() {
+        // Isolate the capacity fixture: setUp() already registers two NPCs, which
+        // would otherwise make this test exceed the server-wide 150-NPC limit.
+        NpcRegistry populationRegistry = new NpcRegistry();
+        NpcEntityManager populationEntities = mock(NpcEntityManager.class);
         NpcRecord hostile = NpcRecord.create(
                 NpcType.RESIDENT, "Hostile", null, "enemy-town", "enemy-nation", "{}");
         LivingEntity sharedTarget = mock(LivingEntity.class);
         when(sharedTarget.isValid()).thenReturn(true);
         when(sharedTarget.isDead()).thenReturn(false);
         when(sharedTarget.getLocation()).thenReturn(new Location(world, 1.5, 64, 0.5));
-        bindActive(hostile, sharedTarget);
-        when(entities.getNpcId(sharedTarget)).thenReturn(Optional.of(hostile.id()));
+        UUID hostileUuid = UUID.randomUUID();
+        when(sharedTarget.getUniqueId()).thenReturn(hostileUuid);
+        populationRegistry.put(hostile.withEntityBinding(hostileUuid, null));
+        when(populationEntities.getNpcId(sharedTarget)).thenReturn(Optional.of(hostile.id()));
 
         List<LivingEntity> guards = new java.util.ArrayList<>(149);
         for (int index = 0; index < 149; index++) {
@@ -613,15 +619,18 @@ class GuardCombatControllerTest {
             when(guardEntity.isDead()).thenReturn(false);
             when(guardEntity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
             when(guardEntity.getNearbyEntities(12.0, 12.0, 12.0)).thenReturn(List.of(sharedTarget));
-            bindActive(record, guardEntity);
-            when(entities.find(record.id())).thenReturn(Optional.of(guardEntity));
+            UUID entityUuid = UUID.randomUUID();
+            when(guardEntity.getUniqueId()).thenReturn(entityUuid);
+            populationRegistry.put(record.withEntityBinding(entityUuid, null));
+            when(populationEntities.find(record.id())).thenReturn(Optional.of(guardEntity));
             guards.add(guardEntity);
         }
 
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (first, second) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
         GuardCombatController controller = new GuardCombatController(
-                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+                plugin, populationRegistry, populationEntities, relationships,
+                null, 10, 12.0, 2.0, 1000L);
 
         for (int tick = 0; tick < 15; tick++) {
             controller.tick();
