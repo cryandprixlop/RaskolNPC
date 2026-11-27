@@ -288,7 +288,7 @@ class GuardRentServiceTest {
                     .thenReturn(CompletableFuture.completedFuture(List.of()));
             when(payments.findByStatus(GuardRentPaymentStatus.FAILED))
                     .thenReturn(CompletableFuture.completedFuture(List.of(secondFailure)));
-            when(payments.applyDebt("second-failure", any(NpcRecord.class)))
+            when(payments.applyDebt(eq("second-failure"), any(NpcRecord.class)))
                     .thenReturn(CompletableFuture.completedFuture(true));
 
             GuardRentService service = new GuardRentService(
