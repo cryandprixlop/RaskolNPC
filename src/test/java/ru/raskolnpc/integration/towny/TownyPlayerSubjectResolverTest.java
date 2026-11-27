@@ -42,12 +42,14 @@ class TownyPlayerSubjectResolverTest {
         TownyAPI api = mock(TownyAPI.class);
         when(api.getResident(player)).thenReturn(resident);
         when(resident.getTownOrNull()).thenReturn(town);
-        doReturn(nation).when(api).getTownNationOrNull(town);
         when(town.getUUID()).thenReturn(townId);
         when(nation.getUUID()).thenReturn(nationId);
 
         try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
             towny.when(TownyAPI::getInstance).thenReturn(api);
+            // Towny exposes getTownNationOrNull as a static API method;
+            // stubbing it on the instance mock invokes the real static method.
+            towny.when(() -> TownyAPI.getTownNationOrNull(town)).thenReturn(nation);
 
             RelationshipPolicy.Subject subject =
                     new TownyPlayerSubjectResolver(() -> true).resolve(player).orElseThrow();
@@ -77,7 +79,7 @@ class TownyPlayerSubjectResolverTest {
             assertEquals(playerId, subject.ownerId());
             assertNull(subject.townId());
             assertNull(subject.nationId());
-            verify(api, never()).getTownNationOrNull(any());
+            towny.verify(() -> TownyAPI.getTownNationOrNull(any()), never());
         }
     }
 
