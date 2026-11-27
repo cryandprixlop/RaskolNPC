@@ -229,7 +229,7 @@ class GuardRentServiceTest {
             NpcRegistry registry = new NpcRegistry();
             NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Third debt guard",
                     null, "town-id", null,
-                    "{\\"dailyRent\\":10,\\"overdueDays\\":2,\\"nextRentAt\\":300}");
+                    "{\"dailyRent\":10,\"overdueDays\":2,\"nextRentAt\":300}");
             registry.put(guard);
 
             GuardRentPaymentRepository payments = mock(GuardRentPaymentRepository.class);
@@ -272,7 +272,7 @@ class GuardRentServiceTest {
             NpcRegistry registry = new NpcRegistry();
             NpcRecord guard = NpcRecord.create(NpcType.GUARD, "Second debt guard",
                     null, "town-id", null,
-                    "{\\"dailyRent\\":10,\\"overdueDays\\":1,\\"nextRentAt\\":200}");
+                    "{\"dailyRent\":10,\"overdueDays\":1,\"nextRentAt\":200}");
             registry.put(guard);
 
             GuardRentPaymentRepository payments = mock(GuardRentPaymentRepository.class);
