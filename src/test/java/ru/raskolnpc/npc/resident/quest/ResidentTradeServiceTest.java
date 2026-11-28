@@ -99,8 +99,7 @@ class ResidentTradeServiceTest {
         assertEquals(ResidentTradeService.Result.DELIVERY_FAILED_REFUNDED, purchase());
         verify(repository).transition("trade-1", ResidentTradeTransaction.Status.PAID,
                 ResidentTradeTransaction.Status.REFUND_PENDING, null, "inventory full");
-        verify(repository).transition("trade-1", ResidentTradeTransaction.Status.REFUND_PENDING,
-                ResidentTradeTransaction.Status.REFUNDED, "refund-2", null);
+        verify(repository).completeRefundAndRelease("trade-1", "refund-2", null);
     }
 
     @Test
