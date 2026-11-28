@@ -49,9 +49,9 @@ class GuardSquadCombatTest {
         NpcRecord secondGuard = NpcRecord.create(
                 NpcType.GUARD, "Second guard", null, "town-a", "nation-a", "{}");
         NpcRecord focusRecord = NpcRecord.create(
-                NpcType.GUARD, "Focus target", null, "town-b", "nation-b", "{}");
+                NpcType.RESIDENT, "Focus target", null, "town-b", "nation-b", "{}");
         NpcRecord nearerToFollowerRecord = NpcRecord.create(
-                NpcType.GUARD, "Follower decoy", null, "town-c", "nation-c", "{}");
+                NpcType.RESIDENT, "Follower decoy", null, "town-c", "nation-c", "{}");
         for (NpcRecord record : List.of(
                 firstGuard, secondGuard, focusRecord, nearerToFollowerRecord)) {
             registry.register(record);
@@ -121,9 +121,9 @@ class GuardSquadCombatTest {
         NpcRecord secondGuard = NpcRecord.create(
                 NpcType.GUARD, "Second guard", null, "town-a", "nation-a", "{}");
         NpcRecord nearbyTargetRecord = NpcRecord.create(
-                NpcType.GUARD, "Nearby hostile", null, "town-b", "nation-b", "{}");
+                NpcType.RESIDENT, "Nearby hostile", null, "town-b", "nation-b", "{}");
         NpcRecord distantTargetRecord = NpcRecord.create(
-                NpcType.GUARD, "Other hostile", null, "town-c", "nation-c", "{}");
+                NpcType.RESIDENT, "Other hostile", null, "town-c", "nation-c", "{}");
         for (NpcRecord record : List.of(
                 firstGuard, secondGuard, nearbyTargetRecord, distantTargetRecord)) {
             registry.register(record);
@@ -187,9 +187,9 @@ class GuardSquadCombatTest {
         NpcRecord secondGuard = NpcRecord.create(
                 NpcType.GUARD, "Second guard", null, "town-a", "nation-a", "{}");
         NpcRecord firstTargetRecord = NpcRecord.create(
-                NpcType.GUARD, "First target", null, "town-b", "nation-b", "{}");
+                NpcType.RESIDENT, "First target", null, "town-b", "nation-b", "{}");
         NpcRecord replacementTargetRecord = NpcRecord.create(
-                NpcType.GUARD, "Replacement target", null, "town-c", "nation-c", "{}");
+                NpcType.RESIDENT, "Replacement target", null, "town-c", "nation-c", "{}");
         for (NpcRecord record : List.of(
                 firstGuard, secondGuard, firstTargetRecord, replacementTargetRecord)) {
             registry.register(record);
