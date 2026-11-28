@@ -16,14 +16,37 @@ import java.util.function.BooleanSupplier;
 /** Resolves online players through their Towny resident membership, never their current location. */
 public final class TownyPlayerSubjectResolver implements PlayerSubjectResolver {
     private final BooleanSupplier townyEnabled;
+    private final MembershipLookup membershipLookup;
 
     public TownyPlayerSubjectResolver() {
         this(TownyPlayerSubjectResolver::isTownyEnabled);
     }
 
     public TownyPlayerSubjectResolver(BooleanSupplier townyEnabled) {
-        this.townyEnabled = Objects.requireNonNull(townyEnabled, "townyEnabled");
+        this(townyEnabled, TownyPlayerSubjectResolver::lookupTownyMembership);
     }
+
+    TownyPlayerSubjectResolver(BooleanSupplier townyEnabled, MembershipLookup membershipLookup) {
+        this.townyEnabled = Objects.requireNonNull(townyEnabled, "townyEnabled");
+        this.membershipLookup = Objects.requireNonNull(membershipLookup, "membershipLookup");
+    }
+
+    private static Optional<Membership> lookupTownyMembership(Player player) {
+        Resident resident = TownyAPI.getInstance().getResident(player);
+        if (resident == null) return Optional.empty();
+        Town town = resident.getTownOrNull();
+        Nation nation = town == null ? null : TownyAPI.getInstance().getTownNationOrNull(town);
+        return Optional.of(new Membership(
+                town == null ? null : town.getUUID().toString(),
+                nation == null ? null : nation.getUUID().toString()));
+    }
+
+    @FunctionalInterface
+    interface MembershipLookup {
+        Optional<Membership> resolve(Player player);
+    }
+
+    record Membership(String townId, String nationId) { }
 
     private static boolean isTownyEnabled() {
         var plugin = Bukkit.getPluginManager().getPlugin("Towny");
@@ -35,14 +58,10 @@ public final class TownyPlayerSubjectResolver implements PlayerSubjectResolver {
         Objects.requireNonNull(player, "player");
         try {
             if (!townyEnabled.getAsBoolean()) return Optional.empty();
-            Resident resident = TownyAPI.getInstance().getResident(player);
-            if (resident == null) return Optional.empty();
-            Town town = resident.getTownOrNull();
-            Nation nation = town == null ? null : TownyAPI.getInstance().getTownNationOrNull(town);
+            Membership membership = membershipLookup.resolve(player).orElse(null);
+            if (membership == null) return Optional.empty();
             return Optional.of(new RelationshipPolicy.Subject(
-                    player.getUniqueId(),
-                    town == null ? null : town.getUUID().toString(),
-                    nation == null ? null : nation.getUUID().toString()));
+                    player.getUniqueId(), membership.townId(), membership.nationId()));
         } catch (RuntimeException | LinkageError unavailable) {
             // Missing or shutting-down Towny data must never be interpreted as hostility.
             return Optional.empty();
