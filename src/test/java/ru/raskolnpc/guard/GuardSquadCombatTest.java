@@ -76,8 +76,8 @@ class GuardSquadCombatTest {
         configure(followerEntity, followerLocation);
         configure(focusTarget, focusLocation);
         configure(followerDecoy, decoyLocation);
-        registerActive(registry, firstGuard, leaderEntity);
-        registerActive(registry, secondGuard, followerEntity);
+        registerActive(registry, leader, leaderEntity);
+        registerActive(registry, follower, followerEntity);
         registerActive(registry, focusRecord, focusTarget);
         registerActive(registry, nearerToFollowerRecord, followerDecoy);
         when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
@@ -144,8 +144,8 @@ class GuardSquadCombatTest {
         configure(livingFollower, followerLocation);
         configure(nearbyTarget, new Location(world, 2.5, 64, 0.5));
         configure(distantTarget, new Location(world, 7.5, 64, 0.5));
-        registerActive(registry, firstGuard, unavailableLeader);
-        registerActive(registry, secondGuard, livingFollower);
+        registerActive(registry, leader, unavailableLeader);
+        registerActive(registry, follower, livingFollower);
         registerActive(registry, nearbyTargetRecord, nearbyTarget);
         registerActive(registry, distantTargetRecord, distantTarget);
         when(unavailableLeader.isValid()).thenReturn(false);
@@ -209,8 +209,8 @@ class GuardSquadCombatTest {
         configure(followerEntity, new Location(world, 0.5, 64, 1.5));
         configure(firstTarget, new Location(world, 2.5, 64, 0.5));
         configure(replacementTarget, new Location(world, 4.5, 64, 0.5));
-        registerActive(registry, firstGuard, leaderEntity);
-        registerActive(registry, secondGuard, followerEntity);
+        registerActive(registry, leader, leaderEntity);
+        registerActive(registry, follower, followerEntity);
         registerActive(registry, firstTargetRecord, firstTarget);
         registerActive(registry, replacementTargetRecord, replacementTarget);
         when(leaderEntity.getNearbyEntities(12.0, 12.0, 12.0))
