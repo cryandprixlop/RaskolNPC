@@ -10,6 +10,7 @@ import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import ru.raskolnpc.guard.model.GuardSquad;
 import ru.raskolnpc.integration.RelationshipPolicy;
+import ru.raskolnpc.integration.PlayerSubjectResolver;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
@@ -53,6 +54,7 @@ class GuardSquadCombatTest {
                 NpcType.GUARD, "Follower decoy", null, "town-c", "nation-c", "{}");
         for (NpcRecord record : List.of(
                 firstGuard, secondGuard, focusRecord, nearerToFollowerRecord)) {
+            registry.register(record);
         }
 
         List<NpcRecord> orderedGuards = List.of(firstGuard, secondGuard).stream()
@@ -100,7 +102,8 @@ class GuardSquadCombatTest {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (actor, victim) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
         GuardCombatController controller = new GuardCombatController(
-                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L,
+                PlayerSubjectResolver.none(), false, () -> false);
         controller.setSquadService(squads);
 
         controller.tick();
@@ -166,7 +169,8 @@ class GuardSquadCombatTest {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (actor, victim) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
         GuardCombatController controller = new GuardCombatController(
-                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L,
+                PlayerSubjectResolver.none(), false, () -> false);
         controller.setSquadService(squads);
 
         controller.tick();
@@ -236,7 +240,8 @@ class GuardSquadCombatTest {
         RelationshipPolicy relationships = new RelationshipPolicy(
                 (actor, victim) -> RelationshipPolicy.DiplomacyRelation.HOSTILE);
         GuardCombatController controller = new GuardCombatController(
-                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L);
+                plugin, registry, entities, relationships, null, 10, 12.0, 2.0, 1000L,
+                PlayerSubjectResolver.none(), false, () -> false);
         controller.setSquadService(squads);
 
         controller.tick();
