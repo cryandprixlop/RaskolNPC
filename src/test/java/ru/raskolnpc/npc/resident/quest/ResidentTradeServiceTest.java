@@ -36,6 +36,10 @@ class ResidentTradeServiceTest {
                 anyInt(), anyLong())).thenReturn(CompletableFuture.completedFuture(Optional.of(trade)));
         when(repository.transition(anyString(), any(), any(), nullable(String.class), nullable(String.class)))
                 .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.cancelAndRelease(anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(true));
+        when(repository.completeRefundAndRelease(anyString(), nullable(String.class), nullable(String.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
     }
 
     @Test
