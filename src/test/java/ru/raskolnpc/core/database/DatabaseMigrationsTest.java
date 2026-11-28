@@ -120,6 +120,7 @@ class DatabaseMigrationsTest {
                         VALUES ('resident-migration', 'FARMER', 'SPECIALIST', 425)
                         """);
                 statement.execute("DROP TABLE resident_profession_requests");
+                statement.execute("DROP TABLE guard_equipment");
                 statement.executeUpdate("DELETE FROM schema_migrations WHERE version IN (23, 24)");
             }
 
