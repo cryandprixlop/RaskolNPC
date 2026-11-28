@@ -1,9 +1,6 @@
 package ru.raskolnpc.integration.towny;
 
 import com.palmergames.bukkit.towny.TownyAPI;
-import com.palmergames.bukkit.towny.object.Nation;
-import com.palmergames.bukkit.towny.object.Resident;
-import com.palmergames.bukkit.towny.object.Town;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -36,21 +33,10 @@ class TownyPlayerSubjectResolverTest {
         UUID nationId = UUID.randomUUID();
         when(player.getUniqueId()).thenReturn(playerId);
 
-        Resident resident = mock(Resident.class);
-        Town town = mock(Town.class);
-        Nation nation = mock(Nation.class);
-        TownyAPI api = mock(TownyAPI.class);
-        when(api.getResident(player)).thenReturn(resident);
-        when(resident.getTownOrNull()).thenReturn(town);
-        when(town.getUUID()).thenReturn(townId);
-        when(nation.getUUID()).thenReturn(nationId);
-
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-            when(api.getTownNationOrNull(town)).thenReturn(nation);
-
-            RelationshipPolicy.Subject subject =
-                    new TownyPlayerSubjectResolver(() -> true).resolve(player).orElseThrow();
+        TownyPlayerSubjectResolver resolver = new TownyPlayerSubjectResolver(() -> true,
+                ignored -> java.util.Optional.of(new TownyPlayerSubjectResolver.Membership(
+                        townId.toString(), nationId.toString())));
+        RelationshipPolicy.Subject subject = resolver.resolve(player).orElseThrow();
 
             assertEquals(playerId, subject.ownerId());
             assertEquals(townId.toString(), subject.townId());
@@ -63,34 +49,22 @@ class TownyPlayerSubjectResolverTest {
         Player player = mock(Player.class);
         UUID playerId = UUID.randomUUID();
         when(player.getUniqueId()).thenReturn(playerId);
-        Resident resident = mock(Resident.class);
-        TownyAPI api = mock(TownyAPI.class);
-        when(api.getResident(player)).thenReturn(resident);
-        when(resident.getTownOrNull()).thenReturn(null);
-
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-
-            RelationshipPolicy.Subject subject =
-                    new TownyPlayerSubjectResolver(() -> true).resolve(player).orElseThrow();
+        TownyPlayerSubjectResolver resolver = new TownyPlayerSubjectResolver(() -> true,
+                ignored -> java.util.Optional.of(new TownyPlayerSubjectResolver.Membership(null, null)));
+        RelationshipPolicy.Subject subject = resolver.resolve(player).orElseThrow();
 
             assertEquals(playerId, subject.ownerId());
             assertNull(subject.townId());
             assertNull(subject.nationId());
-            verify(api, never()).getTownNationOrNull(any());
         }
     }
 
     @Test
     void failsClosedWhenTownyLookupThrows() {
         Player player = mock(Player.class);
-        TownyAPI api = mock(TownyAPI.class);
-        when(api.getResident(player)).thenThrow(new IllegalStateException("Towny unavailable"));
-
-        try (MockedStatic<TownyAPI> towny = mockStatic(TownyAPI.class)) {
-            towny.when(TownyAPI::getInstance).thenReturn(api);
-
-            assertTrue(new TownyPlayerSubjectResolver(() -> true).resolve(player).isEmpty());
+        TownyPlayerSubjectResolver resolver = new TownyPlayerSubjectResolver(() -> true,
+                ignored -> { throw new IllegalStateException("Towny unavailable"); });
+        assertTrue(resolver.resolve(player).isEmpty());
         }
     }
 
