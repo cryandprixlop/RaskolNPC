@@ -11,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 public final class SqliteNpcDeletionRepository implements NpcDeletionRepository {
     private static final String BLOCKED_DELETION_MESSAGE =
             "Cannot delete guard while rent payment requires reconciliation: ";
+    private static final String BLOCKED_TRADE_DELETION_MESSAGE =
+            "Cannot delete resident while a trade requires reconciliation: ";
 
     private final DatabaseManager database;
 
@@ -44,6 +46,36 @@ public final class SqliteNpcDeletionRepository implements NpcDeletionRepository 
                         if (result.next()) {
                             throw new SQLException(BLOCKED_DELETION_MESSAGE
                                     + result.getString("payment_id"));
+                        }
+                    }
+                }
+            }
+
+            boolean isResident;
+            try (var statement = connection.prepareStatement(
+                    "SELECT 1 FROM npcs WHERE id = ? AND type = 'RESIDENT'")) {
+                statement.setString(1, id.toString());
+                try (var result = statement.executeQuery()) {
+                    isResident = result.next();
+                }
+            }
+            if (isResident) {
+                try (var statement = connection.prepareStatement("""
+                        SELECT transaction_id
+                        FROM resident_trade_transactions
+                        WHERE resident_npc_id = ?
+                          AND status IN (
+                              'STOCK_RESERVED', 'PAYMENT_PENDING', 'PAID',
+                              'REFUND_PENDING', 'REVIEW_REQUIRED'
+                          )
+                        ORDER BY created_at, transaction_id
+                        LIMIT 1
+                        """)) {
+                    statement.setString(1, id.toString());
+                    try (var result = statement.executeQuery()) {
+                        if (result.next()) {
+                            throw new SQLException(BLOCKED_TRADE_DELETION_MESSAGE
+                                    + result.getString("transaction_id"));
                         }
                     }
                 }

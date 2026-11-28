@@ -12,6 +12,9 @@ import java.util.UUID;
  * Towny and economy implementations are injected to keep this service testable.
  */
 public final class GuardHiringService {
+    public static final int MIN_LEVEL = 1;
+    public static final int MAX_LEVEL = 10;
+
     private final KingdomGuardService limits;
     private final NpcRegistry registry;
     private final int guardsPerNation;
@@ -40,7 +43,10 @@ public final class GuardHiringService {
         if (nationId == null || nationId.isBlank()) {
             throw new IllegalArgumentException("nationId must not be blank");
         }
-        if (level < 1) throw new IllegalArgumentException("Guard level must be at least 1.");
+        if (level < MIN_LEVEL || level > MAX_LEVEL) {
+            throw new IllegalArgumentException(
+                    "Guard level must be between " + MIN_LEVEL + " and " + MAX_LEVEL + ".");
+        }
         if (!access.mayHire(player, nationId)) {
             throw new IllegalStateException(
                     "Нанимать стражу может только король королевства или администратор.");

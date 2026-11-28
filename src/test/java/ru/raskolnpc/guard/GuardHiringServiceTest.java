@@ -114,6 +114,9 @@ class GuardHiringServiceTest {
                 economyAlwaysSucceeds(), (candidate, nation, level, rent) -> { });
 
         assertThrows(IllegalArgumentException.class, () -> service.hire(player, "nation-a", 0));
+        assertThrows(IllegalArgumentException.class, () -> service.hire(player, "nation-a", 11));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.hire(player, "nation-a", Integer.MAX_VALUE));
         assertThrows(IllegalArgumentException.class,
                 () -> service.collectDailyRent(UUID.randomUUID(), -1));
     }

@@ -1,0 +1,334 @@
+package ru.raskolnpc.npc.resident;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.plugin.Plugin;
+import ru.raskolnpc.integration.towny.TownyResidentService;
+import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.model.NpcId;
+import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
+import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.model.ResidentProfile;
+import ru.raskolnpc.npc.resident.model.ResidentProfession;
+import ru.raskolnpc.npc.resident.quest.ResidentQuest;
+import ru.raskolnpc.npc.resident.quest.ResidentQuestService;
+import ru.raskolnpc.storage.ResidentQuestReview;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+/** Handles right-click conversations with resident NPCs. */
+public final class ResidentInteractionListener implements Listener {
+    private static final long DEFAULT_COOLDOWN_MILLIS = 1_500L;
+    private static final int MAX_COOLDOWN_ENTRIES = 4_096;
+    private static final int REVIEW_LOOKUP_LIMIT = 100;
+
+    private record InteractionKey(UUID playerId, NpcId npcId) {}
+    private record ProfileAndReputation(
+            java.util.Optional<ResidentProfile> profile, int reputation) {}
+    private record ProfileAndAssignments(
+            java.util.Optional<ResidentProfile> profile, int reputation,
+            List<ResidentQuest.Assignment> assignments) {}
+    private record ConversationContext(
+            ResidentProfile profile,
+            int reputation,
+            List<ResidentQuest.Assignment> activeAssignments,
+            List<ResidentQuestReview> reviews,
+            List<ResidentQuest> availableQuests,
+            long lastProfessionChangeDay,
+            long lastProfessionRequestDay
+    ) {}
+
+    private final Plugin plugin;
+    private final NpcEntityManager entities;
+    private final NpcRegistry registry;
+    private final ResidentProfileService profiles;
+    private final ResidentDialogueService dialogues;
+    private final ResidentQuestService quests;
+    private volatile TownyResidentService townyResidents;
+    private final long cooldownMillis;
+    // Bukkit interaction events are handled on the server thread.
+    private final Map<InteractionKey, Long> lastInteractions = new HashMap<>();
+
+    public ResidentInteractionListener(Plugin plugin, NpcEntityManager entities,
+            NpcRegistry registry, ResidentProfileService profiles,
+            ResidentDialogueService dialogues, ResidentQuestService quests) {
+        this(plugin, entities, registry, profiles, dialogues, quests, DEFAULT_COOLDOWN_MILLIS);
+    }
+
+    ResidentInteractionListener(Plugin plugin, NpcEntityManager entities,
+            NpcRegistry registry, ResidentProfileService profiles,
+            ResidentDialogueService dialogues, ResidentQuestService quests, long cooldownMillis) {
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
+        this.entities = Objects.requireNonNull(entities, "entities");
+        this.registry = Objects.requireNonNull(registry, "registry");
+        this.profiles = Objects.requireNonNull(profiles, "profiles");
+        this.dialogues = Objects.requireNonNull(dialogues, "dialogues");
+        this.quests = Objects.requireNonNull(quests, "quests");
+        if (cooldownMillis < 0) throw new IllegalArgumentException("Cooldown cannot be negative.");
+        this.cooldownMillis = cooldownMillis;
+    }
+
+    public void setTownyResidentService(TownyResidentService townyResidents) {
+        this.townyResidents = townyResidents;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onResidentInteract(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) return;
+        NpcId npcId = entities.getNpcId(event.getRightClicked()).orElse(null);
+        if (npcId == null) return;
+        var record = registry.get(npcId).orElse(null);
+        if (record == null || record.type() != NpcType.RESIDENT
+                || !isCurrentResidentEntity(record, event.getRightClicked().getUniqueId())) return;
+        event.setCancelled(true);
+
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        InteractionKey key = new InteractionKey(playerId, npcId);
+        Long previous = lastInteractions.get(key);
+        if (previous != null && now - previous < cooldownMillis) return;
+        lastInteractions.put(key, now);
+
+        if (lastInteractions.size() > MAX_COOLDOWN_ENTRIES) {
+            lastInteractions.entrySet().removeIf(entry ->
+                    now - entry.getValue() > Math.max(cooldownMillis * 4, 10_000L));
+        }
+
+        String residentName = record.name();
+        CompletableFuture<ConversationContext> context = profiles.find(npcId)
+                .thenCombine(quests.reputation(playerId), ProfileAndReputation::new)
+                .thenCombine(quests.activeAssignments(playerId), (profileAndReputation, assignments) ->
+                        new ProfileAndAssignments(profileAndReputation.profile(),
+                                profileAndReputation.reputation(), assignments))
+                .thenCombine(quests.reviewRequired(REVIEW_LOOKUP_LIMIT),
+                        (profileAndAssignments, reviews) -> {
+                            if (profileAndAssignments.profile() == null
+                                    || profileAndAssignments.profile().isEmpty()) {
+                                throw new IllegalStateException("Resident profile is unavailable.");
+                            }
+                            return new ConversationContext(profileAndAssignments.profile().get(),
+                                    profileAndAssignments.reputation(),
+                                    profileAndAssignments.assignments(), reviews, List.of(), -1L, -1L);
+                        })
+                .thenCombine(profiles.lastProfessionChangeDay(npcId), (assembledContext, lastChangeDay) ->
+                        new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
+                                assembledContext.activeAssignments(), assembledContext.reviews(),
+                                assembledContext.availableQuests(), lastChangeDay, -1L))
+                .thenCombine(profiles.lastProfessionRequestDay(npcId), (assembledContext, lastRequestDay) ->
+                        new ConversationContext(assembledContext.profile(), assembledContext.reputation(),
+                                assembledContext.activeAssignments(), assembledContext.reviews(),
+                                assembledContext.availableQuests(), assembledContext.lastProfessionChangeDay(),
+                                lastRequestDay))
+                .thenCompose(conversationContext -> quests.availableFor(conversationContext.profile(), npcId)
+                        .thenApply(available -> new ConversationContext(conversationContext.profile(),
+                                conversationContext.reputation(), conversationContext.activeAssignments(),
+                                conversationContext.reviews(), available,
+                                conversationContext.lastProfessionChangeDay(),
+                                conversationContext.lastProfessionRequestDay())));
+
+        context.whenComplete((conversation, error) -> {
+            if (!plugin.isEnabled()) return;
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!plugin.isEnabled() || !player.isOnline()) return;
+                    if (error != null) {
+                        plugin.getLogger().warning("Could not load resident conversation context for "
+                                + npcId + ": " + rootMessage(error));
+                        player.sendMessage("§7Житель сейчас занят и не может поговорить.");
+                        return;
+                    }
+                    dialogues.speak(player, conversation.profile(), residentName,
+                            conversation.reputation());
+                    if (conversation.profile().profession() == ResidentProfession.BLACKSMITH) {
+                        sendNearbyGuardRepairActions(player, residentName);
+                    }
+                    sendProfessionChangeProposal(player, record, conversation);
+                    sendQuestActions(player, npcId, residentName, conversation);
+                });
+            } catch (RuntimeException schedulingError) {
+                plugin.getLogger().warning("Could not schedule resident dialogue: "
+                        + schedulingError.getMessage());
+            }
+        });
+    }
+
+    /**
+     * A blacksmith can direct the player to the existing, authority-checked guard repair
+     * workflow. Only loaded guards in repair range are offered; the command performs
+     * the authoritative kingdom visibility check again before consuming materials.
+     */
+    private void sendNearbyGuardRepairActions(Player player, String residentName) {
+        List<NpcRecord> nearbyGuards = registry.all().stream()
+                .filter(record -> record.type() == NpcType.GUARD)
+                .filter(record -> entities.find(record.id())
+                        .filter(org.bukkit.entity.LivingEntity.class::isInstance)
+                        .map(org.bukkit.entity.LivingEntity.class::cast)
+                        .filter(guard -> guard.getWorld().equals(player.getWorld())
+                                && guard.getLocation().distanceSquared(player.getLocation()) <= 36.0
+                                && hasDamagedEquipment(guard))
+                        .isPresent())
+                .limit(5)
+                .toList();
+
+        Component prefix = Component.text("[" + residentName + "] ");
+        if (nearbyGuards.isEmpty()) {
+            player.sendMessage(prefix.append(Component.text(
+                    "Поблизости нет загруженных стражей, которым нужен ремонт.")));
+            return;
+        }
+        player.sendMessage(prefix.append(Component.text(
+                "Могу помочь с ремонтом снаряжения. Выбери стража:")));
+        for (NpcRecord guard : nearbyGuards) {
+            Component action = Component.text("  » Отремонтировать " + guard.name())
+                    .clickEvent(ClickEvent.runCommand(
+                            "/raskolnpc guard repair " + guard.id()));
+            player.sendMessage(prefix.append(action));
+        }
+    }
+
+    private static boolean hasDamagedEquipment(org.bukkit.entity.LivingEntity guard) {
+        EntityEquipment equipment = guard.getEquipment();
+        if (equipment == null) return false;
+        ItemStack[] items = {
+                equipment.getItemInMainHand(), equipment.getItemInOffHand(),
+                equipment.getHelmet(), equipment.getChestplate(),
+                equipment.getLeggings(), equipment.getBoots()
+        };
+        for (ItemStack item : items) {
+            if (item != null && !item.getType().isAir()
+                    && item.getItemMeta() instanceof Damageable damageable
+                    && damageable.getDamage() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * A resident may ask to retrain only when their needs and traits permit it.
+     * The clickable command still passes through NpcCommandService's Towny/admin
+     * authorization before any profession can actually be changed.
+     */
+    boolean mayReceiveProfessionRequest(Player player, NpcRecord resident) {
+        if (player.hasPermission("raskolnpc.admin")) return true;
+        TownyResidentService towny = townyResidents;
+        if (towny == null || resident.townId() == null) return false;
+        try {
+            TownyResidentService.TownAssignment actingTown =
+                    towny.resolveAndAuthorize(player, player.getLocation().clone());
+            return resident.townId().equals(actingTown.townId());
+        } catch (RuntimeException denied) {
+            return false;
+        }
+    }
+
+    private void sendProfessionChangeProposal(Player player, NpcRecord resident,
+            ConversationContext context) {
+        if (!mayReceiveProfessionRequest(player, resident)) return;
+        NpcId residentId = resident.id();
+        String residentName = resident.name();
+        long currentWorldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
+        ResidentProfessionChangePolicy.Decision decision =
+                new ResidentProfessionChangePolicy().evaluate(context.profile(),
+                        currentWorldDay, context.lastProfessionChangeDay(),
+                        context.lastProfessionRequestDay());
+        if (!decision.canRequestChange()) return;
+
+        profiles.recordProfessionRequest(residentId, currentWorldDay).whenComplete((recorded, error) -> {
+            if (!plugin.isEnabled()) return;
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!plugin.isEnabled() || !player.isOnline()) return;
+                    if (error != null) {
+                        plugin.getLogger().warning("Could not persist resident profession request for "
+                                + residentId + ": " + rootMessage(error));
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(recorded)) return;
+                    Component prefix = Component.text("[" + residentName + "] ");
+                    player.sendMessage(prefix.append(Component.text(
+                            "Я хотел бы попробовать себя в другом ремесле. Если ты управляешь городом, "
+                                    + "можешь утвердить моё обучение:")));
+                    for (ResidentProfession profession : decision.suggestedProfessions()) {
+                        Component action = Component.text("  » " + profession.name().toLowerCase(
+                                java.util.Locale.ROOT))
+                                .clickEvent(ClickEvent.runCommand("/raskolnpc resident profession "
+                                        + residentId + " " + profession.name()));
+                        player.sendMessage(prefix.append(action));
+                    }
+                });
+            } catch (RuntimeException schedulingError) {
+                plugin.getLogger().warning("Could not schedule resident profession request: "
+                        + schedulingError.getMessage());
+            }
+        });
+    }
+
+    private void sendQuestActions(Player player, NpcId residentId, String residentName,
+            ConversationContext context) {
+        for (ResidentQuest quest : context.availableQuests()) {
+            boolean active = context.activeAssignments().stream().anyMatch(assignment ->
+                    assignment.residentId().equals(residentId)
+                            && assignment.questId().equals(quest.id()));
+            boolean underReview = context.reviews().stream().anyMatch(review ->
+                    review.playerId().equals(player.getUniqueId())
+                            && review.residentId().equals(residentId)
+                            && review.questId().equals(quest.id()));
+
+            Component prefix = Component.text("[" + residentName + "] ");
+            if (underReview) {
+                player.sendMessage(prefix.append(Component.text(
+                        "  » Сдача этого поручения ожидает проверки администрации.")));
+            } else if (active) {
+                Component submit = Component.text("  » Сдать ресурсы по поручению")
+                        .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest submit "
+                                + residentId + " " + quest.id()));
+                player.sendMessage(prefix.append(submit));
+            } else {
+                Component offer = Component.text("  » Взять поручение: ")
+                        .append(Component.text(quest.requiredAmount() + " "
+                                + quest.requiredMaterial() + " (награда: "
+                                + quest.reputationReward() + " репутации)")
+                                .clickEvent(ClickEvent.runCommand("/raskolnpc resident quest accept "
+                                        + residentId + " " + quest.id())));
+                player.sendMessage(prefix.append(offer));
+            }
+        }
+    }
+
+
+    static boolean isCurrentResidentEntity(NpcRecord record, UUID entityUuid) {
+        return record != null && entityUuid != null
+                && record.type() == NpcType.RESIDENT
+                && record.state() == NpcState.ACTIVE
+                && entityUuid.equals(record.entityUuid());
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null
+                ? current.getClass().getSimpleName() : current.getMessage();
+    }
+}

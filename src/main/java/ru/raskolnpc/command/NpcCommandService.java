@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.guard.GuardHiringService;
+import ru.raskolnpc.guard.KingdomGuardRosterService;
 import ru.raskolnpc.guard.model.GuardHiringPayment;
 import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
@@ -20,6 +21,7 @@ import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.npc.resident.ResidentProfileService;
+import ru.raskolnpc.npc.resident.ResidentBehaviorService;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +45,8 @@ public final class NpcCommandService {
     private final double guardBaseDailyRent;
     private volatile GuardHiringPaymentRepository hiringPayments;
     private volatile ResidentProfileService residentProfileService;
+    private volatile ResidentBehaviorService residentBehaviorService;
+    private volatile KingdomGuardRosterService guardRosterService;
 
     public NpcCommandService(Plugin plugin, NpcLifecycleService lifecycle,
                              NpcRegistry registry, NpcEntityManager entities,
@@ -83,12 +87,102 @@ public final class NpcCommandService {
         this.residentProfileService = service;
     }
 
+    public void setResidentBehaviorService(ResidentBehaviorService service) {
+        this.residentBehaviorService = service;
+    }
+
+    private void refreshResidentBehavior() {
+        ResidentBehaviorService behavior = residentBehaviorService;
+        if (behavior != null) behavior.reload();
+    }
+
+    public void setGuardRosterService(KingdomGuardRosterService service) {
+        this.guardRosterService = service;
+    }
+
+    public List<NpcRecord> guardRoster(Player player) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.listVisible(player);
+    }
+
+    public Optional<NpcRecord> findVisibleGuard(Player player, NpcId id) {
+        KingdomGuardRosterService roster = guardRosterService;
+        if (roster == null) throw new IllegalStateException("Просмотр состава стражи недоступен.");
+        return roster.findVisible(player, id);
+    }
+
     public boolean isTownyIntegrationEnabled() {
         return townyResidents != null;
     }
 
     public boolean isGuardHiringEnabled() {
         return guardAccess != null && townBank != null && guardLimits != null;
+    }
+
+    /**
+     * Changes a resident's profession for an administrator or a manager of
+     * the resident's own Towny town. The manager must be standing inside that
+     * town so authorization cannot be borrowed from another settlement.
+     */
+    public CompletableFuture<ru.raskolnpc.npc.resident.model.ResidentProfile>
+            changeResidentProfession(Player player, NpcId residentId,
+                    ru.raskolnpc.npc.resident.model.ResidentProfession profession) {
+        if (player == null || residentId == null || profession == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игрок, житель и профессия обязательны."));
+        }
+        // Capture Bukkit world time on the command thread before asynchronous repository work.
+        long worldDay = Math.max(0L, player.getWorld().getFullTime() / 24_000L);
+        boolean administrator = player.hasPermission("raskolnpc.admin");
+        if (!administrator) {
+            if (townyResidents == null) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                        "Управление профессией доступно только администраторам без Towny."));
+            }
+            final TownyResidentService.TownAssignment actingTown;
+            try {
+                actingTown = townyResidents.resolveAndAuthorize(player,
+                        player.getLocation().clone());
+            } catch (RuntimeException denied) {
+                return CompletableFuture.failedFuture(denied);
+            }
+            return lifecycle.find(residentId).thenCompose(found -> {
+                if (found.isEmpty() || found.get().type() != NpcType.RESIDENT) {
+                    return CompletableFuture.failedFuture(
+                            new IllegalArgumentException("Житель не найден."));
+                }
+                if (actingTown.townId() == null
+                        || !actingTown.townId().equals(found.get().townId())) {
+                    return CompletableFuture.failedFuture(new SecurityException(
+                            "Назначать профессию можно только жителю своего города."));
+                }
+                return changeProfessionAndRefresh(residentId, profession, worldDay);
+            });
+        }
+        return lifecycle.find(residentId).thenCompose(found -> {
+            if (found.isEmpty() || found.get().type() != NpcType.RESIDENT) {
+                return CompletableFuture.failedFuture(
+                        new IllegalArgumentException("Житель не найден."));
+            }
+            return changeProfessionAndRefresh(residentId, profession, worldDay);
+        });
+    }
+
+    private CompletableFuture<ru.raskolnpc.npc.resident.model.ResidentProfile>
+            changeProfessionAndRefresh(NpcId residentId,
+                    ru.raskolnpc.npc.resident.model.ResidentProfession profession,
+                    long worldDay) {
+        ResidentProfileService profiles = residentProfileService;
+        if (profiles == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Система профилей жителей не инициализирована."));
+        }
+        return profiles.changeProfession(residentId, profession, worldDay)
+                .thenApply(profile -> {
+                    refreshResidentBehavior();
+                    return profile;
+                });
     }
 
     public CompletableFuture<NpcRecord> createResident(String name, Player player) {
@@ -119,6 +213,10 @@ public final class NpcCommandService {
             }
             return profiles.createIfMissing(record)
                     .thenCompose(ignored -> onMainThread(() -> entities.spawnAsync(record, location)))
+                    .thenApply(ignored -> {
+                        refreshResidentBehavior();
+                        return record;
+                    })
                     .exceptionallyCompose(error -> cleanup(record, error));
         });
     }
@@ -144,6 +242,13 @@ public final class NpcCommandService {
                     "Имя должно содержать от 1 до 64 символов."));
         }
 
+        double hireCost = guardBaseHireCost * level;
+        double dailyRent = guardBaseDailyRent * level;
+        if (!Double.isFinite(hireCost) || !Double.isFinite(dailyRent)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Стоимость найма и аренды стража должна быть конечным числом."));
+        }
+
         Location location = player.getLocation().clone();
         final TownyKingdomGuardAccess.Placement placement;
         final KingdomGuardService.Reservation reservation;
@@ -154,8 +259,6 @@ public final class NpcCommandService {
             return CompletableFuture.failedFuture(exception);
         }
 
-        double hireCost = guardBaseHireCost * level;
-        double dailyRent = guardBaseDailyRent * level;
         String paymentId = UUID.randomUUID().toString();
         GuardHiringPayment payment = new GuardHiringPayment(
                 paymentId, null, player.getUniqueId(), placement.townId(),
@@ -341,10 +444,10 @@ public final class NpcCommandService {
                 .thenCompose(deleted -> deleted
                         ? lifecycle.completeDeletion(record.id())
                         : CompletableFuture.completedFuture(false))
-                .handle((ignored, cleanupError) -> {
+                .<NpcRecord>handle((ignored, cleanupError) -> {
                     if (cleanupError != null) error.addSuppressed(cleanupError);
                     throw new CompletionException(error);
-                });
+                }).whenComplete((ignored, cleanupError) -> refreshResidentBehavior());
     }
 
     private <T> CompletableFuture<T> onMainThread(
@@ -412,6 +515,9 @@ public final class NpcCommandService {
                 return removed ? lifecycle.completeDeletion(id)
                         .thenApply(ignored -> true)
                         : CompletableFuture.completedFuture(true);
+            }).thenApply(deletedEntity -> {
+                refreshResidentBehavior();
+                return deletedEntity;
             });
         });
     }

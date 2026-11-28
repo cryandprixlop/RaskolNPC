@@ -1,0 +1,33 @@
+# Profession-specific production recipes.
+# Inputs are consumed from the profession's shared Town business stock.
+# Output is credited atomically; capacity is the maximum stored amount.
+recipes:
+  blacksmith_iron_sword:
+    profession: BLACKSMITH
+    minimum-skill-level: NOVICE
+    inputs:
+      IRON_INGOT: 4
+      COAL: 2
+    output:
+      material: IRON_SWORD
+      amount: 1
+      capacity: 32
+
+  cook_bread:
+    profession: COOK
+    inputs:
+      WHEAT: 3
+    output:
+      material: BREAD
+      amount: 1
+      capacity: 48
+
+  builder_stone_bricks:
+    profession: BUILDER
+    minimum-skill-level: SPECIALIST
+    inputs:
+      STONE: 4
+    output:
+      material: STONE_BRICKS
+      amount: 4
+      capacity: 128

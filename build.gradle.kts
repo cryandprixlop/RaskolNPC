@@ -6,9 +6,24 @@ group = "ru.raskolnpc"
 version = "0.1.0-SNAPSHOT"
 
 repositories {
-    mavenCentral()
+    mavenCentral {
+        content {
+            excludeGroup("com.github.TownyAdvanced")
+            excludeGroup("com.sk89q.worldguard")
+        }
+    }
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.glaremasters.me/repository/towny/")
+    maven("https://jitpack.io") {
+        content { includeGroup("com.github.TownyAdvanced") }
+    }
+    maven("https://maven.enginehub.org/repo/") {
+        content {
+            includeGroup("com.sk89q")
+            includeGroupByRegex("com\\.sk89q\\..*")
+            includeGroupByRegex("org\\.enginehub\\..*")
+        }
+    }
 }
 
 dependencies {
@@ -16,6 +31,14 @@ dependencies {
     testImplementation("io.papermc.paper:paper-api:26.2.build.135-stable")
     compileOnly("com.palmergames.bukkit.towny:towny:0.103.2.0")
     testImplementation("com.palmergames.bukkit.towny:towny:0.103.2.0")
+    compileOnly("com.github.TownyAdvanced:SiegeWar:3.7.0") {
+        isTransitive = false
+    }
+    testImplementation("com.github.TownyAdvanced:SiegeWar:3.7.0") {
+        isTransitive = false
+    }
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.19")
+    testImplementation("com.sk89q.worldguard:worldguard-bukkit:7.0.19")
 
     runtimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")
     testRuntimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")
@@ -40,6 +63,10 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging {
+        events("started", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 tasks.processResources {

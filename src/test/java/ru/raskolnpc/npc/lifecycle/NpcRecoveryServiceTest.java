@@ -3,6 +3,13 @@ package ru.raskolnpc.npc.lifecycle;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.EntityEquipment;
+import ru.raskolnpc.guard.GuardEquipmentPersistenceService;
+import ru.raskolnpc.storage.GuardEquipmentRepository;
+import org.bukkit.Material;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +22,7 @@ import ru.raskolnpc.npc.entity.NpcEntityTagger;
 import ru.raskolnpc.npc.entity.NpcSpawnLocation;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcDeletionRepository;
@@ -136,6 +144,39 @@ class NpcRecoveryServiceTest {
     }
 
     @Test
+    void doesNotRespawnAnNpcThatWasIntentionallyUnloaded() {
+        NpcRecord record = recordAt(new Location(world, 160.5, 70, 160.5))
+                .withState(NpcState.UNLOADED);
+        registry.put(record);
+        world.loadChunk(10, 10);
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(startup::join);
+
+        recovery.onEntitiesLoad(world.getChunkAt(10, 10), List.of());
+        server.getScheduler().performTicks(2);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void removesLoadedEntityForAnIntentionallyUnloadedNpc() {
+        world.loadChunk(0, 0);
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = recordFor(loadedEntity).withState(NpcState.UNLOADED);
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        CompletableFuture<Void> startup = recovery.recover();
+        server.getScheduler().performTicks(2);
+        assertDoesNotThrow(startup::join);
+
+        assertFalse(loadedEntity.isValid());
+        verifyNoInteractions(provider);
+    }
+
+    @Test
     void doesNotKeepUnloadedNpcInActiveEntityTracking() {
         Entity loadedEntity = createTrackedEntity();
         NpcRecord record = recordFor(loadedEntity);
@@ -152,6 +193,35 @@ class NpcRecoveryServiceTest {
         assertEquals(loadedEntity.getUniqueId(),
                 registry.get(record.id()).orElseThrow().entityUuid());
         verifyNoInteractions(provider);
+    }
+
+    @Test
+    void tracksReloadedResidentWithoutSpawningDuplicateEntity() {
+        Entity loadedEntity = createTrackedEntity();
+        NpcRecord record = NpcRecord.create(
+                        NpcType.RESIDENT, "Reloaded resident", null, null, null, null)
+                .withEntityBinding(loadedEntity.getUniqueId(),
+                        NpcSpawnLocation.from(loadedEntity.getLocation()));
+        registry.put(record);
+        when(tagger.read(loadedEntity)).thenReturn(Optional.of(record.id()));
+
+        entities.trackLoaded(loadedEntity);
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+
+        assertTrue(world.unloadChunk(0, 0));
+        recovery.onEntitiesUnload(List.of(loadedEntity));
+        assertTrue(entities.find(record.id()).isEmpty());
+
+        world.loadChunk(0, 0);
+        world.addEntity(loadedEntity);
+        recovery.recover();
+        server.getScheduler().performOneTick();
+        recovery.onEntitiesLoad(world.getChunkAt(0, 0), List.of(loadedEntity));
+        server.getScheduler().performTicks(3);
+
+        assertEquals(loadedEntity, entities.find(record.id()).orElseThrow());
+        verifyNoInteractions(provider);
+        verify(repository, never()).update(any(NpcRecord.class));
     }
 
     @Test
@@ -214,6 +284,180 @@ class NpcRecoveryServiceTest {
         assertEquals(restoredEntityId, registry.get(record.id()).orElseThrow().entityUuid());
     }
 
+
+    @Test
+    void doesNotDropGuardEquipmentThatWillBeRestoredFromSnapshot() {
+        LivingEntity deadGuard = mock(LivingEntity.class);
+        UUID deadGuardId = UUID.randomUUID();
+        when(deadGuard.getUniqueId()).thenReturn(deadGuardId);
+        NpcRecord guard = recordAt(new Location(world, 2, 65, 2))
+                .withEntityBinding(deadGuardId, NpcSpawnLocation.from(
+                        new Location(world, 2, 65, 2)));
+        registry.put(guard);
+        when(tagger.read(deadGuard)).thenReturn(Optional.of(guard.id()));
+        List<ItemStack> drops = new java.util.ArrayList<>(
+                List.of(new ItemStack(Material.IRON_SWORD)));
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(deadGuard);
+        when(event.getDrops()).thenReturn(drops);
+
+        recovery.onEntityDeath(event);
+
+        assertTrue(drops.isEmpty(),
+                "Guard gear is persisted and restored; it must not be duplicated as a death drop.");
+    }
+
+    @Test
+    void preservesDropsWhenStaleGuardEntityDiesAfterItsReplacementIsBound() {
+        UUID currentEntityId = UUID.randomUUID();
+        UUID staleEntityId = UUID.randomUUID();
+        NpcRecord guard = recordAt(new Location(world, 2, 65, 2))
+                .withEntityBinding(currentEntityId, NpcSpawnLocation.from(
+                        new Location(world, 2, 65, 2)));
+        registry.put(guard);
+
+        LivingEntity staleGuard = mock(LivingEntity.class);
+        when(staleGuard.getUniqueId()).thenReturn(staleEntityId);
+        when(tagger.read(staleGuard)).thenReturn(Optional.of(guard.id()));
+        List<ItemStack> drops = new java.util.ArrayList<>(
+                List.of(new ItemStack(Material.IRON_SWORD)));
+        EntityDeathEvent event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(staleGuard);
+        when(event.getDrops()).thenReturn(drops);
+
+        recovery.onEntityDeath(event);
+
+        assertEquals(1, drops.size(),
+                "A stale entity must not have its legitimate drops cleared.");
+        verify(deletions, never()).findPending();
+    }
+
+    @Test
+    void doesNotRespawnGuardWhenEquipmentSnapshotCannotBeSaved() {
+        world.loadChunk(0, 0);
+        UUID deadGuardId = UUID.randomUUID();
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        NpcRecord guard = recordAt(savedLocation).withEntityBinding(
+                deadGuardId, NpcSpawnLocation.from(savedLocation));
+        registry.put(guard);
+
+        LivingEntity deadGuard = mock(LivingEntity.class);
+        EntityEquipment equipment = mock(EntityEquipment.class);
+        when(deadGuard.getUniqueId()).thenReturn(deadGuardId);
+        when(deadGuard.getEquipment()).thenReturn(equipment);
+        when(tagger.read(deadGuard)).thenReturn(Optional.of(guard.id()));
+
+        GuardEquipmentRepository equipmentRepository = mock(GuardEquipmentRepository.class);
+        when(equipmentRepository.save(eq(guard.id()), any(byte[].class)))
+                .thenReturn(CompletableFuture.failedFuture(
+                        new IllegalStateException("simulated SQLite write failure")));
+        recovery.setGuardEquipmentPersistenceService(
+                new GuardEquipmentPersistenceService(plugin, registry, entities, equipmentRepository));
+
+        recovery.onEntityDeath(deadGuard);
+        server.getScheduler().performTicks(3);
+
+        verify(equipmentRepository).save(eq(guard.id()), any(byte[].class));
+        verifyNoInteractions(provider);
+        verify(deletions, never()).findPending();
+    }
+
+    @Test
+    void restoresActiveNpcAfterItsBoundEntityDies() {
+        world.loadChunk(0, 0);
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        Entity deadEntity = mock(Entity.class);
+        UUID deadEntityId = UUID.randomUUID();
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+
+        Entity restoredEntity = world.spawnEntity(
+                savedLocation, org.bukkit.entity.EntityType.ZOMBIE);
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(4);
+
+        verify(provider).spawn(eq(record), argThat(location ->
+                location.getWorld().getUID().equals(world.getUID())
+                        && location.getX() == savedLocation.getX()
+                        && location.getY() == savedLocation.getY()
+                        && location.getZ() == savedLocation.getZ()));
+        assertEquals(restoredEntity.getUniqueId(),
+                registry.get(record.id()).orElseThrow().entityUuid());
+        assertEquals(restoredEntity, entities.find(record.id()).orElseThrow());
+    }
+
+    @Test
+    void doesNotRestoreActiveNpcWhenItsDeletionIsPendingAfterDeath() {
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        Entity deadEntity = mock(Entity.class);
+        UUID deadEntityId = UUID.randomUUID();
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+        when(deletions.findPending()).thenReturn(
+                CompletableFuture.completedFuture(List.of(record.id())));
+
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(3);
+
+        verifyNoInteractions(provider);
+        verify(deletions, never()).complete(record.id());
+    }
+
+    @Test
+    void ignoresDeathEventFromAnEntityThatIsNoLongerBoundToTheNpc() {
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        UUID currentEntityId = UUID.randomUUID();
+        UUID staleEntityId = UUID.randomUUID();
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                currentEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+
+        Entity staleEntity = mock(Entity.class);
+        when(staleEntity.getUniqueId()).thenReturn(staleEntityId);
+        when(tagger.read(staleEntity)).thenReturn(Optional.of(record.id()));
+
+        recovery.onEntityDeath(staleEntity);
+
+        verify(deletions, never()).findPending();
+        verifyNoInteractions(provider);
+        assertEquals(currentEntityId, registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
+    @Test
+    void restoresNpcOnlyOnceWhenDeathEventIsDeliveredMoreThanOnce() {
+        world.loadChunk(0, 0);
+        Location savedLocation = new Location(world, 6.5, 70, 6.5);
+        UUID deadEntityId = UUID.randomUUID();
+        NpcRecord record = recordAt(savedLocation).withEntityBinding(
+                deadEntityId, NpcSpawnLocation.from(savedLocation));
+        registry.put(record);
+
+        Entity deadEntity = mock(Entity.class);
+        when(deadEntity.getUniqueId()).thenReturn(deadEntityId);
+        when(tagger.read(deadEntity)).thenReturn(Optional.of(record.id()));
+
+        Entity restoredEntity = mock(Entity.class);
+        when(restoredEntity.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(provider.spawn(eq(record), any(Location.class))).thenReturn(restoredEntity);
+
+        recovery.onEntityDeath(deadEntity);
+        recovery.onEntityDeath(deadEntity);
+        server.getScheduler().performTicks(4);
+
+        verify(deletions, times(1)).findPending();
+        verify(provider, times(1)).spawn(eq(record), any(Location.class));
+        assertEquals(restoredEntity.getUniqueId(),
+                registry.get(record.id()).orElseThrow().entityUuid());
+    }
+
     private Entity createTrackedEntity() {
         world.loadChunk(0, 0);
         Entity entity = world.createEntity(new Location(world, 2, 65, 2), Entity.class);
@@ -231,6 +475,7 @@ class NpcRecoveryServiceTest {
 
     private NpcRecord recordAt(Location location) {
         return NpcRecord.create(NpcType.GUARD, "Recovery sentinel",
-                null, null, null, null, NpcSpawnLocation.from(location));
+                null, null, null, null, NpcSpawnLocation.from(location))
+                .withState(NpcState.ACTIVE);
     }
 }

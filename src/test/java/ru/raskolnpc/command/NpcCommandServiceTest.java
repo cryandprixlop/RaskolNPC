@@ -5,6 +5,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 import ru.raskolnpc.integration.towny.KingdomGuardService;
+import ru.raskolnpc.integration.towny.TownyKingdomGuardAccess;
+import ru.raskolnpc.integration.towny.TownyTownBankEconomy;
+import ru.raskolnpc.storage.GuardHiringPaymentRepository;
 import ru.raskolnpc.integration.towny.TownyNpcLimitService;
 import ru.raskolnpc.integration.towny.TownyResidentService;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
@@ -12,10 +15,12 @@ import ru.raskolnpc.npc.lifecycle.NpcLifecycleService;
 import ru.raskolnpc.npc.model.NpcRecord;
 import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.registry.NpcRegistry;
+import ru.raskolnpc.npc.resident.ResidentProfileService;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -71,9 +76,10 @@ class NpcCommandServiceTest {
     @Test
     void failsResidentCreationWhenTownAuthorizationFailsBeforePersistence() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenThrow(new IllegalStateException("not authorized"));
         NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
         NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
@@ -88,9 +94,10 @@ class NpcCommandServiceTest {
     @Test
     void failsResidentCreationWhenTownLimitIsReachedBeforePersistence() {
         Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
         when(player.getLocation()).thenReturn(mock(Location.class));
         TownyResidentService towny = mock(TownyResidentService.class);
-        when(towny.resolveAndAuthorize(eq(player), any(Location.class)))
+        when(towny.resolveAndAuthorize(eq(player), any()))
                 .thenReturn(new TownyResidentService.TownAssignment("town-1", null));
         NpcRegistry registry = new NpcRegistry();
         for (int i = 0; i < 15; i++) {
@@ -105,6 +112,40 @@ class NpcCommandServiceTest {
         assertThrows(RuntimeException.class,
                 () -> service.createResident("Another", player).join());
         verify(lifecycle, never()).create(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectsOverflowingHireCostBeforeReservingGuardCapacityOrAccessingTowny() {
+        assertOverflowingCostRejected(Double.MAX_VALUE, 1.0);
+    }
+
+    @Test
+    void rejectsOverflowingDailyRentBeforeReservingGuardCapacityOrAccessingTowny() {
+        assertOverflowingCostRejected(1.0, Double.MAX_VALUE);
+    }
+
+    private void assertOverflowingCostRejected(double baseHireCost, double baseDailyRent) {
+        Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
+        TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
+        TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
+        KingdomGuardService limits = new KingdomGuardService();
+        GuardHiringPaymentRepository journal = mock(GuardHiringPaymentRepository.class);
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class),
+                mock(NpcLifecycleService.class), new NpcRegistry(),
+                mock(NpcEntityManager.class), null, new TownyNpcLimitService(), 15,
+                access, bank, limits, 30, baseHireCost, baseDailyRent);
+        service.setGuardHiringPaymentRepository(journal);
+
+        assertThrows(CompletionException.class,
+                () -> service.hireGuard("Guard", 10, player).join());
+
+        verifyNoInteractions(access, bank, journal);
+        verify(player, never()).getLocation();
+        try (KingdomGuardService.Reservation available =
+                     limits.reserve("nation-1", 30, new NpcRegistry())) {
+            assertNotNull(available, "invalid pricing must not leak a pending guard reservation");
+        }
     }
 
     @Test
@@ -141,6 +182,176 @@ class NpcCommandServiceTest {
             assertNotNull(available);
         }
         reservation.close(); // The outer operation's fallback close is idempotent.
+    }
+
+    @Test
+    void administratorCanChangeProfessionWithoutStandingInTown() {
+        Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(true);
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        var changed = new ru.raskolnpc.npc.resident.model.ResidentProfile(
+                resident.id(), 30,
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
+        when(profiles.changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH, 0L))
+                .thenReturn(CompletableFuture.completedFuture(changed));
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), null,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertSame(changed, service.changeResidentProfession(player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH).join());
+        verify(profiles).changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH, 0L);
+    }
+
+    @Test
+    void townManagerCanChangeProfessionOfResidentInTheirOwnTown() {
+        Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
+        when(player.getLocation()).thenReturn(mock(Location.class));
+        TownyResidentService towny = mock(TownyResidentService.class);
+        when(towny.resolveAndAuthorize(eq(player), any()))
+                .thenReturn(new TownyResidentService.TownAssignment("town-1", null));
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        var changed = new ru.raskolnpc.npc.resident.model.ResidentProfile(
+                resident.id(), 30,
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER,
+                java.util.Set.of(), 75, 75, 75, 75, 75, 75, java.util.Map.of());
+        when(profiles.changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER, 0L))
+                .thenReturn(CompletableFuture.completedFuture(changed));
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), towny,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertSame(changed, service.changeResidentProfession(player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER).join());
+        verify(towny).resolveAndAuthorize(eq(player), any());
+        verify(profiles).changeProfession(resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.FARMER, 0L);
+    }
+
+    @Test
+    void townManagerCannotChangeProfessionOfResidentFromAnotherTown() {
+        Player player = mock(Player.class);
+        when(player.getWorld()).thenReturn(mock(org.bukkit.World.class));
+        when(player.hasPermission("raskolnpc.admin")).thenReturn(false);
+        when(player.getLocation()).thenReturn(mock(Location.class));
+        TownyResidentService towny = mock(TownyResidentService.class);
+        when(towny.resolveAndAuthorize(eq(player), any()))
+                .thenReturn(new TownyResidentService.TownAssignment("town-2", null));
+        NpcRecord resident = NpcRecord.create(NpcType.RESIDENT, "Resident",
+                null, "town-1", null, "{}");
+        NpcLifecycleService lifecycle = mock(NpcLifecycleService.class);
+        when(lifecycle.find(resident.id())).thenReturn(
+                CompletableFuture.completedFuture(Optional.of(resident)));
+        ResidentProfileService profiles = mock(ResidentProfileService.class);
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class), lifecycle,
+                new NpcRegistry(), mock(NpcEntityManager.class), towny,
+                new TownyNpcLimitService(), 15);
+        service.setResidentProfileService(profiles);
+
+        assertThrows(CompletionException.class, () -> service.changeResidentProfession(
+                player, resident.id(),
+                ru.raskolnpc.npc.resident.model.ResidentProfession.BLACKSMITH).join());
+        verifyNoInteractions(profiles);
+    }
+
+    @Test
+    void refusesGuardHiringWhenTownyPlacementCannotBeResolvedBeforeJournalOrBankAccess() {
+        Player player = mock(Player.class);
+        when(player.getLocation()).thenReturn(new Location(null, 0, 64, 0));
+        TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
+        when(access.resolvePlacement(eq(player), any(Location.class)))
+                .thenThrow(new IllegalStateException("Towny placement unavailable"));
+        TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
+        GuardHiringPaymentRepository journal = mock(GuardHiringPaymentRepository.class);
+        KingdomGuardService limits = new KingdomGuardService();
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class),
+                mock(NpcLifecycleService.class), new NpcRegistry(),
+                mock(NpcEntityManager.class), null, new TownyNpcLimitService(), 15,
+                access, bank, limits, 30, 100, 10);
+        service.setGuardHiringPaymentRepository(journal);
+
+        assertThrows(CompletionException.class,
+                () -> service.hireGuard("Guard", 1, player).join());
+
+        verify(access).resolvePlacement(eq(player), any(Location.class));
+        verifyNoInteractions(bank, journal);
+        try (KingdomGuardService.Reservation available =
+                     limits.reserve("nation-1", 30, new NpcRegistry())) {
+            assertNotNull(available, "failed placement must not leak a guard reservation");
+        }
+    }
+
+    @Test
+    void doesNotWithdrawTownBankFundsWhenHiringJournalRejectsPaymentRecord() {
+        Player player = mock(Player.class);
+        when(player.getLocation()).thenReturn(new Location(null, 0, 64, 0));
+        when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        TownyKingdomGuardAccess access = mock(TownyKingdomGuardAccess.class);
+        when(access.resolvePlacement(eq(player), any(Location.class)))
+                .thenReturn(new TownyKingdomGuardAccess.Placement("town-1", "nation-1", true));
+        TownyTownBankEconomy bank = mock(TownyTownBankEconomy.class);
+        GuardHiringPaymentRepository journal = mock(GuardHiringPaymentRepository.class);
+        when(journal.create(any())).thenReturn(CompletableFuture.completedFuture(false));
+        KingdomGuardService limits = new KingdomGuardService();
+        NpcCommandService service = new NpcCommandService(mock(Plugin.class),
+                mock(NpcLifecycleService.class), new NpcRegistry(),
+                mock(NpcEntityManager.class), null, new TownyNpcLimitService(), 15,
+                access, bank, limits, 30, 100, 10);
+        service.setGuardHiringPaymentRepository(journal);
+
+        assertThrows(CompletionException.class,
+                () -> service.hireGuard("Guard", 1, player).join());
+
+        verify(journal).create(any());
+        verifyNoInteractions(bank);
+        try (KingdomGuardService.Reservation available =
+                     limits.reserve("nation-1", 30, new NpcRegistry())) {
+            assertNotNull(available, "journal failure must release the pending guard reservation");
+        }
+    }
+
+    @Test
+    void concurrentGuardHiresCannotExceedNationLimitWhenOnlyOneSlotRemains() {
+        NpcRegistry registry = new NpcRegistry();
+        for (int i = 0; i < 29; i++) {
+            registry.put(NpcRecord.create(NpcType.GUARD, "Guard " + i,
+                    null, "town-1", "nation-1", "{}"));
+        }
+
+        KingdomGuardService limits = new KingdomGuardService();
+        KingdomGuardService.Reservation first =
+                limits.reserve("nation-1", 30, registry);
+
+        assertThrows(ru.raskolnpc.integration.towny.TownyIntegrationException.class,
+                () -> limits.reserve("nation-1", 30, registry),
+                "a second in-flight hire must not take the final slot");
+
+        first.close();
+
+        try (KingdomGuardService.Reservation replacement =
+                     limits.reserve("nation-1", 30, registry)) {
+            assertNotNull(replacement,
+                    "the slot must become available again after a failed hire releases its reservation");
+        }
     }
 
     private NpcCommandService service(TownyResidentService towny, NpcRegistry registry) {

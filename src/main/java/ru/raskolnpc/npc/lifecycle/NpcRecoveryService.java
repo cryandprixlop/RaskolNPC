@@ -4,10 +4,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.plugin.Plugin;
 import ru.raskolnpc.npc.entity.NpcEntityManager;
+import ru.raskolnpc.npc.model.NpcType;
+import ru.raskolnpc.guard.GuardEquipmentPersistenceService;
 import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.model.NpcRecord;
+import ru.raskolnpc.npc.model.NpcState;
 import ru.raskolnpc.npc.registry.NpcRegistry;
 import ru.raskolnpc.storage.NpcDeletionRepository;
 
@@ -15,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class NpcRecoveryService {
@@ -22,7 +27,9 @@ public final class NpcRecoveryService {
     private final NpcRegistry registry;
     private final NpcEntityManager entities;
     private final NpcDeletionRepository deletions;
+    private final Set<NpcId> deathRecoveries = ConcurrentHashMap.newKeySet();
     private volatile boolean started;
+    private GuardEquipmentPersistenceService guardEquipment;
 
     public NpcRecoveryService(Plugin plugin, NpcRegistry registry,
                               NpcEntityManager entities,
@@ -31,6 +38,10 @@ public final class NpcRecoveryService {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.deletions = Objects.requireNonNull(deletions, "deletions");
+    }
+
+    public void setGuardEquipmentPersistenceService(GuardEquipmentPersistenceService service) {
+        this.guardEquipment = Objects.requireNonNull(service, "service");
     }
 
     public CompletableFuture<Void> recover() {
@@ -80,6 +91,84 @@ public final class NpcRecoveryService {
         });
     }
 
+    /**
+     * Recovers an NPC after an unexpected entity death. A durable deletion request
+     * always wins; only the exact currently-bound entity of an active record qualifies.
+     * Guard equipment is restored from the durable snapshot, so only that entity's
+     * vanilla death drops are cleared. Other and stale entities keep their drops.
+     */
+    public void onEntityDeath(EntityDeathEvent event) {
+        Objects.requireNonNull(event, "event");
+        Entity deadEntity = event.getEntity();
+        NpcId id = entities.getNpcId(deadEntity).orElse(null);
+        NpcRecord record = id == null ? null : registry.get(id).orElse(null);
+        if (record != null && record.type() == NpcType.GUARD
+                && record.state() == NpcState.ACTIVE
+                && deadEntity.getUniqueId().equals(record.entityUuid())) {
+            event.getDrops().clear();
+        }
+        onEntityDeath(deadEntity);
+    }
+
+    public void onEntityDeath(Entity deadEntity) {
+        if (!Bukkit.isPrimaryThread() || !plugin.isEnabled()) return;
+        var taggedId = entities.getNpcId(deadEntity);
+        if (taggedId.isEmpty()) return;
+        NpcId id = taggedId.get();
+        entities.untrack(deadEntity);
+        NpcRecord record = registry.get(id).orElse(null);
+        if (record == null || record.state() != NpcState.ACTIVE
+                || !deadEntity.getUniqueId().equals(record.entityUuid())
+                || !deathRecoveries.add(id)) return;
+
+        CompletableFuture<Void> snapshot = guardEquipment == null
+                ? CompletableFuture.completedFuture(null) : guardEquipment.save(deadEntity);
+        snapshot.whenComplete((ignored, saveError) -> {
+            if (saveError != null) {
+                deathRecoveries.remove(id);
+                if (plugin.isEnabled()) plugin.getLogger().log(Level.SEVERE,
+                        "Could not save guard equipment before entity recovery: " + id, saveError);
+                return;
+            }
+            continueDeathRecovery(deadEntity, id);
+        });
+    }
+
+    private void continueDeathRecovery(Entity deadEntity, NpcId id) {
+        deletions.findPending().whenComplete((pendingIds, error) -> {
+            if (error != null) {
+                deathRecoveries.remove(id);
+                if (plugin.isEnabled()) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not check deletion state after NPC death: " + id, error);
+                }
+                return;
+            }
+            runOnMainThread(() -> {
+                NpcRecord current = registry.get(id).orElse(null);
+                if (pendingIds.contains(id) || current == null
+                        || current.state() != NpcState.ACTIVE
+                        || !deadEntity.getUniqueId().equals(current.entityUuid())) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                Location location = current.spawnLocation() == null
+                        ? null : current.spawnLocation().resolve();
+                if (location == null || location.getWorld() == null
+                        || !location.getWorld().isChunkLoaded(
+                                location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return spawnAndRestoreEquipment(current, location).thenApply(restored -> null);
+            }).whenComplete((ignored, recoveryError) -> {
+                deathRecoveries.remove(id);
+                if (recoveryError != null && plugin.isEnabled()) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not restore NPC after entity death: " + id, recoveryError);
+                }
+            });
+        });
+    }
+
     public void onEntitiesUnload(List<Entity> unloadingEntities) {
         if (!Bukkit.isPrimaryThread()) return;
         unloadingEntities.forEach(entities::untrack);
@@ -95,7 +184,8 @@ public final class NpcRecoveryService {
                     NpcId id = taggedId.get();
                     if (!pending.contains(id)) {
                         var record = registry.get(id).orElse(null);
-                        if (record == null || (record.entityUuid() != null
+                        if (record == null || record.state() != NpcState.ACTIVE
+                                || (record.entityUuid() != null
                                 && !record.entityUuid().equals(entity.getUniqueId()))) {
                             entities.removeEntity(entity);
                             return CompletableFuture.completedFuture(null);
@@ -131,7 +221,9 @@ public final class NpcRecoveryService {
 
     private CompletableFuture<?> recoverRecordIfChunkLoaded(
             NpcRecord record, Chunk onlyChunk, Set<NpcId> pending) {
-        if (pending.contains(record.id()) || !isSpawnedInChunk(record, onlyChunk)) {
+        if (pending.contains(record.id()) || record.state() != NpcState.ACTIVE
+                || deathRecoveries.contains(record.id())
+                || !isSpawnedInChunk(record, onlyChunk)) {
             return CompletableFuture.completedFuture(null);
         }
         Location location = record.spawnLocation().resolve();
@@ -145,11 +237,32 @@ public final class NpcRecoveryService {
             return CompletableFuture.completedFuture(null);
         }
 
-        return entities.spawnAsync(record, location).whenComplete((restored, error) -> {
+        return spawnAndRestoreEquipment(record, location).whenComplete((restored, error) -> {
             if (error != null && plugin.isEnabled()) {
                 plugin.getLogger().log(Level.SEVERE,
                         "Could not restore NPC " + record.id() + ".", error);
             }
+        });
+    }
+
+    private CompletableFuture<NpcRecord> spawnAndRestoreEquipment(NpcRecord record, Location location) {
+        return entities.spawnAsync(record, location).thenCompose(restored -> {
+            if (guardEquipment == null || record.type() != NpcType.GUARD) {
+                return CompletableFuture.completedFuture(restored);
+            }
+            Entity spawned = entities.find(record.id()).orElse(null);
+            if (spawned == null) return CompletableFuture.failedFuture(
+                    new IllegalStateException("Recovered guard entity is not tracked: " + record.id()));
+            return guardEquipment.restore(record.id(), spawned).handle((ignored, restoreError) ->
+                    restoreError).thenCompose(restoreError -> {
+                if (restoreError == null) return CompletableFuture.completedFuture(restored);
+                // Never leave a newly spawned guard active with default/empty gear when
+                // its durable equipment snapshot could not be applied.
+                return runOnMainThread(() -> {
+                    if (spawned.isValid()) entities.removeEntity(spawned);
+                    return CompletableFuture.completedFuture(null);
+                }).thenCompose(ignored -> CompletableFuture.failedFuture(restoreError));
+            });
         });
     }
 

@@ -5,6 +5,7 @@ import ru.raskolnpc.npc.model.NpcType;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgress;
 import ru.raskolnpc.storage.ResidentProfileRepository;
 
 import java.util.EnumMap;
@@ -27,6 +28,74 @@ public final class ResidentProfileService {
 
     public ResidentProfileService(ResidentProfileRepository repository) {
         this.repository = java.util.Objects.requireNonNull(repository, "repository");
+    }
+
+    /** Loads a resident profile asynchronously for interaction and dialogue systems. */
+    public CompletableFuture<java.util.Optional<ResidentProfile>> find(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findByNpcId(java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
+    /** Awards profession XP using one atomic repository transaction. */
+    public CompletableFuture<ResidentSkillProgress> addSkillExperience(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession, int amount) {
+        return repository.addSkillExperience(npcId, profession, amount);
+    }
+
+    /**
+     * Changes the resident's active profession. Skill experience for every
+     * profession is retained; returning to a former profession restores its
+     * previous mastery progress.
+     */
+    public CompletableFuture<ResidentProfile> changeProfession(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession) {
+        return changeProfession(npcId, profession, 0L);
+    }
+
+    /** Changes profession and persists the cooldown origin in the same repository transaction. */
+    public CompletableFuture<ResidentProfile> changeProfession(
+            ru.raskolnpc.npc.model.NpcId npcId, ResidentProfession profession, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        if (worldDay < 0) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игровой день не может быть отрицательным."));
+        }
+        return repository.findByNpcId(npcId).thenCompose(existing -> {
+            if (existing.isEmpty()) {
+                return CompletableFuture.failedFuture(
+                        new IllegalArgumentException("Профиль жителя не найден."));
+            }
+            if (existing.get().profession() == profession) {
+                return CompletableFuture.completedFuture(existing.get());
+            }
+            return repository.changeProfession(npcId, profession, worldDay)
+                    .thenCompose(ignored -> repository.findByNpcId(npcId))
+                    .thenApply(updated -> updated.orElseThrow(() ->
+                            new IllegalStateException("Профиль жителя исчез после смены профессии.")));
+        });
+    }
+
+    public CompletableFuture<Long> lastProfessionChangeDay(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findLastProfessionChangeDay(
+                java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
+    public CompletableFuture<Long> lastProfessionRequestDay(
+            ru.raskolnpc.npc.model.NpcId npcId) {
+        return repository.findLastProfessionRequestDay(
+                java.util.Objects.requireNonNull(npcId, "npcId"));
+    }
+
+    public CompletableFuture<Boolean> recordProfessionRequest(
+            ru.raskolnpc.npc.model.NpcId npcId, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        if (worldDay < 0) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Игровой день не может быть отрицательным."));
+        }
+        return repository.recordProfessionRequest(npcId, worldDay);
     }
 
     /** Creates a profile only when one does not already exist. */

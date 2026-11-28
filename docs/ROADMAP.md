@@ -1,8 +1,34 @@
 # RaskolNPC Roadmap
 
-> **Status:** Proposed sequence. No milestone in this document should be interpreted as implemented or released.
+> **Status:** Long-term product roadmap. Resident and initial guard implementation is present on the active draft pull request; it is not yet a merged or released milestone.
 
-The project will be developed in small, reviewable stages. Each stage should have an agreed scope, implementation plan, tests, and acceptance criteria before code is added.
+The project is developed in small, reviewable stages. Each stage has an implementation scope, tests, and acceptance criteria. Automated tests do not replace live-server acceptance and load testing.
+
+## Current implementation status — resident milestone
+
+The active development branch contains the resident work:
+
+- Resident profiles and all 10 professions.
+- Weekly schedules, destinations, shared batched behavior scheduling, and chunk-safe movement with simple obstacle sidesteps.
+- Daily needs progression and asynchronous profile persistence.
+- YAML dialogue with greeting, trait, profession, and reputation tiers.
+- Repeatable delivery quests, reputation, replay protection, restart recovery, and administrator review resolution.
+- Town business stock, delivery-demand gating, atomic deposits/withdrawals, and configurable daily consumption.
+- Administrative commands and an operator guide.
+
+The resource-side supply/demand loop is implemented. Product quality is the next resident-economy increment; its batch-based storage contract and migration/compatibility requirements are documented in `docs/RESIDENT-PRODUCT-QUALITY.md`. Quality is not exposed in gameplay until all stock mutation paths preserve batch metadata. Player-currency rewards and a player-money marketplace remain intentionally disabled until the server's economy provider and transaction policy are selected. The provider-neutral durable trade journal now has an admin-only evidence-backed review/list/resolve workflow; it does not perform external payment or inventory verification. No economy provider is assumed.
+
+The resident milestone still needs full in-server acceptance and load testing at the global NPC cap of 150. The work remains on the open draft pull request and has not been merged into `main`.
+
+## Current implementation status — stages 2–4 in progress
+
+The resident milestone and its automated validation are present on the active pull-request branch. The following work extends the same branch:
+
+- **Stage 2:** SQLite migrations 1–21, versioned schema checks, NPC lifecycle capacity reservations, entity binding persistence, deletion recovery, restart reconciliation, and resident trade-audit retention with deletion blocked only for unresolved transactions. A newer unsupported schema version is rejected before application startup.
+- **Stage 3:** Towny authority/placement and Town-bank operations use existing verified Towny APIs. A provider-neutral relationship policy combines Towny declared alliances/enemies with active SiegeWar attacker/defender pairs; incomplete or unavailable diplomacy remains unknown and cannot authorize hostility. The WorldGuard 7.0.19 adapter is wired into the first guard combat layer and requires explicit `MOB_DAMAGE` permission at both attacker and target locations. Administrator diagnostics report adapter availability.
+- **Stage 4:** Towny guard hiring, rent, nation roster, general appointments, payment review, durable guard orders, patrol waypoints, escort, defend, hold, return-to-post movement, persistent squad membership, shared squad order assignment, basic rally-point spreading, and deterministic wedge formations are implemented. A squad order is saved per member and reports partial failures; formation slots are loaded into an immutable in-memory snapshot before movement starts and refreshed after membership changes, so the tick loop never queries SQLite. Members still advance independently through one bounded scheduler, and unloaded chunks are not force-loaded. Guard combat uses bounded batches, configurable damage/cooldown, verified hostile relationships, territory checks, and optional WorldGuard authorization.
+
+**Remaining guard work:** Current pursuit selects the nearest verified hostile registered NPC or Towny-resolved player within the configured radius (default 16 blocks) and temporarily moves toward it without replacing the durable order. If the target becomes invalid, leaves range, or is no longer verified hostile, the guard resumes its saved order. Unknown/unregistered entities, unresolved players, neutral relations, and incomplete diplomacy responses are ignored. Movement is deliberately simple: it checks passability and can sidestep a single blocked step, but it is not full pathfinding around complex terrain. Basic coordinated squad combat is implemented: the stable squad leader selects a verified hostile focus target, and members share that target while independently enforcing range, diplomacy, territory, and WorldGuard checks. Verified retaliation is implemented: direct damage from a registered hostile NPC or Towny-resolved hostile player temporarily prioritizes that attacker for up to 10 seconds, subject to the same live range, diplomacy, territory, and WorldGuard checks. Projectiles, environmental damage, and unresolved/neutral attackers do not create retaliation targets. More advanced tactical roles and death policies remain future increments. Guard equipment wear is implemented using native item durability: successful direct melee hits wear the main-hand weapon, incoming damage wears equipped armor, and broken items are removed at their normal material durability limit. Basic material-based repair is implemented through `/raskolnpc guard repair <UUID>`: authorized kingdom members or administrators can repair a loaded nearby guard using tier-appropriate inventory materials. Repair validates all costs before consuming anything, restores supported equipment to full durability, and reports unsupported item types. Dedicated blacksmith/healer NPC interactions, Towny bank repair payments, and repair station progression remain future increments. Persistent guard morale, passive recovery, and first-stage routing are now implemented: incoming damage lowers morale, morale scales outgoing combat damage, low-morale guards stop attacking and retreat toward their persisted post, and recovery releases retreat after a configurable rally threshold. This remains an initial morale layer, not a full morale AI. Numerical pressure now lowers morale when verified hostiles outnumber nearby same-nation guards by at least two; nearby same-nation guards also suffer a configurable morale shock when an ally dies. Injury severity, combat penalties, gradual recovery, and loaded-entity health regeneration are now implemented with SQLite persistence and configurable thresholds. Explicit medical items, healer NPCs, advanced repair stations, surrender, and death policies remain future work. Formation movement currently uses deterministic destination offsets; it is not obstacle-aware group pathfinding. The guard milestone also still requires live Paper/Towny/SiegeWar/WorldGuard acceptance tests, including failure cases and the 150-NPC load test.
 
 ## Phase 0 — Product and technical validation
 
@@ -108,7 +134,6 @@ The project will be developed in small, reviewable stages. Each stage should hav
 
 ## Working agreement
 
-- Discuss and approve each significant design decision before implementation.
+- Continue implementing the approved RaskolNPC roadmap autonomously within this repository and report completed work, tests, and limitations to the user.
 - Do not modify external repositories or dependencies without explicit authorization.
-- Before every upload to this repository, present the exact file list, explain each change, identify replacements/deletions, and ask for permission.
-- A general authorization to work on the project is not blanket permission to publish future changes.
+- Keep work on the active feature branch and do not merge into `main` or release without explicit authorization.

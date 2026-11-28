@@ -5,12 +5,18 @@ import ru.raskolnpc.npc.model.NpcId;
 import ru.raskolnpc.npc.resident.model.ResidentProfile;
 import ru.raskolnpc.npc.resident.model.ResidentProfession;
 import ru.raskolnpc.npc.resident.model.ResidentSkillLevel;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgress;
+import ru.raskolnpc.npc.resident.model.ResidentSkillProgression;
 import ru.raskolnpc.npc.resident.model.ResidentProfile.ResidentTrait;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -63,13 +69,9 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             }
 
             try (var traits = connection.prepareStatement(
-                    "DELETE FROM resident_traits WHERE npc_id = ?");
-                 var skills = connection.prepareStatement(
-                    "DELETE FROM resident_skills WHERE npc_id = ?")) {
+                    "DELETE FROM resident_traits WHERE npc_id = ?")) {
                 traits.setString(1, profile.npcId().toString());
                 traits.executeUpdate();
-                skills.setString(1, profile.npcId().toString());
-                skills.executeUpdate();
             }
 
             try (var statement = connection.prepareStatement(
@@ -83,8 +85,9 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
             }
 
             try (var statement = connection.prepareStatement("""
-                    INSERT INTO resident_skills(npc_id, profession, skill_level)
-                    VALUES (?, ?, ?)
+                    INSERT INTO resident_skills(npc_id, profession, skill_level, experience)
+                    VALUES (?, ?, ?, 0)
+                    ON CONFLICT(npc_id, profession) DO NOTHING
                     """)) {
                 for (var skill : profile.skills().entrySet()) {
                     statement.setString(1, profile.npcId().toString());
@@ -158,6 +161,223 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
         });
     }
 
+    /**
+     * Reads the profile, trait and skill tables once each. This avoids N+1
+     * lookups when the behavior service initializes its in-memory resident cache.
+     */
+    @Override
+    public CompletableFuture<List<ResidentProfile>> findAll() {
+        return database.query(connection -> {
+            Map<NpcId, ProfileBuilder> profiles = new LinkedHashMap<>();
+            try (var statement = connection.prepareStatement("""
+                    SELECT npc_id, age, profession, hunger, energy, rest, social,
+                           housing_satisfaction, mood
+                    FROM resident_profiles
+                    ORDER BY npc_id
+                    """);
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    NpcId id = NpcId.fromString(result.getString("npc_id"));
+                    profiles.put(id, new ProfileBuilder(id,
+                            result.getInt("age"),
+                            ResidentProfession.valueOf(result.getString("profession")),
+                            result.getInt("hunger"),
+                            result.getInt("energy"),
+                            result.getInt("rest"),
+                            result.getInt("social"),
+                            result.getInt("housing_satisfaction"),
+                            result.getInt("mood")));
+                }
+            }
+
+            try (var statement = connection.prepareStatement(
+                    "SELECT npc_id, trait FROM resident_traits ORDER BY npc_id");
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ProfileBuilder profile = profiles.get(
+                            NpcId.fromString(result.getString("npc_id")));
+                    if (profile != null) {
+                        profile.traits.add(ResidentTrait.valueOf(result.getString("trait")));
+                    }
+                }
+            }
+
+            try (var statement = connection.prepareStatement("""
+                    SELECT npc_id, profession, skill_level
+                    FROM resident_skills ORDER BY npc_id
+                    """);
+                 ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ProfileBuilder profile = profiles.get(
+                            NpcId.fromString(result.getString("npc_id")));
+                    if (profile != null) {
+                        profile.skills.put(
+                                ResidentProfession.valueOf(result.getString("profession")),
+                                ResidentSkillLevel.valueOf(result.getString("skill_level")));
+                    }
+                }
+            }
+
+            List<ResidentProfile> result = new ArrayList<>(profiles.size());
+            profiles.values().forEach(profile -> result.add(profile.build()));
+            return List.copyOf(result);
+        });
+    }
+
+
+    @Override
+    public CompletableFuture<ResidentSkillProgress> addSkillExperience(
+            NpcId npcId, ResidentProfession profession, int amount) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
+        return database.transaction(connection -> {
+            try (var check = connection.prepareStatement(
+                    "SELECT 1 FROM resident_profiles WHERE npc_id = ?")) {
+                check.setString(1, npcId.toString());
+                try (ResultSet result = check.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+            try (var ensure = connection.prepareStatement(
+                    "INSERT OR IGNORE INTO resident_skills(npc_id, profession, skill_level, experience) VALUES (?, ?, 'APPRENTICE', 0)")) {
+                ensure.setString(1, npcId.toString());
+                ensure.setString(2, profession.name());
+                ensure.executeUpdate();
+            }
+            int current;
+            try (var read = connection.prepareStatement(
+                    "SELECT experience FROM resident_skills WHERE npc_id = ? AND profession = ?")) {
+                read.setString(1, npcId.toString());
+                read.setString(2, profession.name());
+                try (ResultSet result = read.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Could not load resident skill progress");
+                    current = result.getInt(1);
+                }
+            }
+            int updated = (int) Math.min(Integer.MAX_VALUE, (long) current + amount);
+            ResidentSkillProgress progress = ResidentSkillProgression.fromTotalExperience(updated);
+            try (var update = connection.prepareStatement(
+                    "UPDATE resident_skills SET experience = ?, skill_level = ? WHERE npc_id = ? AND profession = ?")) {
+                update.setInt(1, updated);
+                update.setString(2, progress.level().name());
+                update.setString(3, npcId.toString());
+                update.setString(4, profession.name());
+                update.executeUpdate();
+            }
+            return progress;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Void> changeProfession(NpcId npcId, ResidentProfession profession) {
+        return changeProfession(npcId, profession, 0L);
+    }
+
+    @Override
+    public CompletableFuture<Void> changeProfession(
+            NpcId npcId, ResidentProfession profession, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        java.util.Objects.requireNonNull(profession, "profession");
+        if (worldDay < 0) throw new IllegalArgumentException("worldDay cannot be negative");
+        return database.transaction(connection -> {
+            try (var update = connection.prepareStatement(
+                    "UPDATE resident_profiles SET profession = ? WHERE npc_id = ?")) {
+                update.setString(1, profession.name());
+                update.setString(2, npcId.toString());
+                if (update.executeUpdate() == 0) {
+                    throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+            // Preserve every profession's existing XP and atomically record the cooldown origin.
+            try (var ensure = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO resident_skills(
+                        npc_id, profession, skill_level, experience
+                    ) VALUES (?, ?, 'APPRENTICE', 0)
+                    """)) {
+                ensure.setString(1, npcId.toString());
+                ensure.setString(2, profession.name());
+                ensure.executeUpdate();
+            }
+            try (var record = connection.prepareStatement("""
+                    INSERT INTO resident_profession_changes(npc_id, last_change_world_day)
+                    VALUES (?, ?)
+                    ON CONFLICT(npc_id) DO UPDATE SET
+                        last_change_world_day = excluded.last_change_world_day
+                    """)) {
+                record.setString(1, npcId.toString());
+                record.setLong(2, worldDay);
+                record.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Long> findLastProfessionChangeDay(NpcId npcId) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT last_change_world_day FROM resident_profession_changes WHERE npc_id = ?")) {
+                statement.setString(1, npcId.toString());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getLong(1) : -1L;
+                }
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Long> findLastProfessionRequestDay(NpcId npcId) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        return database.query(connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT last_request_world_day FROM resident_profession_requests WHERE npc_id = ?")) {
+                statement.setString(1, npcId.toString());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getLong(1) : -1L;
+                }
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> recordProfessionRequest(NpcId npcId, long worldDay) {
+        java.util.Objects.requireNonNull(npcId, "npcId");
+        if (worldDay < 0) throw new IllegalArgumentException("worldDay cannot be negative");
+        return database.transaction(connection -> {
+            try (var check = connection.prepareStatement(
+                    "SELECT 1 FROM resident_profiles WHERE npc_id = ?")) {
+                check.setString(1, npcId.toString());
+                try (ResultSet result = check.executeQuery()) {
+                    if (!result.next()) throw new SQLException("Resident profile does not exist: " + npcId);
+                }
+            }
+
+            try (var insert = connection.prepareStatement("""
+                    INSERT OR IGNORE INTO resident_profession_requests(
+                        npc_id, last_request_world_day
+                    ) VALUES (?, ?)
+                    """)) {
+                insert.setString(1, npcId.toString());
+                insert.setLong(2, worldDay);
+                if (insert.executeUpdate() == 1) return true;
+            }
+
+            if (worldDay < 7) return false;
+            try (var update = connection.prepareStatement("""
+                    UPDATE resident_profession_requests
+                    SET last_request_world_day = ?
+                    WHERE npc_id = ? AND last_request_world_day <= ?
+                    """)) {
+                update.setLong(1, worldDay);
+                update.setString(2, npcId.toString());
+                update.setLong(3, worldDay - 7L);
+                return update.executeUpdate() == 1;
+            }
+        });
+    }
+
     @Override
     public CompletableFuture<Boolean> delete(NpcId npcId) {
         return database.query(connection -> {
@@ -167,5 +387,38 @@ public final class SqliteResidentProfileRepository implements ResidentProfileRep
                 return statement.executeUpdate() > 0;
             }
         });
+    }
+
+    private static final class ProfileBuilder {
+        private final NpcId npcId;
+        private final int age;
+        private final ResidentProfession profession;
+        private final int hunger;
+        private final int energy;
+        private final int rest;
+        private final int social;
+        private final int housing;
+        private final int mood;
+        private final EnumSet<ResidentTrait> traits = EnumSet.noneOf(ResidentTrait.class);
+        private final EnumMap<ResidentProfession, ResidentSkillLevel> skills =
+                new EnumMap<>(ResidentProfession.class);
+
+        private ProfileBuilder(NpcId npcId, int age, ResidentProfession profession,
+                int hunger, int energy, int rest, int social, int housing, int mood) {
+            this.npcId = npcId;
+            this.age = age;
+            this.profession = profession;
+            this.hunger = hunger;
+            this.energy = energy;
+            this.rest = rest;
+            this.social = social;
+            this.housing = housing;
+            this.mood = mood;
+        }
+
+        private ResidentProfile build() {
+            return new ResidentProfile(npcId, age, profession, traits,
+                    hunger, energy, rest, social, housing, mood, skills);
+        }
     }
 }

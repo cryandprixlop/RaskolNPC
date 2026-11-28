@@ -1,6 +1,7 @@
 package ru.raskolnpc.npc.entity;
 
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.world.EntitiesLoadEvent;
@@ -29,8 +30,8 @@ public final class NpcEntityListener implements Listener {
         event.getEntities().forEach(entityManager::untrackAndPersistLocation);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDeath(EntityDeathEvent event) {
-        entityManager.untrack(event.getEntity());
+        recoveryService.onEntityDeath(event);
     }
 }
